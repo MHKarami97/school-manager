@@ -47,7 +47,7 @@ function secondaryTeacherOf(cell: LessonCell): Teacher | undefined {
 
 function setCell(dayIndex: number, periodIndex: number, patch: Partial<LessonCell>): void {
   const others = cells.value.filter((c) => !(c.dayIndex === dayIndex && c.periodIndex === periodIndex))
-  cells.value = [...others, { dayIndex, periodIndex, courseId: null, teacherId: null, ...patch }]
+  cells.value = [...others, { dayIndex, periodIndex, courseId: null, teacherId: null, secondaryCourseId: null, secondaryTeacherId: null, ...patch }]
 }
 
 const draggedFrom = ref<{ day: number; period: number } | null>(null)
@@ -62,8 +62,18 @@ function onDrop(day: number, period: number): void {
   const from = draggedFrom.value
   const fromCell = cellAt(from.day, from.period)
   const toCell = cellAt(day, period)
-  setCell(from.day, from.period, { courseId: toCell.courseId, teacherId: toCell.teacherId, secondaryCourseId: toCell.secondaryCourseId ?? null, secondaryTeacherId: toCell.secondaryTeacherId ?? null })
-  setCell(day, period, { courseId: fromCell.courseId, teacherId: fromCell.teacherId, secondaryCourseId: fromCell.secondaryCourseId ?? null, secondaryTeacherId: fromCell.secondaryTeacherId ?? null })
+  setCell(from.day, from.period, {
+    courseId: toCell.courseId,
+    teacherId: toCell.teacherId,
+    secondaryCourseId: toCell.secondaryCourseId ?? null,
+    secondaryTeacherId: toCell.secondaryTeacherId ?? null,
+  })
+  setCell(day, period, {
+    courseId: fromCell.courseId,
+    teacherId: fromCell.teacherId,
+    secondaryCourseId: fromCell.secondaryCourseId ?? null,
+    secondaryTeacherId: fromCell.secondaryTeacherId ?? null,
+  })
   draggedFrom.value = null
 }
 
@@ -76,14 +86,16 @@ function openEditor(day: number, period: number): void {
   isModalOpen.value = true
 }
 
-function applyEdit(courseId: string | null, teacherId: string | null): void {
+function applyEdit(courseId: string | null, teacherId: string | null, secondaryCourseId: string | null, secondaryTeacherId: string | null): void {
   if (!editingCell.value) return
-  setCell(editingCell.value.day, editingCell.value.period, { courseId, teacherId, secondaryCourseId: null, secondaryTeacherId: null })
+  setCell(editingCell.value.day, editingCell.value.period, { courseId, teacherId, secondaryCourseId, secondaryTeacherId })
   editingCell.value = null
 }
 
 const editingCourseId = computed(() => (editingCell.value ? cellAt(editingCell.value.day, editingCell.value.period).courseId : null))
 const editingTeacherId = computed(() => (editingCell.value ? cellAt(editingCell.value.day, editingCell.value.period).teacherId : null))
+const editingSecondaryCourseId = computed(() => (editingCell.value ? cellAt(editingCell.value.day, editingCell.value.period).secondaryCourseId ?? null : null))
+const editingSecondaryTeacherId = computed(() => (editingCell.value ? cellAt(editingCell.value.day, editingCell.value.period).secondaryTeacherId ?? null : null))
 </script>
 
 <template>
@@ -133,5 +145,14 @@ const editingTeacherId = computed(() => (editingCell.value ? cellAt(editingCell.
     </table>
   </div>
 
-  <CellEditorModal v-model="isModalOpen" :course-id="editingCourseId" :teacher-id="editingTeacherId" :courses="courses" :teachers="teachers" @apply="applyEdit" />
+  <CellEditorModal
+    v-model="isModalOpen"
+    :course-id="editingCourseId"
+    :teacher-id="editingTeacherId"
+    :secondary-course-id="editingSecondaryCourseId"
+    :secondary-teacher-id="editingSecondaryTeacherId"
+    :courses="courses"
+    :teachers="teachers"
+    @apply="applyEdit"
+  />
 </template>

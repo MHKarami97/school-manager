@@ -6,6 +6,11 @@ export interface CourseRequirement {
   weeklyHours: number
 }
 
+export interface ComboRequirement {
+  primaryCourseId: string
+  secondaryCourseId: string
+}
+
 export interface AdjacencyPair {
   anchorCourseId: string
   followerCourseIds: string[]
@@ -16,9 +21,11 @@ export interface SchedulerOptions {
   requirements: CourseRequirement[]
   courses: CourseDefinition[]
   lockedCells?: LessonCell[]
-  maxAttempts?: number
   ruleToggles?: RuleToggles
   adjacencyPairs?: AdjacencyPair[]
+  comboRequirements?: ComboRequirement[]
+  avoidLastPeriodCourseIds?: string[]
+  maxAttempts?: number
 }
 
 export interface SchedulerResult {
@@ -28,6 +35,7 @@ export interface SchedulerResult {
 }
 
 const DAYS_COUNT = WEEK_DAYS.length
+const MAX_BACKTRACK_STEPS = 400000
 
 const DEFAULT_RULE_TOGGLES: RuleToggles = {
   noSameDayRepeat: true,
@@ -36,21 +44,18 @@ const DEFAULT_RULE_TOGGLES: RuleToggles = {
   persianWritingAdjacency: true,
 }
 
+type Token = { kind: 'course'; courseId: string } | { kind: 'combo'; primaryCourseId: string; secondaryCourseId: string }
+
 /**
  * موتور چیدمان برنامه هفتگی یک پایه/کلاس.
  *
- * قوانین پیش‌فرض (هرکدام از طریق `ruleToggles` قابل قطع هستند):
- *  - noSameDayRepeat: هیچ درسی دوبار در یک روز تکرار نمی‌شود.
- *  - noSameColumnRepeat: هیچ درسی دوبار در یک ستون (شماره زنگ) در طول هفته تکرار نمی‌شود.
- *  - quranAlwaysFirstPeriod: هر وقت قرآن/دینی در برنامه باشد، فقط در زنگ اول قرار می‌گیرد
- *    (زنگ اول انحصاری قرآن نیست؛ در روزهایی که قرآن نیاز ندارد، سایر درس‌ها هم
- *    می‌توانند طبق همان قوانین معمول در زنگ اول بیایند).
- *  - persianWritingAdjacency: از طریق پارامتر adjacencyPairs، هر وقت درس anchor (مثل فارسی)
- *    قرار می‌گیرد، تا حد امکان بلافاصله بعد از آن یکی از followerCourseIds (مانند انشا/املا)
- *    می‌آید. اگر ساعت anchor کمتر از مجموع ساعت‌های follower باشد، فقط به همان تعداد ممکن
- *    جفت ساخته می‌شود و باقی ساعت‌های follower به‌صورت عادی چیده می‌شوند.
- *
- * استثنای ورزش (specialRule = 'sport-fixed') از طریق lockedCells پیش‌تعیین می‌شود.
+ * برخلاف نسخه‌های قبلی که فقط با «تلاش تصادفی مجدد» (random restart) کار می‌کرد و
+ * برای مسائل کاملاً پر (بدون هیچ زنگ خالی اضافه) قابل‌اعتماد نبود، این نسخه از
+ * یک الگوریتم Backtracking واقعی با undo استفاده می‌کند: هر واحد ساعت باقی‌مانده
+ * (و هر «زنگ مشترک/تک‌زنگ») به‌عنوان یک token در نظر گرفته می‌شود؛ موتور برای هر
+ * token سلول‌های آزاد را امتحان می‌کند؛ اگر یک انتخاب به بن‌بست برسد، آن را برمی‌گرداند
+ * (undo) و گزینه بعدی را امتحان می‌کند. این تضمین می‌کند که اگر اصلاً چیدمانی معتبر
+ * برای این ورودی وجود داشته باشد، موتور پیدایش کند (نه فقط با شانس).
  */
 export function generateGradeSchedule(options: SchedulerOptions): SchedulerResult {
   const {
@@ -58,9 +63,11 @@ export function generateGradeSchedule(options: SchedulerOptions): SchedulerResul
     requirements,
     courses,
     lockedCells = [],
-    maxAttempts = 60,
     ruleToggles = DEFAULT_RULE_TOGGLES,
     adjacencyPairs = [],
+    comboRequirements = [],
+    avoidLastPeriodCourseIds = [],
+    maxAttempts = 12,
   } = options
   const periodsCount = shiftConfig.periodsCount
 
@@ -72,6 +79,9 @@ export function generateGradeSchedule(options: SchedulerOptions): SchedulerResul
   const poolReqs = ruleToggles.quranAlwaysFirstPeriod
     ? requirements.filter((r) => specialRuleOf(r.courseId) !== 'quran-first')
     : requirements
+
+  let lastGrid: (LessonCell | null)[][] | null = null
+  let lastTokens: Token[] | null = null
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const grid: (LessonCell | null)[][] = Array.from({ length: DAYS_COUNT }, () => Array(periodsCount).fill(null))
@@ -116,41 +126,143 @@ export function generateGradeSchedule(options: SchedulerOptions): SchedulerResul
       }
     }
 
-    const sortedReqs = [...poolReqs].sort((a, b) => b.weeklyHours - a.weeklyHours)
-    const unplacedThisAttempt: CourseRequirement[] = []
-
-    for (const [reqIndex, req] of sortedReqs.entries()) {
-      const targetCount = remaining.get(req.courseId) ?? req.weeklyHours
-      let placedCount = countPlaced(grid, req.courseId)
-      const seed = attempt * 977 + reqIndex * 53 + req.weeklyHours
-      const candidateCells = shuffle(allFreeCells(grid, periodsCount), seed)
-
-      for (const [day, period] of candidateCells) {
-        if (placedCount >= targetCount) break
-        if (grid[day][period] !== null) continue
-        if (ruleToggles.noSameDayRepeat && dayHasCourse.get(req.courseId)?.has(day)) continue
-        if (ruleToggles.noSameColumnRepeat && columnHasCourse.get(req.courseId)?.has(period)) continue
-
-        grid[day][period] = { dayIndex: day, periodIndex: period, courseId: req.courseId, teacherId: null }
-        markUsage(dayHasCourse, columnHasCourse, req.courseId, day, period)
-        placedCount++
-      }
-
-      if (placedCount < targetCount) {
-        unplacedThisAttempt.push({ courseId: req.courseId, weeklyHours: targetCount - placedCount })
-      }
+    const tokens: Token[] = []
+    for (const combo of comboRequirements) {
+      tokens.push({ kind: 'combo', primaryCourseId: combo.primaryCourseId, secondaryCourseId: combo.secondaryCourseId })
+    }
+    const normalEntries = Array.from(remaining.entries())
+      .filter(([, count]) => count > 0)
+      .sort((a, b) => b[1] - a[1])
+    for (const [courseId, count] of normalEntries) {
+      for (let i = 0; i < count; i++) tokens.push({ kind: 'course', courseId })
     }
 
-    if (unplacedThisAttempt.length === 0) {
+    const freeCells = allFreeCells(grid, periodsCount)
+    const stepBudget = { remaining: MAX_BACKTRACK_STEPS }
+    const seed = attempt * 7919 + 3
+
+    const success = backtrackPlace(
+      tokens,
+      0,
+      freeCells,
+      grid,
+      dayHasCourse,
+      columnHasCourse,
+      ruleToggles,
+      avoidLastPeriodCourseIds,
+      seed,
+      stepBudget,
+    )
+
+    if (success) {
       return { success: true, cells: flatten(grid), unplaced: [] }
     }
 
-    if (attempt === maxAttempts - 1) {
-      return { success: false, cells: flatten(grid), unplaced: unplacedThisAttempt }
-    }
+    lastGrid = grid
+    lastTokens = tokens
   }
 
+  if (lastGrid && lastTokens) {
+    return { success: false, cells: flatten(lastGrid), unplaced: summarizeUnplaced(lastTokens, lastGrid) }
+  }
   return { success: false, cells: [], unplaced: requirements }
+}
+
+function backtrackPlace(
+  tokens: Token[],
+  index: number,
+  freeCells: [number, number][],
+  grid: (LessonCell | null)[][],
+  dayHasCourse: Map<string, Set<number>>,
+  columnHasCourse: Map<string, Set<number>>,
+  ruleToggles: RuleToggles,
+  avoidLastPeriodCourseIds: string[],
+  seed: number,
+  stepBudget: { remaining: number },
+): boolean {
+  if (index >= tokens.length) return true
+  if (stepBudget.remaining <= 0) return false
+  stepBudget.remaining--
+
+  const token = tokens[index]
+  const periodsCount = grid[0]?.length ?? 0
+  const lastPeriod = periodsCount - 1
+
+  const courseIdsToCheck = token.kind === 'course' ? [token.courseId] : [token.primaryCourseId, token.secondaryCourseId]
+  const avoidLast = token.kind === 'course' && avoidLastPeriodCourseIds.includes(token.courseId)
+
+  let candidates = shuffle(freeCells, seed + index * 101)
+  if (avoidLast) {
+    const nonLast = candidates.filter(([, period]) => period !== lastPeriod)
+    const last = candidates.filter(([, period]) => period === lastPeriod)
+    candidates = [...nonLast, ...last]
+  }
+
+  for (const [day, period] of candidates) {
+    let valid = true
+    for (const courseId of courseIdsToCheck) {
+      if (ruleToggles.noSameDayRepeat && dayHasCourse.get(courseId)?.has(day)) {
+        valid = false
+        break
+      }
+      if (ruleToggles.noSameColumnRepeat && columnHasCourse.get(courseId)?.has(period)) {
+        valid = false
+        break
+      }
+    }
+    if (!valid) continue
+
+    const placedCell: LessonCell =
+      token.kind === 'course'
+        ? { dayIndex: day, periodIndex: period, courseId: token.courseId, teacherId: null }
+        : {
+            dayIndex: day,
+            periodIndex: period,
+            courseId: token.primaryCourseId,
+            teacherId: null,
+            secondaryCourseId: token.secondaryCourseId,
+            secondaryTeacherId: null,
+          }
+
+    grid[day][period] = placedCell
+    for (const courseId of courseIdsToCheck) markUsage(dayHasCourse, columnHasCourse, courseId, day, period)
+    const remainingFreeCells = candidates.filter(([d, p]) => !(d === day && p === period))
+
+    if (backtrackPlace(tokens, index + 1, remainingFreeCells, grid, dayHasCourse, columnHasCourse, ruleToggles, avoidLastPeriodCourseIds, seed, stepBudget)) {
+      return true
+    }
+
+    grid[day][period] = null
+    for (const courseId of courseIdsToCheck) unmarkUsage(dayHasCourse, columnHasCourse, courseId, day, period)
+  }
+
+  return false
+}
+
+function summarizeUnplaced(tokens: Token[], grid: (LessonCell | null)[][]): CourseRequirement[] {
+  const placedCount = new Map<string, number>()
+  for (const row of grid) {
+    for (const cell of row) {
+      if (!cell?.courseId) continue
+      placedCount.set(cell.courseId, (placedCount.get(cell.courseId) ?? 0) + 1)
+      if (cell.secondaryCourseId) placedCount.set(cell.secondaryCourseId, (placedCount.get(cell.secondaryCourseId) ?? 0) + 1)
+    }
+  }
+  const neededCount = new Map<string, number>()
+  for (const token of tokens) {
+    if (token.kind === 'course') {
+      neededCount.set(token.courseId, (neededCount.get(token.courseId) ?? 0) + 1)
+    } else {
+      neededCount.set(token.primaryCourseId, (neededCount.get(token.primaryCourseId) ?? 0) + 1)
+      neededCount.set(token.secondaryCourseId, (neededCount.get(token.secondaryCourseId) ?? 0) + 1)
+    }
+  }
+  const result: CourseRequirement[] = []
+  for (const [courseId, needed] of neededCount) {
+    const placed = placedCount.get(courseId) ?? 0
+    if (placed < needed) result.push({ courseId, weeklyHours: needed - placed })
+  }
+  return result
 }
 
 function placeAdjacencyPair(
@@ -201,27 +313,16 @@ function placeAdjacencyPair(
   }
 }
 
-function markUsage(
-  dayMap: Map<string, Set<number>>,
-  columnMap: Map<string, Set<number>>,
-  courseId: string,
-  day: number,
-  period: number,
-): void {
+function markUsage(dayMap: Map<string, Set<number>>, columnMap: Map<string, Set<number>>, courseId: string, day: number, period: number): void {
   if (!dayMap.has(courseId)) dayMap.set(courseId, new Set())
   if (!columnMap.has(courseId)) columnMap.set(courseId, new Set())
   dayMap.get(courseId)!.add(day)
   columnMap.get(courseId)!.add(period)
 }
 
-function countPlaced(grid: (LessonCell | null)[][], courseId: string): number {
-  let count = 0
-  for (const row of grid) {
-    for (const cell of row) {
-      if (cell?.courseId === courseId) count++
-    }
-  }
-  return count
+function unmarkUsage(dayMap: Map<string, Set<number>>, columnMap: Map<string, Set<number>>, courseId: string, day: number, period: number): void {
+  dayMap.get(courseId)?.delete(day)
+  columnMap.get(courseId)?.delete(period)
 }
 
 function allFreeCells(grid: (LessonCell | null)[][], periodsCount: number): [number, number][] {

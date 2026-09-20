@@ -13,7 +13,7 @@ import { BASE_COURSES } from '@/config/courses.config'
 import { getCurriculumForGrade } from '@/config/curriculum.config'
 import { getLevelById, gradeLabel } from '@/config/levels.config'
 import { getSinglePeriodPair } from '@/config/single-period-pairs.config'
-import { generateGradeSchedule, type CourseRequirement, type AdjacencyPair } from './scheduler'
+import { generateGradeSchedule, type CourseRequirement, type AdjacencyPair, type ComboRequirement } from './scheduler'
 import { assignTeachersFairly, type GradeCourseLoad } from './teacher-assignment'
 import { mainTeacherKey, sportTeacherKey } from './wizard-keys'
 
@@ -39,52 +39,19 @@ const ELEMENTARY_ADJACENCY: AdjacencyPair[] = [
   { anchorCourseId: 'persian-reading', followerCourseIds: ['persian-writing', 'dictation'] },
 ]
 
+const AVOID_LAST_PERIOD_COURSES: Record<LevelId, string[]> = {
+  elementary: ['heaven-gifts'],
+  lower_secondary: [],
+  upper_secondary: [],
+}
+
 function adjacencyPairsFor(levelId: LevelId): AdjacencyPair[] {
   return levelId === 'elementary' ? ELEMENTARY_ADJACENCY : []
 }
 
-function reduceForSinglePeriodPair(requirements: CourseRequirement[], grade: number): CourseRequirement[] {
+function comboRequirementsFor(grade: number): ComboRequirement[] {
   const pair = getSinglePeriodPair(grade)
-  if (!pair) return requirements
-
-  return requirements.map((r) => {
-    if (r.courseId === pair.primaryCourseId || r.courseId === pair.secondaryCourseId) {
-      return { ...r, weeklyHours: Math.max(0, r.weeklyHours - 1) }
-    }
-    return r
-  })
-}
-
-function placeSinglePeriodCombo(
-  cells: LessonCell[],
-  grade: number,
-  teacherByCourse: (courseId: string) => string | null,
-): string | null {
-  const pair = getSinglePeriodPair(grade)
-  if (!pair) return null
-
-  const usedDays = new Set<number>()
-  const usedColumns = new Set<number>()
-  for (const cell of cells) {
-    if (cell.courseId === pair.primaryCourseId || cell.courseId === pair.secondaryCourseId) {
-      usedDays.add(cell.dayIndex)
-      usedColumns.add(cell.periodIndex)
-    }
-  }
-
-  const target = cells.find(
-    (c) => c.courseId === null && !usedDays.has(c.dayIndex) && !usedColumns.has(c.periodIndex),
-  )
-
-  if (!target) {
-    return `پایه ${gradeLabel(grade)}: درس تک‌زنگ (${pair.primaryCourseId}/${pair.secondaryCourseId}) جای مناسبی برای زنگ مشترک پیدا نکرد؛ به‌صورت دستی در ویرایشگر اضافه کنید.`
-  }
-
-  target.courseId = pair.primaryCourseId
-  target.teacherId = teacherByCourse(pair.primaryCourseId)
-  target.secondaryCourseId = pair.secondaryCourseId
-  target.secondaryTeacherId = teacherByCourse(pair.secondaryCourseId)
-  return null
+  return pair ? [{ primaryCourseId: pair.primaryCourseId, secondaryCourseId: pair.secondaryCourseId }] : []
 }
 
 export function generateSchedule(input: GenerateInput): GenerateOutput {
@@ -98,15 +65,18 @@ export function generateSchedule(input: GenerateInput): GenerateOutput {
       const hours = getCurriculumForGrade(input.levelId, grade)
       const lockedCells = input.lockedSportCells[grade] ?? []
       const lockedSportCount = lockedCells.filter((c) => c.courseId === 'sport').length
+      const comboRequirements = comboRequirementsFor(grade)
 
-      let requirements: CourseRequirement[] = Object.entries(hours)
-        .map(([courseId, weeklyHours]) => ({
-          courseId,
-          weeklyHours: courseId === 'sport' ? Math.max(0, weeklyHours - lockedSportCount) : weeklyHours,
-        }))
+      const comboCourseIds = new Set(comboRequirements.flatMap((c) => [c.primaryCourseId, c.secondaryCourseId]))
+
+      const requirements: CourseRequirement[] = Object.entries(hours)
+        .map(([courseId, weeklyHours]) => {
+          let hoursNeeded = weeklyHours
+          if (courseId === 'sport') hoursNeeded = Math.max(0, hoursNeeded - lockedSportCount)
+          if (comboCourseIds.has(courseId)) hoursNeeded = Math.max(0, hoursNeeded - 1)
+          return { courseId, weeklyHours: hoursNeeded }
+        })
         .filter((r) => r.weeklyHours > 0)
-
-      requirements = reduceForSinglePeriodPair(requirements, grade)
 
       const result = generateGradeSchedule({
         shiftConfig: input.shiftConfig,
@@ -115,6 +85,8 @@ export function generateSchedule(input: GenerateInput): GenerateOutput {
         lockedCells,
         ruleToggles: input.ruleToggles,
         adjacencyPairs: adjacencyPairsFor(input.levelId),
+        comboRequirements,
+        avoidLastPeriodCourseIds: AVOID_LAST_PERIOD_COURSES[input.levelId],
       })
 
       if (!result.success && result.unplaced.length > 0) {
@@ -129,10 +101,8 @@ export function generateSchedule(input: GenerateInput): GenerateOutput {
       const cells: LessonCell[] = result.cells.map((cell) => ({
         ...cell,
         teacherId: cell.courseId === 'sport' ? sportTeacherId : cell.courseId ? mainTeacherId : null,
+        secondaryTeacherId: cell.secondaryCourseId ? mainTeacherId : null,
       }))
-
-      const comboWarning = placeSinglePeriodCombo(cells, grade, () => mainTeacherId)
-      if (comboWarning) warnings.push(comboWarning)
 
       if (mainTeacherId) usedTeacherIds.add(mainTeacherId)
       if (sportTeacherId) usedTeacherIds.add(sportTeacherId)
