@@ -28,6 +28,9 @@ function closeMenu(): void {
       </nav>
 
       <div class="hidden items-center gap-3 md:flex">
+        <RouterLink to="/students/groups" class="rounded-xl border border-ink-200 px-4 py-2 text-sm font-medium text-ink-700 transition hover:border-brand-300 hover:text-brand-700 dark:border-ink-700 dark:text-ink-200 dark:hover:border-brand-500 dark:hover:text-brand-400">
+          گروه‌بندی‌های من
+        </RouterLink>
         <RouterLink to="/schedules" class="rounded-xl border border-ink-200 px-4 py-2 text-sm font-medium text-ink-700 transition hover:border-brand-300 hover:text-brand-700 dark:border-ink-700 dark:text-ink-200 dark:hover:border-brand-500 dark:hover:text-brand-400">
           برنامه‌های من
         </RouterLink>
@@ -60,6 +63,9 @@ function closeMenu(): void {
           </RouterLink>
           <RouterLink to="/contact" class="rounded-lg px-2 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-800" @click="closeMenu">
             تماس با ما
+          </RouterLink>
+          <RouterLink to="/students/groups" class="rounded-lg px-2 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-800" @click="closeMenu">
+            گروه‌بندی‌های من
           </RouterLink>
           <RouterLink to="/schedules" class="rounded-lg px-2 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-800" @click="closeMenu">
             برنامه‌های من
