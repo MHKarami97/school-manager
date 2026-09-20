@@ -2,7 +2,9 @@ import type { ShiftTimeConfig, ShiftId } from '@/types'
 
 /**
  * پیش‌فرض‌های زمان‌بندی. تمام مقادیر در صفحه ویزارد و تنظیمات قابل ویرایش هستند.
- * طول هر زنگ ۴۵ دقیقه و زنگ تفریح ۱۵ دقیقه (طبق دستورالعمل ابتدایی) - قابل تغییر برای هر مقطع.
+ * طول هر زنگ ۴۵ دقیقه و زنگ تفریح ۱۵ دقیقه (طبق دستورالعمل ابتدایی) - قابل تفییر برای هر مقطع.
+ * تعداد زنگ پیش‌فرض ۵ زنگ در روز است (مطابق نمونه برنامه ابتدایی)؛ اگر مدرسه‌ای بیشتر/کمتر
+ * زنگ دارد، از همین صفحه قابل ویرایش است.
  */
 export const DEFAULT_SHIFT_CONFIGS: Record<ShiftId, ShiftTimeConfig> = {
   morning: {
@@ -15,7 +17,7 @@ export const DEFAULT_SHIFT_CONFIGS: Record<ShiftId, ShiftTimeConfig> = {
     hasLunchBreak: false,
     lunchDurationMinutes: 45,
     lunchAfterPeriod: 4,
-    periodsCount: 6,
+    periodsCount: 5,
   },
   noon: {
     id: 'noon',
@@ -27,7 +29,7 @@ export const DEFAULT_SHIFT_CONFIGS: Record<ShiftId, ShiftTimeConfig> = {
     hasLunchBreak: false,
     lunchDurationMinutes: 45,
     lunchAfterPeriod: 4,
-    periodsCount: 6,
+    periodsCount: 5,
   },
 }
 

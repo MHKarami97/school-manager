@@ -10,16 +10,13 @@ export interface SchedulerOptions {
   shiftConfig: ShiftTimeConfig
   requirements: CourseRequirement[]
   courses: CourseDefinition[]
-  /** سلول‌هایی که از قبل قفل شده‌اند (مثلاً ورزش با برنامه مشخص مدرسه) و از قوانین تکرار مستثنا هستند */
   lockedCells?: LessonCell[]
-  /** تعداد تلاش مجدد الگوریتم برای یافتن یک چیدمان معتبر */
   maxAttempts?: number
 }
 
 export interface SchedulerResult {
   success: boolean
   cells: LessonCell[]
-  /** درس‌هایی که به دلیل تنگی فضا کامل جا نگرفتند (برای هشدار به کاربر) */
   unplaced: CourseRequirement[]
 }
 
@@ -31,16 +28,16 @@ const DAYS_COUNT = WEEK_DAYS.length
  * قوانین اعمال‌شده:
  *  - عدم تکرار «عرضی»: هیچ درسی دوبار در یک روز تکرار نمی‌شود.
  *  - عدم تکرار «طولی»: هیچ درسی دوبار در یک ستون (همان شماره زنگ در روزهای متفاوت) تکرار نمی‌شود.
- *  - استثنای قرآن/دینی (specialRule = 'quran-first'): همیشه فقط در زنگ اول (ستون ۱) قرار می‌گیرد،
- *    بنابراین از قانون تکرار طولی مستثنا است.
+ *  - استثنای قرآن/دینی (specialRule = 'quran-first'): هر وقت قرآن در برنامه باشد، فقط در زنگ اول
+ *    (ستون ۱) قرار می‌گیرد. اما زنگ اول رزرو انحصاری قرآن نیست؛ در روزهایی که قرآن نیاز
+ *    ندارد، سایر درس‌ها هم می‌توانند طبق همان قوانین معمول در زنگ اول قرار بگیرند (دقیقاً مطابق
+ *    نمونه برنامه رسمی که هم قرآن و هم درس‌های دیگر در زنگ اول دیده می‌شوند) — بنابراین هیچ
+ *    زنگ اولی خالی نمی‌ماند مگر اینکه واقعاً ساعت درسی کافی برای پر کردن آن نباشد.
  *  - استثنای ورزش (specialRule = 'sport-fixed') و هر سلول قفل‌شده دیگر: از قوانین تکرار مستثنا و
  *    از پیش در جدول ثابت می‌شود؛ موتور فقط باقی ساعت‌های آزاد را دور آن پر می‌کند.
  *
- * الگوریتم: Backtracking با ترتیب حریصانه (سخت‌ترین درس‌ها یعنی بیشترین ساعت هفتگی اول جاگذاری
- * می‌شوند) به‌همراه چند تلاش تصادفی (shuffle) برای گریز از بن‌بست‌های محلی. هر درس با یک seed
- * منحصر‌بهفرد (نه فقط بر اساس تعداد ساعتش) shuffle می‌شود تا درس‌هایی با ساعت هفتگی یکسان (مثلاً
- * دو درس ۲ ساعته) به‌جای رقابت روی همان چند سلول اول، روی سلول‌های متفاوتی پخش شوند و کل هفته
- * به‌طور یکنواخت پُر شود (نه فقط چند روز اول).
+ * الگوریتم: Backtracking با ترتیب حریصانه به‌همراه چند تلاش تصادفی (shuffle) با seed یکتا برای
+ * هر درس تا درس‌هایی با ساعت هفتگی یکسان روی سلول‌های متفاوتی قرار بگیرند و کل هفته یکنواخت پُر شود.
  */
 export function generateGradeSchedule(options: SchedulerOptions): SchedulerResult {
   const { shiftConfig, requirements, courses, lockedCells = [], maxAttempts = 60 } = options
@@ -96,7 +93,6 @@ export function generateGradeSchedule(options: SchedulerOptions): SchedulerResul
 
       for (const [day, period] of candidateCells) {
         if (placedCount >= req.weeklyHours) break
-        if (period === 0) continue // زنگ اول رزرو قرآن/دینی است، مگر قرآن نداریم که در آن صورت هم آزاد می‌ماند
         if (grid[day][period] !== null) continue
         if (dayHasCourse.get(req.courseId)?.has(day)) continue
         if (columnHasCourse.get(req.courseId)?.has(period)) continue
