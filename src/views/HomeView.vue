@@ -71,16 +71,16 @@ const steps = [
 
     <main>
       <section class="relative overflow-hidden">
-        <div class="absolute inset-0 -z-10 bg-gradient-to-b from-brand-50 via-white to-transparent"></div>
+        <div class="absolute inset-0 -z-10 bg-gradient-to-b from-brand-50 via-white to-transparent dark:from-brand-500/10 dark:via-ink-900 dark:to-transparent"></div>
         <div class="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
           <div class="mx-auto max-w-3xl text-center">
-            <span class="inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-medium text-brand-700">
+            <span class="inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-medium text-brand-700 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-300">
               مخصوص مدیران، معاونان و معلمان
             </span>
-            <h1 class="mt-5 text-3xl font-extrabold leading-tight text-ink-900 sm:text-5xl">
+            <h1 class="mt-5 text-3xl font-extrabold leading-tight text-ink-900 sm:text-5xl dark:text-ink-50">
               برنامه هفتگی کلاس را در چند دقیقه، قانون‌مند و بی‌نقص بچینید
             </h1>
-            <p class="mt-4 text-base leading-7 text-ink-500 sm:text-lg">
+            <p class="mt-4 text-base leading-7 text-ink-500 sm:text-lg dark:text-ink-400">
               مدیریار برای دوره‌های ابتدایی، متوسطه اول و متوسطه دوم، برنامه هفتگی را بر اساس قوانین رسمی آموزشی
               می‌سازد؛ شما فقط پایه، شیفت و معلم‌ها را مشخص می‌کنید.
             </p>
@@ -95,7 +95,7 @@ const steps = [
               <button
                 v-if="canContinue"
                 type="button"
-                class="w-full rounded-xl border border-ink-200 bg-white px-6 py-3 text-sm font-semibold text-ink-700 transition hover:border-brand-300 sm:w-auto"
+                class="w-full rounded-xl border border-ink-200 bg-white px-6 py-3 text-sm font-semibold text-ink-700 transition hover:border-brand-300 sm:w-auto dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200"
                 @click="continueSession"
               >
                 ادامه‌ی برنامه‌ی نیمه‌کاره
@@ -103,7 +103,7 @@ const steps = [
               <RouterLink
                 v-else
                 to="/schedules"
-                class="w-full rounded-xl border border-ink-200 bg-white px-6 py-3 text-center text-sm font-semibold text-ink-700 transition hover:border-brand-300 sm:w-auto"
+                class="w-full rounded-xl border border-ink-200 bg-white px-6 py-3 text-center text-sm font-semibold text-ink-700 transition hover:border-brand-300 sm:w-auto dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200"
               >
                 مشاهده‌ی برنامه‌های ذخیره‌شده
               </RouterLink>
@@ -114,45 +114,45 @@ const steps = [
 
       <section id="features" class="mx-auto max-w-6xl px-4 py-16 sm:px-6">
         <div class="mx-auto max-w-2xl text-center">
-          <h2 class="text-2xl font-bold text-ink-900 sm:text-3xl">همه‌چیز برای یک برنامه‌ریزی دقیق</h2>
-          <p class="mt-3 text-ink-500">امکاناتی که ساخت و مدیریت برنامه هفتگی مدرسه را ساده و سریع می‌کند.</p>
+          <h2 class="text-2xl font-bold text-ink-900 sm:text-3xl dark:text-ink-50">همه‌چیز برای یک برنامه‌ریزی دقیق</h2>
+          <p class="mt-3 text-ink-500 dark:text-ink-400">امکاناتی که ساخت و مدیریت برنامه هفتگی مدرسه را ساده و سریع می‌کند.</p>
         </div>
 
         <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           <div
             v-for="feature in features"
             :key="feature.title"
-            class="rounded-2xl border border-ink-100 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+            class="rounded-2xl border border-ink-100 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-ink-800 dark:bg-ink-900"
           >
-            <div class="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
+            <div class="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-5 w-5">
                 <path :d="feature.icon" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
             </div>
-            <h3 class="mt-4 text-base font-semibold text-ink-800">{{ feature.title }}</h3>
-            <p class="mt-2 text-sm leading-6 text-ink-500">{{ feature.desc }}</p>
+            <h3 class="mt-4 text-base font-semibold text-ink-800 dark:text-ink-100">{{ feature.title }}</h3>
+            <p class="mt-2 text-sm leading-6 text-ink-500 dark:text-ink-400">{{ feature.desc }}</p>
           </div>
         </div>
       </section>
 
-      <section id="guide" class="bg-white py-16">
+      <section id="guide" class="bg-white py-16 dark:bg-ink-900">
         <div class="mx-auto max-w-6xl px-4 sm:px-6">
           <div class="mx-auto max-w-2xl text-center">
-            <h2 class="text-2xl font-bold text-ink-900 sm:text-3xl">راهنمای استفاده در ۵ گام</h2>
-            <p class="mt-3 text-ink-500">از انتخاب پایه تا دریافت خروجی چاپی، مسیری کوتاه و بدون پیچیدگی.</p>
+            <h2 class="text-2xl font-bold text-ink-900 sm:text-3xl dark:text-ink-50">راهنمای استفاده در ۵ گام</h2>
+            <p class="mt-3 text-ink-500 dark:text-ink-400">از انتخاب پایه تا دریافت خروجی چاپی، مسیری کوتاه و بدون پیچیدگی.</p>
           </div>
 
           <ol class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-5">
             <li
               v-for="(step, index) in steps"
               :key="step.title"
-              class="relative rounded-2xl border border-ink-100 p-5"
+              class="relative rounded-2xl border border-ink-100 p-5 dark:border-ink-800"
             >
-              <span class="flex h-9 w-9 items-center justify-center rounded-full bg-ink-900 text-sm font-bold text-white">
+              <span class="flex h-9 w-9 items-center justify-center rounded-full bg-ink-900 text-sm font-bold text-white dark:bg-brand-600">
                 {{ index + 1 }}
               </span>
-              <h3 class="mt-4 text-sm font-semibold text-ink-800">{{ step.title }}</h3>
-              <p class="mt-2 text-xs leading-6 text-ink-500">{{ step.desc }}</p>
+              <h3 class="mt-4 text-sm font-semibold text-ink-800 dark:text-ink-100">{{ step.title }}</h3>
+              <p class="mt-2 text-xs leading-6 text-ink-500 dark:text-ink-400">{{ step.desc }}</p>
             </li>
           </ol>
         </div>
@@ -182,8 +182,8 @@ const steps = [
               <p class="mt-1 text-xs text-ink-300">اجرا در سیستم، بدون سرور</p>
             </div>
             <div class="rounded-2xl bg-white/5 p-5 text-center">
-              <p class="text-3xl font-extrabold text-white">رایگان</p>
-              <p class="mt-1 text-xs text-ink-300">رایگان برای تمام افراد</p>
+              <p class="text-3xl font-extrabold text-white">آزاد</p>
+              <p class="mt-1 text-xs text-ink-300">متن‌باز روی گیت‌هاب</p>
             </div>
           </div>
         </div>
