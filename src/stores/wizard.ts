@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import type { WizardState, ShiftId, ShiftTimeConfig, LessonCell, Audience, LevelId, RuleToggles } from '@/types'
 import { cloneDefaultShiftConfigs } from '@/config/schedule-defaults.config'
-import { mustDisableSameDayRepeat } from '@/utils/schedule-feasibility'
+import { mandatoryRuleOverrides } from '@/utils/schedule-feasibility'
 
 const STORAGE_KEY = 'school-manager:wizard-state'
 
@@ -43,8 +43,12 @@ export const useWizardStore = defineStore('wizard', {
         return false
       }
     },
+    /** فقط غیرفعال‌سازی‌های انتخابی کاربر را حساب می‌کند؛ استثنای اجباری پایه اول هشدار قرمز ندارد. */
     hasCustomizedRules(): boolean {
-      return Object.values(this.ruleToggles).some((v) => v === false)
+      const mandatory = mandatoryRuleOverrides(this.levelId, this.selectedGrades)
+      return (Object.keys(this.ruleToggles) as (keyof RuleToggles)[]).some(
+        (key) => this.ruleToggles[key] === false && mandatory[key] !== false,
+      )
     },
   },
   actions: {
@@ -119,18 +123,16 @@ export const useWizardStore = defineStore('wizard', {
       this.persist()
     },
     setRuleToggle(rule: keyof RuleToggles, value: boolean): void {
-      if (rule === 'noSameDayRepeat' && this.levelId === 'elementary' && this.selectedGrades.includes(1)) {
-        this.ruleToggles = { ...this.ruleToggles, noSameDayRepeat: false }
+      const mandatory = mandatoryRuleOverrides(this.levelId, this.selectedGrades)
+      if (mandatory[rule] === false) {
+        this.ruleToggles = { ...this.ruleToggles, [rule]: false }
       } else {
         this.ruleToggles = { ...this.ruleToggles, [rule]: value }
       }
       this.persist()
     },
-    /** پایه اول استثنای رسمی/ضروری است: ۱۱ ساعت فارسی در پنج روز بدون تکرار روزانه قابل چیدن نیست. */
     applyMandatoryRules(): void {
-      if (this.levelId === 'elementary' && this.selectedGrades.some((grade) => mustDisableSameDayRepeat(this.levelId as LevelId, grade))) {
-        this.ruleToggles = { ...this.ruleToggles, noSameDayRepeat: false }
-      }
+      this.ruleToggles = { ...this.ruleToggles, ...mandatoryRuleOverrides(this.levelId, this.selectedGrades) }
     },
   },
 })

@@ -1,5 +1,5 @@
 import { getCurriculumForGrade, totalWeeklyHours } from '@/config/curriculum.config'
-import type { LevelId, ShiftTimeConfig } from '@/types'
+import type { LevelId, ShiftTimeConfig, RuleToggles } from '@/types'
 
 export interface GradeScheduleFeasibility {
   grade: number
@@ -37,17 +37,20 @@ export function analyzeGradeScheduleFeasibility(
   return { grade, requiredHours, availableSlots, isOverCapacity, isUnderCapacity, recommendedPeriodsPerDay, message }
 }
 
-/** پایه اول ۱۱ ساعت فارسی دارد؛ پس منع تکرار یک درس در روز برای آن از نظر ریاضی ناممکن است. */
-export function mustDisableSameDayRepeat(levelId: LevelId, grade: number): boolean {
-  return levelId === 'elementary' && grade === 1
+/**
+ * پایه اول ۱۱ ساعت فارسی در پنج روز دارد؛ هر دو قانون عدم تکرار روزانه (عرضی)
+ * و عدم تکرار شماره‌زنگ (طولی) برای فارسی از نظر ریاضی ناممکن هستند. این یک
+ * استثنای اجباری برنامه درسی است، نه تغییر انتخابی کاربر.
+ */
+export function mandatoryRuleOverrides(levelId: LevelId | null, grades: number[]): Partial<RuleToggles> {
+  if (levelId === 'elementary' && grades.includes(1)) {
+    return { noSameDayRepeat: false, noSameColumnRepeat: false }
+  }
+  return {}
 }
 
-/**
- * در پایه اول فارسی تنها درس فارسی است؛ انشا و املا وجود ندارند. این تابع صرفاً
- * برای قراردادن علت در رابط کاربری استفاده می‌شود.
- */
 export function firstGradeRuleExplanation(levelId: LevelId, grade: number): string | null {
-  if (!mustDisableSameDayRepeat(levelId, grade)) return null
+  if (levelId !== 'elementary' || grade !== 1) return null
   const curriculum = getCurriculumForGrade(levelId, grade)
-  return `پایه اول ${curriculum['persian-reading'] ?? 0} ساعت فارسی دارد و انشا/املا ندارد؛ بنابراین قانون «عدم تکرار یک درس در یک روز» به‌صورت خودکار غیرفعال شده تا برنامه قابل ساخت باشد.`
+  return `پایه اول ${curriculum['persian-reading'] ?? 0} ساعت فارسی دارد و انشا/املا ندارد؛ بنابراین دو قانون «عدم تکرار در روز» و «عدم تکرار در یک شماره‌زنگ هفته» فقط برای قابل‌ساخت‌بودن این پایه به‌صورت خودکار غیرفعال شده‌اند.`
 }
