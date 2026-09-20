@@ -34,7 +34,7 @@ export function analyzeGradeScheduleFeasibility(
     message = `پایه ${grade}: ${requiredHours} ساعت درسی در هفته دارد، اما برنامه فعلی ${availableSlots} خانه دارد؛ ${availableSlots - requiredHours} خانه ناگزیر خالی می‌ماند مگر «فعالیت تکمیلی» تعریف شود.`
   }
 
-  return { requiredHours, availableSlots, isOverCapacity, isUnderCapacity, recommendedPeriodsPerDay, message }
+  return { grade, requiredHours, availableSlots, isOverCapacity, isUnderCapacity, recommendedPeriodsPerDay, message }
 }
 
 /** پایه اول ۱۱ ساعت فارسی دارد؛ پس منع تکرار یک درس در روز برای آن از نظر ریاضی ناممکن است. */
