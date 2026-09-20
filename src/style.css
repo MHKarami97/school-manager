@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Vazirmatn", ui-sans-serif, system-ui, sans-serif;
+  --color-brand-50: #eef6ff;
+  --color-brand-100: #d9eaff;
+  --color-brand-200: #b8d9ff;
+  --color-brand-300: #8ac0ff;
+  --color-brand-400: #559eff;
+  --color-brand-500: #2f7bfa;
+  --color-brand-600: #1c5fe0;
+  --color-brand-700: #1749af;
+  --color-brand-800: #163d88;
+  --color-brand-900: #163467;
+  --color-ink-50: #f6f7f9;
+  --color-ink-100: #eceef2;
+  --color-ink-200: #d7dbe3;
+  --color-ink-300: #b3bac8;
+  --color-ink-400: #8892a6;
+  --color-ink-500: #66708a;
+  --color-ink-600: #4d5670;
+  --color-ink-700: #3a415a;
+  --color-ink-800: #262b3d;
+  --color-ink-900: #171a26;
+}
+
+html, body, #app {
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-ink-50);
+  color: var(--color-ink-800);
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background-color: var(--color-ink-300);
+  border-radius: 8px;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #print-root, #print-root * {
+    visibility: visible;
+  }
+  #print-root {
+    position: absolute;
+    inset: 0;
+    background: #fff;
+  }
+}
