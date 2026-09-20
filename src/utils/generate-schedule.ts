@@ -66,15 +66,20 @@ export function generateSchedule(input: GenerateInput): GenerateOutput {
       const lockedCells = input.lockedSportCells[grade] ?? []
       const lockedSportCount = lockedCells.filter((c) => c.courseId === 'sport').length
       const comboRequirements = comboRequirementsFor(grade)
-
       const comboCourseIds = new Set(comboRequirements.flatMap((c) => [c.primaryCourseId, c.secondaryCourseId]))
 
       const requirements: CourseRequirement[] = Object.entries(hours)
         .map(([courseId, weeklyHours]) => {
-          let hoursNeeded = weeklyHours
-          if (courseId === 'sport') hoursNeeded = Math.max(0, hoursNeeded - lockedSportCount)
-          if (comboCourseIds.has(courseId)) hoursNeeded = Math.max(0, hoursNeeded - 1)
-          return { courseId, weeklyHours: hoursNeeded }
+          let unitsNeeded = weeklyHours
+          if (courseId === 'sport') unitsNeeded = Math.max(0, unitsNeeded - lockedSportCount)
+          /*
+           * واحدهای اعشاری (مثلاً ۲.۵) از طریق زنگ ترکیبی نیم‌واحدی پوشش داده می‌شوند.
+           * در اینجا فقط بخش صحیح را به موتور می‌دهیم؛ نیم‌واحد مشترک درون یک سلول
+           * combo جای می‌گیرد و در UI به‌شکل «هنر / علوم» یا «هنر / مطالعات» نمایش
+           * داده می‌شود.
+           */
+          if (comboCourseIds.has(courseId)) unitsNeeded = Math.floor(weeklyHours)
+          return { courseId, weeklyHours: unitsNeeded }
         })
         .filter((r) => r.weeklyHours > 0)
 
@@ -87,11 +92,12 @@ export function generateSchedule(input: GenerateInput): GenerateOutput {
         adjacencyPairs: adjacencyPairsFor(input.levelId),
         comboRequirements,
         avoidLastPeriodCourseIds: AVOID_LAST_PERIOD_COURSES[input.levelId],
+        distributeAcrossDays: input.levelId === 'elementary' && grade === 1,
       })
 
       if (!result.success && result.unplaced.length > 0) {
         warnings.push(
-          `پایه ${gradeLabel(grade)}: برخی ساعت‌ها به دلیل تنگی فضا کامل جا نگرفت (${result.unplaced.map((u) => u.courseId).join('، ')}).`,
+          `پایه ${gradeLabel(grade)}: برخی واحدها به دلیل ناسازگاری قوانین یا ظرفیت کامل جا نگرفت (${result.unplaced.map((u) => u.courseId).join('، ')}).`,
         )
       }
 
@@ -132,7 +138,7 @@ export function generateSchedule(input: GenerateInput): GenerateOutput {
       usedTeacherIds.add(w.teacherId)
       if (w.isOvertime) {
         const name = input.teachersPool.find((t) => t.id === w.teacherId)?.name ?? w.teacherId
-        warnings.push(`${name}: مجموع ساعت هفتگی (${w.totalWeeklyHours}) بیشتر از سقف استاندارد است و نیاز به اضافه‌کار دارد.`)
+        warnings.push(`${name}: مجموع واحد هفتگی (${w.totalWeeklyHours}) بیشتر از سقف استاندارد است و نیاز به اضافه‌کار دارد.`)
       }
     }
 
@@ -153,7 +159,7 @@ export function generateSchedule(input: GenerateInput): GenerateOutput {
 
       if (!result.success && result.unplaced.length > 0) {
         warnings.push(
-          `پایه ${gradeLabel(grade)}: برخی ساعت‌ها به دلیل تنگی فضا کامل جا نگرفت (${result.unplaced.map((u) => u.courseId).join('، ')}).`,
+          `پایه ${gradeLabel(grade)}: برخی واحدها به دلیل ناسازگاری قوانین یا ظرفیت کامل جا نگرفت (${result.unplaced.map((u) => u.courseId).join('، ')}).`,
         )
       }
 

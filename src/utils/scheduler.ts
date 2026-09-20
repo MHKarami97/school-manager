@@ -3,6 +3,7 @@ import { WEEK_DAYS } from '@/types'
 
 export interface CourseRequirement {
   courseId: string
+  /** واحد درسی؛ مقادیر اعشاری فقط توسط زنگ مشترک نیم‌واحدی پوشش داده می‌شوند. */
   weeklyHours: number
 }
 
@@ -25,6 +26,7 @@ export interface SchedulerOptions {
   adjacencyPairs?: AdjacencyPair[]
   comboRequirements?: ComboRequirement[]
   avoidLastPeriodCourseIds?: string[]
+  distributeAcrossDays?: boolean
   maxAttempts?: number
 }
 
@@ -47,8 +49,8 @@ type Token = { kind: 'course'; courseId: string } | { kind: 'combo'; primaryCour
 
 /**
  * موتور چیدمان bounded: ابتدا قیدهای سخت را جاگذاری می‌کند، سپس با Greedy چندتلاشی
- * برنامه را می‌سازد. اگر مسئله‌ی ناسازگار باشد، حداکثر پس از تعداد مشخصی تلاش
- * نتیجه ناموفق/هشدار بازمی‌گرداند؛ بنابراین هیچ‌گاه Thread اصلی مرورگر فریز نمی‌شود.
+ * برنامه را می‌سازد. واحدهای اعشاری باید از طریق یک زنگ ترکیبی نیم‌واحدی به
+ * واحدهای کامل قابل چیدمان تبدیل شوند؛ مسئله ناسازگار هرگز مرورگر را فریز نمی‌کند.
  */
 export function generateGradeSchedule(options: SchedulerOptions): SchedulerResult {
   const {
@@ -60,6 +62,7 @@ export function generateGradeSchedule(options: SchedulerOptions): SchedulerResul
     adjacencyPairs = [],
     comboRequirements = [],
     avoidLastPeriodCourseIds = [],
+    distributeAcrossDays = false,
     maxAttempts = 20,
   } = options
   const periodsCount = shiftConfig.periodsCount
@@ -82,7 +85,11 @@ export function generateGradeSchedule(options: SchedulerOptions): SchedulerResul
 
     if (!placeFirstPeriodCourses(quranReqs, grid, dayHasCourse, columnHasCourse, attempt)) continue
 
-    const remaining = new Map<string, number>(poolReqs.map((r) => [r.courseId, r.weeklyHours]))
+    const comboCourseIds = new Set(comboRequirements.flatMap((combo) => [combo.primaryCourseId, combo.secondaryCourseId]))
+    const remaining = new Map(
+      poolReqs.map((r) => [r.courseId, comboCourseIds.has(r.courseId) ? Math.floor(r.weeklyHours) : r.weeklyHours]),
+    )
+
     if (ruleToggles.persianWritingAdjacency) {
       for (const pair of adjacencyPairs) {
         placeAdjacencyPair(pair, grid, remaining, dayHasCourse, columnHasCourse, periodsCount, attempt, ruleToggles)
@@ -90,7 +97,16 @@ export function generateGradeSchedule(options: SchedulerOptions): SchedulerResul
     }
 
     const tokens = buildTokens(remaining, comboRequirements)
-    const greedySucceeded = placeGreedily(tokens, grid, dayHasCourse, columnHasCourse, ruleToggles, avoidLastPeriodCourseIds, attempt)
+    const greedySucceeded = placeGreedily(
+      tokens,
+      grid,
+      dayHasCourse,
+      columnHasCourse,
+      ruleToggles,
+      avoidLastPeriodCourseIds,
+      distributeAcrossDays,
+      attempt,
+    )
 
     if (greedySucceeded) return { success: true, cells: flatten(grid), unplaced: [] }
 
@@ -139,12 +155,21 @@ function placeGreedily(
   columnHasCourse: Map<string, Set<number>>,
   rules: RuleToggles,
   avoidLast: string[],
+  distributeAcrossDays: boolean,
   attempt: number,
 ): boolean {
   const periodsCount = grid[0]?.length ?? 0
   for (const [index, token] of tokens.entries()) {
     const courseIds = token.kind === 'course' ? [token.courseId] : [token.primaryCourseId, token.secondaryCourseId]
-    const candidates = orderedFreeCells(grid, periodsCount, token.kind === 'course' && avoidLast.includes(token.courseId), attempt + index * 71)
+    const candidates = orderedFreeCells(
+      grid,
+      periodsCount,
+      token.kind === 'course' && avoidLast.includes(token.courseId),
+      token.kind === 'course' ? token.courseId : null,
+      dayHasCourse,
+      distributeAcrossDays,
+      attempt + index * 71,
+    )
     const target = candidates.find(([day, period]) => courseIds.every((courseId) => isAllowed(courseId, day, period, dayHasCourse, columnHasCourse, rules)))
     if (!target) return false
     const [day, period] = target
@@ -162,17 +187,34 @@ function isAllowed(courseId: string, day: number, period: number, dayMap: Map<st
   return true
 }
 
-function orderedFreeCells(grid: (LessonCell | null)[][], periodsCount: number, avoidLast: boolean, seed: number): [number, number][] {
+function orderedFreeCells(
+  grid: (LessonCell | null)[][],
+  periodsCount: number,
+  avoidLast: boolean,
+  courseId: string | null,
+  dayMap: Map<string, Set<number>>,
+  distributeAcrossDays: boolean,
+  seed: number,
+): [number, number][] {
   const cells: [number, number][] = []
   for (let day = 0; day < grid.length; day++) {
     for (let period = 0; period < periodsCount; period++) {
       if (grid[day][period] === null) cells.push([day, period])
     }
   }
-  const shuffled = shuffle(cells, seed)
-  if (!avoidLast) return shuffled
+  let result = shuffle(cells, seed)
+
+  if (distributeAcrossDays && courseId) {
+    result = result.sort(([dayA], [dayB]) => {
+      const countA = dayMap.get(courseId)?.has(dayA) ? 1 : 0
+      const countB = dayMap.get(courseId)?.has(dayB) ? 1 : 0
+      return countA - countB
+    })
+  }
+
+  if (!avoidLast) return result
   const lastPeriod = periodsCount - 1
-  return [...shuffled.filter(([, p]) => p !== lastPeriod), ...shuffled.filter(([, p]) => p === lastPeriod)]
+  return [...result.filter(([, p]) => p !== lastPeriod), ...result.filter(([, p]) => p === lastPeriod)]
 }
 
 function placeAdjacencyPair(
@@ -226,7 +268,7 @@ function summarizeUnplaced(tokens: Token[], grid: (LessonCell | null)[][]): Cour
     }
   }
   return Array.from(required.entries())
-    .map(([courseId, hours]) => ({ courseId, weeklyHours: Math.max(0, hours - (placed.get(courseId) ?? 0)) }))
+    .map(([courseId, units]) => ({ courseId, weeklyHours: Math.max(0, units - (placed.get(courseId) ?? 0)) }))
     .filter((item) => item.weeklyHours > 0)
 }
 

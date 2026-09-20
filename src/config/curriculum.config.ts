@@ -1,17 +1,11 @@
 import type { CurriculumMap } from '@/types'
 
 /**
- * منابع رسمی:
- *  - دوره ابتدایی: جدول «مواد درسی و جلسات هفتگی پایه‌های دوره ابتدایی».
- *  - دوره متوسطه اول: جدول «مواد درسی و ساعات هفتگی دوره اول متوسطه» (۳۰ ساعت در هفته،
- *    یکسان برای پایه‌های هفتم، هشتم و نهم طبق سند ارجاعی؛ در صورت داشتن جدول تفکیکی هر
- *    پایه، همین فایل قابل ویرایش است).
- *  - دوره متوسطه دوم: مصوبه ۹۲۶مین جلسه شورای عالی آموزش و پرورش (۱۳۹۴/۱۲/۱۰) - «جدول مواد
- *    درسی و ساعات تدریس هفتگی دوره دوم متوسطه»، شاخه نظری / رشته علوم تجربی (پرکاربردترین
- *    رشته). سایر رشته‌ها (ریاضی‌فیزیک، ادبیات و علوم انسانی، علوم و معارف اسلامی، فنی و
- *    حرفه‌ای) در همان مصوبه موجودند و به همین شکل قابل افزودن به این فایل هستند.
+ * منبع ابتدایی: جدول «مواد درسی و جلسات هفتگی پایه‌های دوره ابتدایی»، به‌علاوه
+ * توضیحات تکمیلی کاربر درباره «تک‌زنگ‌ها در پایه‌های سوم تا پنجم.
  *
- * این مقادیر پیش‌فرض هستند و در صفحه تنظیمات/کد قابل ویرایش و افزودن می‌باشند.
+ * مقدارها واحد/تعداد زنگ هستند، نه ساعت زمانی. مقدار ۲.۵ یعنی دو زنگ کامل +
+ * نیم‌زنگ مشترک با درس دیگر (هنر/علوم یا هنر/مطالعات).
  */
 export const CURRICULUM: CurriculumMap = {
   elementary: {
@@ -41,8 +35,8 @@ export const CURRICULUM: CurriculumMap = {
       dictation: 2,
       'persian-reading': 4,
       'social-studies': 2,
-      art: 2,
-      science: 3,
+      art: 2.5,
+      science: 2.5,
       math: 4,
       sport: 2,
     },
@@ -52,8 +46,8 @@ export const CURRICULUM: CurriculumMap = {
       'persian-writing': 2,
       dictation: 2,
       'persian-reading': 3,
-      'social-studies': 2,
-      art: 2,
+      'social-studies': 2.5,
+      art: 1.5,
       science: 3,
       math: 4,
       sport: 2,
@@ -64,8 +58,8 @@ export const CURRICULUM: CurriculumMap = {
       'persian-writing': 2,
       dictation: 2,
       'persian-reading': 3,
-      'social-studies': 3,
-      art: 2,
+      'social-studies': 2.5,
+      art: 1.5,
       science: 3,
       math: 4,
       sport: 2,
@@ -186,6 +180,6 @@ export function getCurriculumForGrade(levelId: string, grade: number): Record<st
 }
 
 export function totalWeeklyHours(levelId: string, grade: number): number {
-  const hours = getCurriculumForGrade(levelId, grade)
-  return Object.values(hours).reduce((sum, h) => sum + h, 0)
+  const units = getCurriculumForGrade(levelId, grade)
+  return Object.values(units).reduce((sum, value) => sum + value, 0)
 }
