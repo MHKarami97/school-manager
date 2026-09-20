@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --font-sans: "Vazirmatn", ui-sans-serif, system-ui, sans-serif;
   --color-brand-50: #eef6ff;
@@ -33,6 +35,7 @@ body {
   background-color: var(--color-ink-50);
   color: var(--color-ink-800);
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease;
 }
 
 * {
@@ -46,6 +49,20 @@ body {
 ::-webkit-scrollbar-thumb {
   background-color: var(--color-ink-300);
   border-radius: 8px;
+}
+
+/*
+ * حالت تیره: عمداً فقط رنگ «بستر صفحه» (ink-50/ink-100) بازنویسی می‌شود، نه
+ * رنگ متن‌ها (ink-600 تا ink-900) یا bg-white. چون در سراسر پروژه متن تیره
+ * روی کارت‌های سفید (bg-white) استفاده شده، اگر رنگ متن هم معکوس می‌شد، نوشته‌ها
+ * روی همان کارت‌های سفید ناخوانا می‌شدند. با این رویکرد: بستر صفحه تیره می‌شود
+ * و کارت‌های سفید مثل قبل با متن تیره و خوانا روی آن شناور می‌مانند - بدون
+ * نیاز به ویرایش کلاس‌های تک‌تک کامپوننت‌ها در سراسر پروژه.
+ */
+.dark {
+  color-scheme: dark;
+  --color-ink-50: #0f1115;
+  --color-ink-100: #1a1d24;
 }
 
 @media print {
