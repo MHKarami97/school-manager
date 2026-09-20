@@ -33,8 +33,16 @@ function courseOf(cell: LessonCell): CourseDefinition | undefined {
   return cell.courseId ? props.courses.find((c) => c.id === cell.courseId) : undefined
 }
 
+function secondaryCourseOf(cell: LessonCell): CourseDefinition | undefined {
+  return cell.secondaryCourseId ? props.courses.find((c) => c.id === cell.secondaryCourseId) : undefined
+}
+
 function teacherOf(cell: LessonCell): Teacher | undefined {
   return cell.teacherId ? props.teachers.find((t) => t.id === cell.teacherId) : undefined
+}
+
+function secondaryTeacherOf(cell: LessonCell): Teacher | undefined {
+  return cell.secondaryTeacherId ? props.teachers.find((t) => t.id === cell.secondaryTeacherId) : undefined
 }
 
 function setCell(dayIndex: number, periodIndex: number, patch: Partial<LessonCell>): void {
@@ -54,8 +62,8 @@ function onDrop(day: number, period: number): void {
   const from = draggedFrom.value
   const fromCell = cellAt(from.day, from.period)
   const toCell = cellAt(day, period)
-  setCell(from.day, from.period, { courseId: toCell.courseId, teacherId: toCell.teacherId })
-  setCell(day, period, { courseId: fromCell.courseId, teacherId: fromCell.teacherId })
+  setCell(from.day, from.period, { courseId: toCell.courseId, teacherId: toCell.teacherId, secondaryCourseId: toCell.secondaryCourseId ?? null, secondaryTeacherId: toCell.secondaryTeacherId ?? null })
+  setCell(day, period, { courseId: fromCell.courseId, teacherId: fromCell.teacherId, secondaryCourseId: fromCell.secondaryCourseId ?? null, secondaryTeacherId: fromCell.secondaryTeacherId ?? null })
   draggedFrom.value = null
 }
 
@@ -70,7 +78,7 @@ function openEditor(day: number, period: number): void {
 
 function applyEdit(courseId: string | null, teacherId: string | null): void {
   if (!editingCell.value) return
-  setCell(editingCell.value.day, editingCell.value.period, { courseId, teacherId })
+  setCell(editingCell.value.day, editingCell.value.period, { courseId, teacherId, secondaryCourseId: null, secondaryTeacherId: null })
   editingCell.value = null
 }
 
@@ -107,9 +115,17 @@ const editingTeacherId = computed(() => (editingCell.value ? cellAt(editingCell.
               @drop="onDrop(dayIndex, p.index - 1)"
               @click="openEditor(dayIndex, p.index - 1)"
             >
-              <p v-if="courseOf(cellAt(dayIndex, p.index - 1))" class="font-medium text-ink-800 dark:text-ink-100">{{ courseOf(cellAt(dayIndex, p.index - 1))!.name }}</p>
+              <template v-if="courseOf(cellAt(dayIndex, p.index - 1))">
+                <p class="font-medium text-ink-800 dark:text-ink-100">
+                  {{ courseOf(cellAt(dayIndex, p.index - 1))!.name }}
+                  <span v-if="secondaryCourseOf(cellAt(dayIndex, p.index - 1))"> / {{ secondaryCourseOf(cellAt(dayIndex, p.index - 1))!.name }}</span>
+                </p>
+              </template>
               <p v-else class="text-ink-300 dark:text-ink-600">-</p>
-              <p v-if="teacherOf(cellAt(dayIndex, p.index - 1))" class="text-[10px] text-ink-500 dark:text-ink-400">{{ formatTeacherName(teacherOf(cellAt(dayIndex, p.index - 1))) }}</p>
+              <p v-if="teacherOf(cellAt(dayIndex, p.index - 1))" class="text-[10px] text-ink-500 dark:text-ink-400">
+                {{ formatTeacherName(teacherOf(cellAt(dayIndex, p.index - 1))) }}
+                <span v-if="secondaryTeacherOf(cellAt(dayIndex, p.index - 1))"> / {{ formatTeacherName(secondaryTeacherOf(cellAt(dayIndex, p.index - 1))) }}</span>
+              </p>
             </div>
           </td>
         </tr>

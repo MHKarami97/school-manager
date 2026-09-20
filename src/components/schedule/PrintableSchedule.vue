@@ -52,8 +52,14 @@ const printDate = new Date().toLocaleDateString('fa-IR', { year: 'numeric', mont
           <td class="border border-ink-400 p-2 text-center font-medium">زنگ {{ p.index }}<br /><span class="text-[10px] text-ink-500">{{ p.start }}–{{ p.end }}</span></td>
           <td v-for="(day, dayIndex) in WEEK_DAYS" :key="day" class="border border-ink-400 p-2 text-center">
             <template v-if="cellAt(dayIndex, p.index - 1)?.courseId">
-              <p class="font-medium">{{ courseName(cellAt(dayIndex, p.index - 1)?.courseId) }}</p>
-              <p class="text-[10px] text-ink-500">{{ teacherLabel(cellAt(dayIndex, p.index - 1)?.teacherId) }}</p>
+              <p class="font-medium">
+                {{ courseName(cellAt(dayIndex, p.index - 1)?.courseId) }}
+                <template v-if="cellAt(dayIndex, p.index - 1)?.secondaryCourseId"> / {{ courseName(cellAt(dayIndex, p.index - 1)?.secondaryCourseId) }}</template>
+              </p>
+              <p class="text-[10px] text-ink-500">
+                {{ teacherLabel(cellAt(dayIndex, p.index - 1)?.teacherId) }}
+                <template v-if="cellAt(dayIndex, p.index - 1)?.secondaryTeacherId"> / {{ teacherLabel(cellAt(dayIndex, p.index - 1)?.secondaryTeacherId) }}</template>
+              </p>
             </template>
             <template v-else>-</template>
           </td>

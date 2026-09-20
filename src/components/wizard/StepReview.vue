@@ -6,6 +6,7 @@ import { useTeachersStore } from '@/stores/teachers'
 import { useSchedulesStore } from '@/stores/schedules'
 import { getLevelById, gradeLabel } from '@/config/levels.config'
 import { generateSchedule } from '@/utils/generate-schedule'
+import SchedulingRulesPanel from './SchedulingRulesPanel.vue'
 
 const router = useRouter()
 const wizard = useWizardStore()
@@ -39,6 +40,7 @@ async function handleGenerate(): Promise<void> {
       teacherSelections: wizard.teacherSelections,
       lockedSportCells: wizard.lockedSportCells,
       teachersPool: teachersStore.items,
+      ruleToggles: wizard.ruleToggles,
     })
 
     warnings.value = genWarnings
@@ -70,16 +72,19 @@ async function handleGenerate(): Promise<void> {
       </dl>
     </div>
 
-    <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-6 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
-      نکته: قرآن به‌صورت خودکار همیشه در زنگ اول قرار می‌گیرد. اگر می‌خواهید زنگ‌های ورزش پشت‌سرهم باشد، بعد از ساخت برنامه در ویرایشگر خانه‌های ورزش را جابجا کنید.
-    </div>
+    <SchedulingRulesPanel />
 
     <div v-if="warnings.length" class="space-y-1 rounded-2xl border border-red-200 bg-red-50 p-4 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
       <p v-for="(w, i) in warnings" :key="i">{{ w }}</p>
     </div>
     <p v-if="errorMessage" class="text-xs text-red-600 dark:text-red-400">{{ errorMessage }}</p>
 
-    <button type="button" class="w-full rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50" :disabled="isGenerating" @click="handleGenerate">
+    <button
+      type="button"
+      class="w-full rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50"
+      :disabled="isGenerating"
+      @click="handleGenerate"
+    >
       {{ isGenerating ? 'در حال ساخت برنامه…' : 'ساخت برنامه هفتگی' }}
     </button>
   </div>
