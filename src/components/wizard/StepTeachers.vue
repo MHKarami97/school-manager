@@ -6,6 +6,7 @@ import { getCurriculumForGrade } from '@/config/curriculum.config'
 import { BASE_COURSES, findCourse } from '@/config/courses.config'
 import { getLevelById, gradeLabel } from '@/config/levels.config'
 import { mainTeacherKey, sportTeacherKey } from '@/utils/wizard-keys'
+import TeacherAutocompleteInput from './TeacherAutocompleteInput.vue'
 
 const wizard = useWizardStore()
 const teachersStore = useTeachersStore()
@@ -90,10 +91,6 @@ function courseLabel(courseId: string): string {
 
 <template>
   <div class="space-y-6">
-    <datalist id="known-teachers">
-      <option v-for="t in teachersStore.sortedByName" :key="t.id" :value="t.name" />
-    </datalist>
-
     <template v-if="isSingleTeacherMode">
       <div v-for="grade in wizard.selectedGrades" :key="grade" class="rounded-2xl border border-ink-100 bg-white p-5">
         <p class="mb-3 text-sm font-semibold text-ink-800">پایه {{ gradeLabel(grade) }}</p>
@@ -104,12 +101,9 @@ function courseLabel(courseId: string): string {
               <span v-if="currentMainTeacherName(grade)" class="text-brand-600">- ثبت‌شده: {{ currentMainTeacherName(grade) }}</span>
             </label>
             <div class="flex gap-2">
-              <input
+              <TeacherAutocompleteInput
                 v-model="mainNameInputs[grade]"
-                list="known-teachers"
-                type="text"
                 placeholder="مثلاً خانم احمدی"
-                class="w-full rounded-lg border border-ink-200 px-3 py-2 text-sm"
                 @keyup.enter="saveMainTeacher(grade)"
               />
               <button
@@ -128,12 +122,9 @@ function courseLabel(courseId: string): string {
               <span v-if="currentSportTeacherName(grade)" class="text-brand-600">- ثبت‌شده: {{ currentSportTeacherName(grade) }}</span>
             </label>
             <div class="flex gap-2">
-              <input
+              <TeacherAutocompleteInput
                 v-model="sportNameInputs[grade]"
-                list="known-teachers"
-                type="text"
                 placeholder="مثلاً آقای رضایی"
-                class="w-full rounded-lg border border-ink-200 px-3 py-2 text-sm"
                 @keyup.enter="saveSportTeacher(grade)"
               />
               <button
@@ -164,12 +155,9 @@ function courseLabel(courseId: string): string {
           <span v-if="!(wizard.teacherSelections[courseId] ?? []).length" class="text-xs text-ink-400">هنوز معلمی ثبت نشده</span>
         </div>
         <div class="flex gap-2">
-          <input
+          <TeacherAutocompleteInput
             v-model="courseNameInputs[courseId]"
-            list="known-teachers"
-            type="text"
             placeholder="نام معلم را وارد و ثبت کنید"
-            class="w-full rounded-lg border border-ink-200 px-3 py-2 text-sm"
             @keyup.enter="addCourseTeacher(courseId)"
           />
           <button

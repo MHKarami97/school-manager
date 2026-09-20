@@ -27,6 +27,15 @@ export function getDb(): Promise<IDBPDatabase> {
   return dbPromise
 }
 
+/**
+ * IndexedDB الگوریتم structured-clone را برای ذخیره مقادیر استفاده می‌کند که با
+ * Proxy های reactive ویو/پینیا سازگار نیست و خطای DataCloneError می‌دهد. این تابع
+ * قبل از put/add، یک کپی کاملاً ساده (plain) و بدون reactivity از آبجکت می‌سازد.
+ */
+function toPlain<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T
+}
+
 export async function getAllTeachers(): Promise<Teacher[]> {
   const db = await getDb()
   return db.getAll(STORE_TEACHERS)
@@ -34,7 +43,7 @@ export async function getAllTeachers(): Promise<Teacher[]> {
 
 export async function putTeacher(teacher: Teacher): Promise<void> {
   const db = await getDb()
-  await db.put(STORE_TEACHERS, teacher)
+  await db.put(STORE_TEACHERS, toPlain(teacher))
 }
 
 export async function deleteTeacher(id: string): Promise<void> {
@@ -55,7 +64,7 @@ export async function getSchedule(id: string): Promise<SavedSchedule | undefined
 
 export async function putSchedule(schedule: SavedSchedule): Promise<void> {
   const db = await getDb()
-  await db.put(STORE_SCHEDULES, schedule)
+  await db.put(STORE_SCHEDULES, toPlain(schedule))
 }
 
 export async function deleteSchedule(id: string): Promise<void> {
