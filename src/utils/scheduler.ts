@@ -37,7 +37,10 @@ const DAYS_COUNT = WEEK_DAYS.length
  *    از پیش در جدول ثابت می‌شود؛ موتور فقط باقی ساعت‌های آزاد را دور آن پر می‌کند.
  *
  * الگوریتم: Backtracking با ترتیب حریصانه (سخت‌ترین درس‌ها یعنی بیشترین ساعت هفتگی اول جاگذاری
- * می‌شوند) به‌همراه چند تلاش تصادفی (shuffle) برای گریز از بن‌بست‌های محلی.
+ * می‌شوند) به‌همراه چند تلاش تصادفی (shuffle) برای گریز از بن‌بست‌های محلی. هر درس با یک seed
+ * منحصر‌بهفرد (نه فقط بر اساس تعداد ساعتش) shuffle می‌شود تا درس‌هایی با ساعت هفتگی یکسان (مثلاً
+ * دو درس ۲ ساعته) به‌جای رقابت روی همان چند سلول اول، روی سلول‌های متفاوتی پخش شوند و کل هفته
+ * به‌طور یکنواخت پُر شود (نه فقط چند روز اول).
  */
 export function generateGradeSchedule(options: SchedulerOptions): SchedulerResult {
   const { shiftConfig, requirements, courses, lockedCells = [], maxAttempts = 60 } = options
@@ -64,8 +67,8 @@ export function generateGradeSchedule(options: SchedulerOptions): SchedulerResul
 
     let ok = true
 
-    for (const req of quranReqs) {
-      const availableDays = shuffle(range(DAYS_COUNT), attempt)
+    for (const [quranIndex, req] of quranReqs.entries()) {
+      const availableDays = shuffle(range(DAYS_COUNT), attempt * 131 + quranIndex * 17 + 1)
       let placedCount = 0
       for (const day of availableDays) {
         if (placedCount >= req.weeklyHours) break
@@ -86,9 +89,10 @@ export function generateGradeSchedule(options: SchedulerOptions): SchedulerResul
     const sortedReqs = [...normalReqs].sort((a, b) => b.weeklyHours - a.weeklyHours)
     const unplacedThisAttempt: CourseRequirement[] = []
 
-    for (const req of sortedReqs) {
+    for (const [reqIndex, req] of sortedReqs.entries()) {
       let placedCount = countPlaced(grid, req.courseId)
-      const candidateCells = shuffle(allFreeCells(grid, periodsCount), attempt + req.weeklyHours)
+      const seed = attempt * 977 + reqIndex * 53 + req.weeklyHours
+      const candidateCells = shuffle(allFreeCells(grid, periodsCount), seed)
 
       for (const [day, period] of candidateCells) {
         if (placedCount >= req.weeklyHours) break
