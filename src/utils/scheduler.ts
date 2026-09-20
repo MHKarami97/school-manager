@@ -1,9 +1,14 @@
-import type { LessonCell, ShiftTimeConfig, CourseDefinition } from '@/types'
+import type { LessonCell, ShiftTimeConfig, CourseDefinition, RuleToggles } from '@/types'
 import { WEEK_DAYS } from '@/types'
 
 export interface CourseRequirement {
   courseId: string
   weeklyHours: number
+}
+
+export interface AdjacencyPair {
+  anchorCourseId: string
+  followerCourseIds: string[]
 }
 
 export interface SchedulerOptions {
@@ -12,6 +17,8 @@ export interface SchedulerOptions {
   courses: CourseDefinition[]
   lockedCells?: LessonCell[]
   maxAttempts?: number
+  ruleToggles?: RuleToggles
+  adjacencyPairs?: AdjacencyPair[]
 }
 
 export interface SchedulerResult {
@@ -22,31 +29,49 @@ export interface SchedulerResult {
 
 const DAYS_COUNT = WEEK_DAYS.length
 
+const DEFAULT_RULE_TOGGLES: RuleToggles = {
+  noSameDayRepeat: true,
+  noSameColumnRepeat: true,
+  quranAlwaysFirstPeriod: true,
+  persianWritingAdjacency: true,
+}
+
 /**
  * موتور چیدمان برنامه هفتگی یک پایه/کلاس.
  *
- * قوانین اعمال‌شده:
- *  - عدم تکرار «عرضی»: هیچ درسی دوبار در یک روز تکرار نمی‌شود.
- *  - عدم تکرار «طولی»: هیچ درسی دوبار در یک ستون (همان شماره زنگ در روزهای متفاوت) تکرار نمی‌شود.
- *  - استثنای قرآن/دینی (specialRule = 'quran-first'): هر وقت قرآن در برنامه باشد، فقط در زنگ اول
- *    (ستون ۱) قرار می‌گیرد. اما زنگ اول رزرو انحصاری قرآن نیست؛ در روزهایی که قرآن نیاز
- *    ندارد، سایر درس‌ها هم می‌توانند طبق همان قوانین معمول در زنگ اول قرار بگیرند (دقیقاً مطابق
- *    نمونه برنامه رسمی که هم قرآن و هم درس‌های دیگر در زنگ اول دیده می‌شوند) — بنابراین هیچ
- *    زنگ اولی خالی نمی‌ماند مگر اینکه واقعاً ساعت درسی کافی برای پر کردن آن نباشد.
- *  - استثنای ورزش (specialRule = 'sport-fixed') و هر سلول قفل‌شده دیگر: از قوانین تکرار مستثنا و
- *    از پیش در جدول ثابت می‌شود؛ موتور فقط باقی ساعت‌های آزاد را دور آن پر می‌کند.
+ * قوانین پیش‌فرض (هرکدام از طریق `ruleToggles` قابل قطع هستند):
+ *  - noSameDayRepeat: هیچ درسی دوبار در یک روز تکرار نمی‌شود.
+ *  - noSameColumnRepeat: هیچ درسی دوبار در یک ستون (شماره زنگ) در طول هفته تکرار نمی‌شود.
+ *  - quranAlwaysFirstPeriod: هر وقت قرآن/دینی در برنامه باشد، فقط در زنگ اول قرار می‌گیرد
+ *    (زنگ اول انحصاری قرآن نیست؛ در روزهایی که قرآن نیاز ندارد، سایر درس‌ها هم
+ *    می‌توانند طبق همان قوانین معمول در زنگ اول بیایند).
+ *  - persianWritingAdjacency: از طریق پارامتر adjacencyPairs، هر وقت درس anchor (مثل فارسی)
+ *    قرار می‌گیرد، تا حد امکان بلافاصله بعد از آن یکی از followerCourseIds (مانند انشا/املا)
+ *    می‌آید. اگر ساعت anchor کمتر از مجموع ساعت‌های follower باشد، فقط به همان تعداد ممکن
+ *    جفت ساخته می‌شود و باقی ساعت‌های follower به‌صورت عادی چیده می‌شوند.
  *
- * الگوریتم: Backtracking با ترتیب حریصانه به‌همراه چند تلاش تصادفی (shuffle) با seed یکتا برای
- * هر درس تا درس‌هایی با ساعت هفتگی یکسان روی سلول‌های متفاوتی قرار بگیرند و کل هفته یکنواخت پُر شود.
+ * استثنای ورزش (specialRule = 'sport-fixed') از طریق lockedCells پیش‌تعیین می‌شود.
  */
 export function generateGradeSchedule(options: SchedulerOptions): SchedulerResult {
-  const { shiftConfig, requirements, courses, lockedCells = [], maxAttempts = 60 } = options
+  const {
+    shiftConfig,
+    requirements,
+    courses,
+    lockedCells = [],
+    maxAttempts = 60,
+    ruleToggles = DEFAULT_RULE_TOGGLES,
+    adjacencyPairs = [],
+  } = options
   const periodsCount = shiftConfig.periodsCount
 
   const specialRuleOf = (courseId: string) => courses.find((c) => c.id === courseId)?.specialRule ?? 'none'
 
-  const quranReqs = requirements.filter((r) => specialRuleOf(r.courseId) === 'quran-first')
-  const normalReqs = requirements.filter((r) => specialRuleOf(r.courseId) !== 'quran-first')
+  const quranReqs = ruleToggles.quranAlwaysFirstPeriod
+    ? requirements.filter((r) => specialRuleOf(r.courseId) === 'quran-first')
+    : []
+  const poolReqs = ruleToggles.quranAlwaysFirstPeriod
+    ? requirements.filter((r) => specialRuleOf(r.courseId) !== 'quran-first')
+    : requirements
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const grid: (LessonCell | null)[][] = Array.from({ length: DAYS_COUNT }, () => Array(periodsCount).fill(null))
@@ -83,27 +108,36 @@ export function generateGradeSchedule(options: SchedulerOptions): SchedulerResul
 
     if (!ok) continue
 
-    const sortedReqs = [...normalReqs].sort((a, b) => b.weeklyHours - a.weeklyHours)
+    const remaining = new Map<string, number>(poolReqs.map((r) => [r.courseId, r.weeklyHours]))
+
+    if (ruleToggles.persianWritingAdjacency) {
+      for (const pair of adjacencyPairs) {
+        placeAdjacencyPair(pair, grid, remaining, dayHasCourse, columnHasCourse, periodsCount, attempt, ruleToggles)
+      }
+    }
+
+    const sortedReqs = [...poolReqs].sort((a, b) => b.weeklyHours - a.weeklyHours)
     const unplacedThisAttempt: CourseRequirement[] = []
 
     for (const [reqIndex, req] of sortedReqs.entries()) {
+      const targetCount = remaining.get(req.courseId) ?? req.weeklyHours
       let placedCount = countPlaced(grid, req.courseId)
       const seed = attempt * 977 + reqIndex * 53 + req.weeklyHours
       const candidateCells = shuffle(allFreeCells(grid, periodsCount), seed)
 
       for (const [day, period] of candidateCells) {
-        if (placedCount >= req.weeklyHours) break
+        if (placedCount >= targetCount) break
         if (grid[day][period] !== null) continue
-        if (dayHasCourse.get(req.courseId)?.has(day)) continue
-        if (columnHasCourse.get(req.courseId)?.has(period)) continue
+        if (ruleToggles.noSameDayRepeat && dayHasCourse.get(req.courseId)?.has(day)) continue
+        if (ruleToggles.noSameColumnRepeat && columnHasCourse.get(req.courseId)?.has(period)) continue
 
         grid[day][period] = { dayIndex: day, periodIndex: period, courseId: req.courseId, teacherId: null }
         markUsage(dayHasCourse, columnHasCourse, req.courseId, day, period)
         placedCount++
       }
 
-      if (placedCount < req.weeklyHours) {
-        unplacedThisAttempt.push({ courseId: req.courseId, weeklyHours: req.weeklyHours - placedCount })
+      if (placedCount < targetCount) {
+        unplacedThisAttempt.push({ courseId: req.courseId, weeklyHours: targetCount - placedCount })
       }
     }
 
@@ -117,6 +151,54 @@ export function generateGradeSchedule(options: SchedulerOptions): SchedulerResul
   }
 
   return { success: false, cells: [], unplaced: requirements }
+}
+
+function placeAdjacencyPair(
+  pair: AdjacencyPair,
+  grid: (LessonCell | null)[][],
+  remaining: Map<string, number>,
+  dayHasCourse: Map<string, Set<number>>,
+  columnHasCourse: Map<string, Set<number>>,
+  periodsCount: number,
+  attempt: number,
+  ruleToggles: RuleToggles,
+): void {
+  const anchorTotal = remaining.get(pair.anchorCourseId) ?? 0
+  const followerTotal = pair.followerCourseIds.reduce((sum, id) => sum + (remaining.get(id) ?? 0), 0)
+  const pairsToPlace = Math.min(anchorTotal, followerTotal)
+  if (pairsToPlace <= 0) return
+
+  const followerQueue: string[] = []
+  for (const followerId of pair.followerCourseIds) {
+    const count = remaining.get(followerId) ?? 0
+    for (let i = 0; i < count; i++) followerQueue.push(followerId)
+  }
+
+  let placed = 0
+  const dayOrder = shuffle(range(grid.length), attempt * 191 + 7)
+
+  for (const day of dayOrder) {
+    if (placed >= pairsToPlace) break
+    for (let period = 0; period < periodsCount - 1; period++) {
+      if (placed >= pairsToPlace) break
+      if (grid[day][period] !== null || grid[day][period + 1] !== null) continue
+      if (ruleToggles.noSameDayRepeat && dayHasCourse.get(pair.anchorCourseId)?.has(day)) continue
+      if (ruleToggles.noSameColumnRepeat && columnHasCourse.get(pair.anchorCourseId)?.has(period)) continue
+
+      const followerId = followerQueue[placed]
+      if (ruleToggles.noSameDayRepeat && dayHasCourse.get(followerId)?.has(day)) continue
+      if (ruleToggles.noSameColumnRepeat && columnHasCourse.get(followerId)?.has(period + 1)) continue
+
+      grid[day][period] = { dayIndex: day, periodIndex: period, courseId: pair.anchorCourseId, teacherId: null }
+      grid[day][period + 1] = { dayIndex: day, periodIndex: period + 1, courseId: followerId, teacherId: null }
+      markUsage(dayHasCourse, columnHasCourse, pair.anchorCourseId, day, period)
+      markUsage(dayHasCourse, columnHasCourse, followerId, day, period + 1)
+
+      remaining.set(pair.anchorCourseId, (remaining.get(pair.anchorCourseId) ?? 1) - 1)
+      remaining.set(followerId, (remaining.get(followerId) ?? 1) - 1)
+      placed++
+    }
+  }
 }
 
 function markUsage(
@@ -167,7 +249,6 @@ function range(n: number): number[] {
   return Array.from({ length: n }, (_, i) => i)
 }
 
-/** shuffle قطعی (seed-based) تا نتیجه هر attempt قابل بازتولید و متفاوت از قبلی باشد */
 function shuffle<T>(items: T[], seed: number): T[] {
   const arr = [...items]
   let s = seed + 1

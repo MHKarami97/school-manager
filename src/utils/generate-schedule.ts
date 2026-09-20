@@ -7,11 +7,13 @@ import type {
   ShiftTimeConfig,
   Teacher,
   Audience,
+  RuleToggles,
 } from '@/types'
 import { BASE_COURSES } from '@/config/courses.config'
 import { getCurriculumForGrade } from '@/config/curriculum.config'
 import { getLevelById, gradeLabel } from '@/config/levels.config'
-import { generateGradeSchedule, type CourseRequirement } from './scheduler'
+import { getSinglePeriodPair } from '@/config/single-period-pairs.config'
+import { generateGradeSchedule, type CourseRequirement, type AdjacencyPair } from './scheduler'
 import { assignTeachersFairly, type GradeCourseLoad } from './teacher-assignment'
 import { mainTeacherKey, sportTeacherKey } from './wizard-keys'
 
@@ -25,6 +27,7 @@ export interface GenerateInput {
   teacherSelections: Record<string, string[]>
   lockedSportCells: Record<number, LessonCell[]>
   teachersPool: Teacher[]
+  ruleToggles: RuleToggles
 }
 
 export interface GenerateOutput {
@@ -32,16 +35,58 @@ export interface GenerateOutput {
   warnings: string[]
 }
 
-/**
- * تبدیل انتخاب‌های ویزارد به یک برنامه هفتگی کامل.
- *
- * دو مسیر مجزا بر اساس schedulingMode دوره تحصیلی دنبال می‌شود:
- *  - single-teacher (ابتدایی): هر پایه یک معلم اصلی دارد؛ ورزش در صورت وجود معلم
- *    جداگانه، جدا از باقی درس‌ها به آن معلم اختصاص می‌یابد. اگر تعدادی از ساعت‌های
- *    ورزش از قبل (lockedSportCells) قفل شده باشند، از سهم موتور چیدمان کم می‌شود.
- *  - subject-teachers (متوسطه اول/دوم): بار هر (پایه، درس) با الگوریتم عادلانه بین
- *    معلم‌های همان درس توزیع و سپس برای هر پایه، جدول با موتور چیدمان ساخته می‌شود.
- */
+const ELEMENTARY_ADJACENCY: AdjacencyPair[] = [
+  { anchorCourseId: 'persian-reading', followerCourseIds: ['persian-writing', 'dictation'] },
+]
+
+function adjacencyPairsFor(levelId: LevelId): AdjacencyPair[] {
+  return levelId === 'elementary' ? ELEMENTARY_ADJACENCY : []
+}
+
+function reduceForSinglePeriodPair(requirements: CourseRequirement[], grade: number): CourseRequirement[] {
+  const pair = getSinglePeriodPair(grade)
+  if (!pair) return requirements
+
+  return requirements.map((r) => {
+    if (r.courseId === pair.primaryCourseId || r.courseId === pair.secondaryCourseId) {
+      return { ...r, weeklyHours: Math.max(0, r.weeklyHours - 1) }
+    }
+    return r
+  })
+}
+
+function placeSinglePeriodCombo(
+  cells: LessonCell[],
+  grade: number,
+  teacherByCourse: (courseId: string) => string | null,
+): string | null {
+  const pair = getSinglePeriodPair(grade)
+  if (!pair) return null
+
+  const usedDays = new Set<number>()
+  const usedColumns = new Set<number>()
+  for (const cell of cells) {
+    if (cell.courseId === pair.primaryCourseId || cell.courseId === pair.secondaryCourseId) {
+      usedDays.add(cell.dayIndex)
+      usedColumns.add(cell.periodIndex)
+    }
+  }
+
+  const target = cells.find(
+    (c) => c.courseId === null && !usedDays.has(c.dayIndex) && !usedColumns.has(c.periodIndex),
+  )
+
+  if (!target) {
+    return `پایه ${gradeLabel(grade)}: درس تک‌زنگ (${pair.primaryCourseId}/${pair.secondaryCourseId}) جای مناسبی برای زنگ مشترک پیدا نکرد؛ به‌صورت دستی در ویرایشگر اضافه کنید.`
+  }
+
+  target.courseId = pair.primaryCourseId
+  target.teacherId = teacherByCourse(pair.primaryCourseId)
+  target.secondaryCourseId = pair.secondaryCourseId
+  target.secondaryTeacherId = teacherByCourse(pair.secondaryCourseId)
+  return null
+}
+
 export function generateSchedule(input: GenerateInput): GenerateOutput {
   const level = getLevelById(input.levelId)
   const warnings: string[] = []
@@ -54,18 +99,22 @@ export function generateSchedule(input: GenerateInput): GenerateOutput {
       const lockedCells = input.lockedSportCells[grade] ?? []
       const lockedSportCount = lockedCells.filter((c) => c.courseId === 'sport').length
 
-      const requirements: CourseRequirement[] = Object.entries(hours)
+      let requirements: CourseRequirement[] = Object.entries(hours)
         .map(([courseId, weeklyHours]) => ({
           courseId,
           weeklyHours: courseId === 'sport' ? Math.max(0, weeklyHours - lockedSportCount) : weeklyHours,
         }))
         .filter((r) => r.weeklyHours > 0)
 
+      requirements = reduceForSinglePeriodPair(requirements, grade)
+
       const result = generateGradeSchedule({
         shiftConfig: input.shiftConfig,
         requirements,
         courses: BASE_COURSES,
         lockedCells,
+        ruleToggles: input.ruleToggles,
+        adjacencyPairs: adjacencyPairsFor(input.levelId),
       })
 
       if (!result.success && result.unplaced.length > 0) {
@@ -81,6 +130,9 @@ export function generateSchedule(input: GenerateInput): GenerateOutput {
         ...cell,
         teacherId: cell.courseId === 'sport' ? sportTeacherId : cell.courseId ? mainTeacherId : null,
       }))
+
+      const comboWarning = placeSinglePeriodCombo(cells, grade, () => mainTeacherId)
+      if (comboWarning) warnings.push(comboWarning)
 
       if (mainTeacherId) usedTeacherIds.add(mainTeacherId)
       if (sportTeacherId) usedTeacherIds.add(sportTeacherId)
@@ -126,6 +178,7 @@ export function generateSchedule(input: GenerateInput): GenerateOutput {
         requirements,
         courses: BASE_COURSES,
         lockedCells: input.lockedSportCells[grade] ?? [],
+        ruleToggles: input.ruleToggles,
       })
 
       if (!result.success && result.unplaced.length > 0) {
@@ -161,6 +214,7 @@ export function generateSchedule(input: GenerateInput): GenerateOutput {
       shiftConfig: input.shiftConfig,
       grades: gradeSchedules,
       teachers,
+      ruleToggles: input.ruleToggles,
     },
     warnings,
   }
