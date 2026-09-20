@@ -5,9 +5,11 @@ import { RouterLink, useRoute } from 'vue-router'
 const route = useRoute()
 
 const items = [
-  { to: '/', label: 'خانه', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1h3a1 1 0 001-1V10' },  
-  { to: '/wizard', label: 'شروع', icon: 'M12 5v14M5 12h14', primary: true },
+  { to: '/', label: 'خانه', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1h3a1 1 0 001-1V10' },
   { to: '/schedules', label: 'برنامه‌ها', icon: 'M9 3v18M15 3v18M3 9h18M3 15h18' },
+  { to: '/wizard', label: 'شروع', icon: 'M12 5v14M5 12h14', primary: true },
+  { to: '/students', label: 'دانش‌آموزان', icon: 'M17 21v-2a4 4 0 00-4-4H7a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8z' },
+  { to: '/guide', label: 'راهنما', icon: 'M12 18h.01M9.09 9a3 3 0 115.83 1c0 2-3 2-3 5' },
 ]
 
 const activePath = computed(() => route.path)
@@ -22,7 +24,7 @@ const activePath = computed(() => route.path)
       v-for="item in items"
       :key="item.to"
       :to="item.to"
-      class="flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-medium"
+      class="flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium"
       :class="
         item.primary
           ? 'text-brand-600 dark:text-brand-400'

@@ -21,6 +21,7 @@ function closeMenu(): void {
         <RouterLink :to="{ path: '/', hash: '#features' }" class="text-sm font-medium text-ink-600 transition hover:text-brand-600 dark:text-ink-300 dark:hover:text-brand-400">
           امکانات
         </RouterLink>
+        <RouterLink to="/students" class="text-sm font-medium text-ink-600 transition hover:text-brand-600 dark:text-ink-300 dark:hover:text-brand-400">دانش‌آموزان</RouterLink>
         <RouterLink to="/guide" class="text-sm font-medium text-ink-600 transition hover:text-brand-600 dark:text-ink-300 dark:hover:text-brand-400">راهنما</RouterLink>
         <RouterLink to="/about" class="text-sm font-medium text-ink-600 transition hover:text-brand-600 dark:text-ink-300 dark:hover:text-brand-400">درباره ما</RouterLink>
         <RouterLink to="/contact" class="text-sm font-medium text-ink-600 transition hover:text-brand-600 dark:text-ink-300 dark:hover:text-brand-400">تماس با ما</RouterLink>
@@ -45,6 +46,12 @@ function closeMenu(): void {
     <Transition name="fade">
       <div v-if="isMenuOpen" class="border-t border-ink-100 bg-white px-4 py-4 md:hidden dark:border-ink-800 dark:bg-ink-900">
         <nav class="flex flex-col gap-3">
+          <RouterLink :to="{ path: '/', hash: '#features' }" class="rounded-lg px-2 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-800" @click="closeMenu">
+            امکانات
+          </RouterLink>
+          <RouterLink to="/students" class="rounded-lg px-2 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-800" @click="closeMenu">
+            دانش‌آموزان
+          </RouterLink>
           <RouterLink to="/guide" class="rounded-lg px-2 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-800" @click="closeMenu">
             راهنما
           </RouterLink>

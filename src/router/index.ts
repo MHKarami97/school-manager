@@ -37,6 +37,16 @@ const routes = [
     component: () => import('@/views/ScheduleEditorView.vue'),
     props: true,
   },
+  {
+    path: '/students',
+    name: 'students',
+    component: () => import('@/views/StudentsView.vue'),
+  },
+  {
+    path: '/students/grouping',
+    name: 'students-grouping',
+    component: () => import('@/views/GroupingView.vue'),
+  },
 ]
 
 const router = createRouter({
