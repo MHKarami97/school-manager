@@ -40,6 +40,7 @@ export const CURRICULUM: CurriculumMap = {
       'persian-writing': 2,
       dictation: 2,
       'persian-reading': 4,
+      'social-studies': 2,
       art: 2,
       science: 3,
       math: 4,
