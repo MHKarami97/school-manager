@@ -2,8 +2,8 @@ import type { CourseDefinition } from '@/types'
 
 /**
  * کاتالوگ پایه درس‌ها. قابل ویرایش/افزودن است.
- * quran-first: همیشه باید در زنگ اول روز قرار بگیرد (استثنای تکرار).
- * sport-fixed: می‌تواند مطابق برنامه مشخص مدرسه پشت سرهم باشد (استثنای تکرار).
+ * quran-first: هر وقت این درس در برنامه باشد، در زنگ اول قرار می‌گیرد (زنگ اول مخصوص این درس نیست، فقط این درس فقط آنجا مجاز است).
+ * sport-fixed: با برنامه مشخص مدرسه/کاربر می‌تواند پشت‌سرهم باشد (استثنای تکرار)؛ زمان دقیق آن را کاربر پیش از ساخت برنامه تعیین می‌کند.
  */
 export const BASE_COURSES: CourseDefinition[] = [
   { id: 'quran', name: 'قرآن', specialRule: 'quran-first', color: '#16a34a' },
@@ -12,11 +12,11 @@ export const BASE_COURSES: CourseDefinition[] = [
   { id: 'dictation', name: 'املا', specialRule: 'none', color: '#8b5cf6' },
   { id: 'persian-reading', name: 'فارسی (خواندن و درک مطلب)', specialRule: 'none', color: '#a855f7' },
   { id: 'social-studies', name: 'مطالعات اجتماعی', specialRule: 'none', color: '#f59e0b' },
-  { id: 'art', name: 'فرهنگ و هنر', specialRule: 'none', color: '#ec4899' },
-  { id: 'science', name: 'علوم تجربی و بهداشت', specialRule: 'none', color: '#14b8a6' },
+  { id: 'art', name: 'هنر', specialRule: 'none', color: '#ec4899' },
+  { id: 'science', name: 'علوم', specialRule: 'none', color: '#14b8a6' },
   { id: 'math', name: 'ریاضی', specialRule: 'none', color: '#2563eb' },
-  { id: 'sport', name: 'تربیت بدنی و سلامت', specialRule: 'sport-fixed', color: '#dc2626' },
-  { id: 'thinking-research', name: 'تفکر و سواد رسانه‌ای / پژوهش', specialRule: 'none', color: '#0891b2' },
+  { id: 'sport', name: 'ورزش', specialRule: 'sport-fixed', color: '#dc2626' },
+  { id: 'thinking-research', name: 'تفکر و پژوهش', specialRule: 'none', color: '#0891b2' },
   { id: 'work-tech', name: 'کار و فناوری', specialRule: 'none', color: '#65a30d' },
   { id: 'arabic', name: 'عربی', specialRule: 'none', color: '#7c3aed' },
   { id: 'religious-education', name: 'معارف اسلامی / تعلیمات دینی', specialRule: 'quran-first', color: '#15803d' },

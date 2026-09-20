@@ -1,8 +1,17 @@
 import { defineStore } from 'pinia'
-import type { WizardState, ShiftId, ShiftTimeConfig, LessonCell, Audience, LevelId } from '@/types'
+import type { WizardState, ShiftId, ShiftTimeConfig, LessonCell, Audience, LevelId, RuleToggles } from '@/types'
 import { cloneDefaultShiftConfigs } from '@/config/schedule-defaults.config'
 
 const STORAGE_KEY = 'school-manager:wizard-state'
+
+function createDefaultRuleToggles(): RuleToggles {
+  return {
+    noSameDayRepeat: true,
+    noSameColumnRepeat: true,
+    quranAlwaysFirstPeriod: true,
+    persianWritingAdjacency: true,
+  }
+}
 
 function createInitialState(): WizardState {
   return {
@@ -15,6 +24,7 @@ function createInitialState(): WizardState {
     shiftConfigs: cloneDefaultShiftConfigs(),
     teacherSelections: {},
     lockedSportCells: {},
+    ruleToggles: createDefaultRuleToggles(),
     updatedAt: Date.now(),
   }
 }
@@ -31,6 +41,9 @@ export const useWizardStore = defineStore('wizard', {
       } catch {
         return false
       }
+    },
+    hasCustomizedRules(): boolean {
+      return Object.values(this.ruleToggles).some((v) => v === false)
     },
   },
   actions: {
@@ -99,6 +112,10 @@ export const useWizardStore = defineStore('wizard', {
     },
     setLockedSportCells(grade: number, cells: LessonCell[]): void {
       this.lockedSportCells = { ...this.lockedSportCells, [grade]: cells }
+      this.persist()
+    },
+    setRuleToggle(rule: keyof RuleToggles, value: boolean): void {
+      this.ruleToggles = { ...this.ruleToggles, [rule]: value }
       this.persist()
     },
   },

@@ -52,7 +52,16 @@ export interface LessonCell {
   periodIndex: number
   courseId: string | null
   teacherId: string | null
+  secondaryCourseId?: string | null
+  secondaryTeacherId?: string | null
   isLocked?: boolean
+}
+
+export interface RuleToggles {
+  noSameDayRepeat: boolean
+  noSameColumnRepeat: boolean
+  quranAlwaysFirstPeriod: boolean
+  persianWritingAdjacency: boolean
 }
 
 export interface WizardState {
@@ -65,6 +74,7 @@ export interface WizardState {
   shiftConfigs: Record<ShiftId, ShiftTimeConfig>
   teacherSelections: Record<string, string[]>
   lockedSportCells: Record<number, LessonCell[]>
+  ruleToggles: RuleToggles
   updatedAt: number
 }
 
@@ -85,6 +95,7 @@ export interface SavedSchedule {
   shiftConfig: ShiftTimeConfig
   grades: GradeSchedule[]
   teachers: Teacher[]
+  ruleToggles: RuleToggles
   createdAt: number
   updatedAt: number
 }
