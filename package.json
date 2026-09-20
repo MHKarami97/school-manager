@@ -15,7 +15,8 @@
     "vue-router": "^4.5.0",
     "pinia": "^2.3.0",
     "idb": "^8.0.1",
-    "html-to-image": "^1.11.11"
+    "html-to-image": "^1.11.11",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.6",

@@ -5,6 +5,7 @@ import { useStudentsStore } from '@/stores/students'
 import { LEVELS } from '@/config/levels.config'
 import { gradeLabel } from '@/config/levels.config'
 import AppHeader from '@/components/layout/AppHeader.vue'
+import { downloadStudentImportTemplate, parseStudentImportFile } from '@/utils/student-import-export'
 import type { Gender, LevelId } from '@/types'
 
 const studentsStore = useStudentsStore()
@@ -65,6 +66,51 @@ async function importBulk(): Promise<void> {
   if (inputs.length) await studentsStore.addStudentsBulk(inputs)
   importText.value = ''
   isImportOpen.value = false
+}
+
+const fileInputRef = ref<HTMLInputElement | null>(null)
+const isImportingFile = ref(false)
+const fileImportMessage = ref('')
+
+function triggerFileDialog(): void {
+  fileInputRef.value?.click()
+}
+
+async function handleFileSelected(event: Event): Promise<void> {
+  const file = (event.target as HTMLInputElement).files?.[0]
+  if (!file || activeGrade.value === null) return
+
+  isImportingFile.value = true
+  fileImportMessage.value = ''
+  try {
+    const rows = await parseStudentImportFile(file)
+    if (!rows.length) {
+      fileImportMessage.value = 'هیچ ردیف معتبری در فایل پیدا نشد.'
+      return
+    }
+    const inputs = rows.map((row) => ({
+      firstName: row.firstName,
+      lastName: row.lastName,
+      gender: row.gender,
+      grade: activeGrade.value as number,
+      levelId: activeLevelId.value,
+    }))
+    const createdStudents = await studentsStore.addStudentsBulk(inputs)
+
+    for (let i = 0; i < createdStudents.length; i++) {
+      const row = rows[i]
+      if (row.gpa === null && row.disciplineScore === null) continue
+      await studentsStore.updateStudent({ ...createdStudents[i], gpa: row.gpa, disciplineScore: row.disciplineScore })
+    }
+
+    fileImportMessage.value = `${rows.length} دانش‌آموز با موفقیت وارد شد.`
+  } catch (error) {
+    console.error(error)
+    fileImportMessage.value = 'خواندن فایل با خطا مواجه شد؛ از فرمت xlsx یا csv مطابق قالب استفاده کنید.'
+  } finally {
+    isImportingFile.value = false
+    if (fileInputRef.value) fileInputRef.value.value = ''
+  }
 }
 
 const selectedIds = ref<Set<string>>(new Set())
@@ -183,17 +229,39 @@ async function updateDiscipline(id: string, value: string): Promise<void> {
         </div>
 
         <div class="rounded-2xl border border-ink-100 bg-white p-4 dark:border-ink-800 dark:bg-ink-900">
-          <div class="flex items-center justify-between">
-            <p class="text-sm font-semibold text-ink-800 dark:text-ink-100">ورود گروهی</p>
-            <button type="button" class="text-xs text-brand-600 dark:text-brand-400" @click="isImportOpen = !isImportOpen">
-              {{ isImportOpen ? 'بستن' : 'باز کردن' }}
+          <p class="mb-3 text-sm font-semibold text-ink-800 dark:text-ink-100">ورود از فایل اکسل / CSV</p>
+          <div class="flex flex-wrap gap-2">
+            <button type="button" class="rounded-lg border border-ink-200 px-3 py-2 text-xs font-medium text-ink-700 dark:border-ink-700 dark:text-ink-200" @click="downloadStudentImportTemplate">
+              دانلود قالب خالی اکسل
             </button>
+            <button
+              type="button"
+              class="rounded-lg bg-brand-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
+              :disabled="isImportingFile"
+              @click="triggerFileDialog"
+            >
+              {{ isImportingFile ? 'در حال خواندن…' : 'انتخاب فایل و ورود' }}
+            </button>
+            <input ref="fileInputRef" type="file" accept=".xlsx,.xls,.csv" class="hidden" @change="handleFileSelected" />
           </div>
-          <template v-if="isImportOpen">
-            <p class="mt-2 text-xs text-ink-400 dark:text-ink-500">هر سطر یک دانش‌آموز: نام, نام‌خانوادگی, جنسیت(m/f)</p>
-            <textarea v-model="importText" rows="4" placeholder="علی, رضایی, m&#10;سارا, احمدی, f" class="mt-2 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100"></textarea>
-            <button type="button" class="mt-2 rounded-lg bg-brand-600 px-4 py-2 text-xs font-medium text-white" @click="importBulk">ثبت همه</button>
-          </template>
+          <p class="mt-2 text-[11px] text-ink-400 dark:text-ink-500">
+            ستون‌ها به ترتیب: نام، نام‌خانوادگی، جنسیت (پسر/دختر)، معدل (اختیاری)، امتیاز انضباطی (اختیاری).
+          </p>
+          <p v-if="fileImportMessage" class="mt-2 text-xs text-emerald-600 dark:text-emerald-400">{{ fileImportMessage }}</p>
+
+          <div class="mt-3 border-t border-ink-100 pt-3 dark:border-ink-800">
+            <div class="flex items-center justify-between">
+              <p class="text-xs font-medium text-ink-600 dark:text-ink-300">یا ورود گروهی با کپی/پیست متنی</p>
+              <button type="button" class="text-xs text-brand-600 dark:text-brand-400" @click="isImportOpen = !isImportOpen">
+                {{ isImportOpen ? 'بستن' : 'باز کردن' }}
+              </button>
+            </div>
+            <template v-if="isImportOpen">
+              <p class="mt-2 text-xs text-ink-400 dark:text-ink-500">هر سطر یک دانش‌آموز: نام, نام‌خانوادگی, جنسیت(m/f)</p>
+              <textarea v-model="importText" rows="4" placeholder="علی, رضایی, m&#10;سارا, احمدی, f" class="mt-2 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100"></textarea>
+              <button type="button" class="mt-2 rounded-lg bg-brand-600 px-4 py-2 text-xs font-medium text-white" @click="importBulk">ثبت همه</button>
+            </template>
+          </div>
         </div>
       </div>
 
