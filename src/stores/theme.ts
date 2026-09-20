@@ -15,14 +15,12 @@ function applyTheme(mode: ThemeMode): void {
 }
 
 /**
- * مدیریت حالت روشن/تیره/سیستم. انتخاب کاربر در localStorage نگه‌داری می‌شود تا
- * در بازدیدهای بعدی حفظ شود. رنگ‌های واقعی هر حالت در style.css با override کردن
- * متقیرهای CSS داخل کلاس .dark تعریف شده‌اند؛ این استور فقط همان کلاس را
- * روی <html> فعال/فیرفعال می‌کند.
+ * مدیریت حالت روشن/تیره/سیستم. پیش‌فرض همیشه «روشن» است (نه سیستم)، مگر اینکه
+ * کاربر قبلاً خودش حالتی را انتخاب کرده باشد که در localStorage نگه‌داری می‌شود.
  */
 export const useThemeStore = defineStore('theme', {
   state: () => ({
-    mode: (localStorage.getItem(STORAGE_KEY) as ThemeMode | null) ?? 'system',
+    mode: (localStorage.getItem(STORAGE_KEY) as ThemeMode | null) ?? 'light',
   }),
   actions: {
     setMode(mode: ThemeMode): void {
