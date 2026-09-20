@@ -35,7 +35,7 @@ export const CURRICULUM: CurriculumMap = {
       dictation: 2,
       'persian-reading': 4,
       'social-studies': 2,
-      art: 2.5,
+      art: 1.5,
       science: 2.5,
       math: 4,
       sport: 2,
