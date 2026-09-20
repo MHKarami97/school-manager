@@ -5,7 +5,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 import path from 'node:path'
 
 export default defineConfig({
-  base: './',
+  base: '/',
   plugins: [
     vue(),
     tailwindcss(),
@@ -23,17 +23,17 @@ export default defineConfig({
         orientation: 'portrait-primary',
         dir: 'rtl',
         lang: 'fa',
-        start_url: '.',
-        scope: '.',
+        start_url: '/',
+        scope: '/',
         icons: [
-          { src: 'icons/icon.svg', sizes: '192x192', type: 'image/svg+xml', purpose: 'any' },
-          { src: 'icons/icon.svg', sizes: '512x512', type: 'image/svg+xml', purpose: 'any' },
-          { src: 'icons/icon-maskable.svg', sizes: '512x512', type: 'image/svg+xml', purpose: 'maskable' },
+          { src: '/icons/icon.svg', sizes: '192x192', type: 'image/svg+xml', purpose: 'any' },
+          { src: '/icons/icon.svg', sizes: '512x512', type: 'image/svg+xml', purpose: 'any' },
+          { src: '/icons/icon-maskable.svg', sizes: '512x512', type: 'image/svg+xml', purpose: 'maskable' },
         ],
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,ico}'],
-        navigateFallback: 'index.html',
+        navigateFallback: '/index.html',
         cleanupOutdatedCaches: true,
       },
       devOptions: {

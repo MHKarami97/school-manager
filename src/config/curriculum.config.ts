@@ -1,9 +1,17 @@
 import type { CurriculumMap } from '@/types'
 
 /**
- * منبع: جدول رسمی «مواد درسی و جلسات هفتگی پایه‌های دوره ابتدایی».
- * هر عدد، تعداد ساعت (زنگ) هفتگی آن درس برای آن پایه است.
- * این مقادیر صرفاً مقدار پیش‌فرض هستند و در صفحه تنظیمات قابل ویرایش/افزودن می‌باشند.
+ * منابع رسمی:
+ *  - دوره ابتدایی: جدول «مواد درسی و جلسات هفتگی پایه‌های دوره ابتدایی».
+ *  - دوره متوسطه اول: جدول «مواد درسی و ساعات هفتگی دوره اول متوسطه» (۳۰ ساعت در هفته،
+ *    یکسان برای پایه‌های هفتم، هشتم و نهم طبق سند ارجاعی؛ در صورت داشتن جدول تفکیکی هر
+ *    پایه، همین فایل قابل ویرایش است).
+ *  - دوره متوسطه دوم: مصوبه ۹۲۶مین جلسه شورای عالی آموزش و پرورش (۱۳۹۴/۱۲/۱۰) — «جدول مواد
+ *    درسی و ساعات تدریس هفتگی دوره دوم متوسطه»، شاخه نظری / رشته علوم تجربی (پرکاربردترین
+ *    رشته). سایر رشته‌ها (ریاضی‌فیزیک، ادبیات و علوم انسانی، علوم و معارف اسلامی، فنی و
+ *    حرفه‌ای) در همان مصوبه موجودند و به همین شکل قابل افزودن به این فایل هستند.
+ *
+ * این مقادیر پیش‌فرض هستند و در صفحه تنظیمات/کد قابل ویرایش و افزودن می‌باشند.
  */
 export const CURRICULUM: CurriculumMap = {
   elementary: {
@@ -77,14 +85,98 @@ export const CURRICULUM: CurriculumMap = {
     },
   },
   lower_secondary: {
-    7: { quran: 2, literature: 3, dictation: 1, arabic: 2, english: 2, 'social-studies': 2, science: 4, math: 4, sport: 2, 'work-tech': 2, art: 1 },
-    8: { quran: 2, literature: 3, dictation: 1, arabic: 2, english: 2, 'social-studies': 2, science: 4, math: 4, sport: 2, 'work-tech': 2, art: 1 },
-    9: { quran: 2, literature: 3, dictation: 1, arabic: 2, english: 2, 'social-studies': 2, science: 4, math: 4, sport: 2, 'work-tech': 2, art: 1 },
+    7: {
+      quran: 2,
+      'religious-education': 2,
+      literature: 4,
+      arabic: 2,
+      english: 2,
+      science: 3,
+      math: 4,
+      sport: 2,
+      'social-studies': 3,
+      art: 2,
+      'work-tech': 2,
+      'thinking-research': 2,
+    },
+    8: {
+      quran: 2,
+      'religious-education': 2,
+      literature: 4,
+      arabic: 2,
+      english: 2,
+      science: 3,
+      math: 4,
+      sport: 2,
+      'social-studies': 3,
+      art: 2,
+      'work-tech': 2,
+      'thinking-research': 2,
+    },
+    9: {
+      quran: 2,
+      'religious-education': 2,
+      literature: 4,
+      arabic: 2,
+      english: 2,
+      science: 3,
+      math: 4,
+      sport: 2,
+      'social-studies': 3,
+      art: 2,
+      'work-tech': 2,
+      'thinking-research': 2,
+    },
   },
   upper_secondary: {
-    10: { quran: 2, literature: 3, arabic: 2, english: 2, math: 5, physics: 3, chemistry: 2, biology: 2, geography: 1, sport: 1 },
-    11: { quran: 2, literature: 2, arabic: 2, english: 2, math: 4, physics: 3, chemistry: 3, biology: 2, sport: 1 },
-    12: { quran: 2, literature: 2, arabic: 2, english: 2, math: 4, physics: 3, chemistry: 3, biology: 2, sport: 1 },
+    10: {
+      'religious-education': 2,
+      arabic: 2,
+      literature: 2,
+      'persian-writing': 2,
+      english: 3,
+      geography: 2,
+      sport: 2,
+      'defense-readiness': 3,
+      'thinking-research': 2,
+      math: 4,
+      physics: 3,
+      chemistry: 3,
+      biology: 3,
+      'science-lab': 2,
+    },
+    11: {
+      'religious-education': 2,
+      arabic: 2,
+      literature: 2,
+      'persian-writing': 1,
+      english: 3,
+      history: 2,
+      sport: 2,
+      environment: 2,
+      'thinking-research': 2,
+      math: 4,
+      physics: 3,
+      chemistry: 3,
+      biology: 4,
+      'science-lab': 1,
+      geology: 2,
+    },
+    12: {
+      'religious-education': 2,
+      arabic: 2,
+      literature: 2,
+      'persian-writing': 2,
+      english: 4,
+      'social-studies': 2,
+      sport: 2,
+      health: 2,
+      'family-management': 2,
+      math: 4,
+      physics: 3,
+      chemistry: 4,
+      biology: 4,
+    },
   },
 }
 
