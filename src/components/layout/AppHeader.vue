@@ -4,13 +4,6 @@ import { RouterLink } from 'vue-router'
 
 const isMenuOpen = ref(false)
 
-const navLinks = [
-  { label: 'امکانات', href: '#features' },
-  { label: 'راهنما', href: '#guide' },
-  { label: 'درباره ما', href: '#about' },
-  { label: 'تماس با ما', href: '#contact' },
-]
-
 function closeMenu(): void {
   isMenuOpen.value = false
 }
@@ -25,14 +18,12 @@ function closeMenu(): void {
       </RouterLink>
 
       <nav class="hidden items-center gap-8 md:flex">
-        <a
-          v-for="link in navLinks"
-          :key="link.href"
-          :href="link.href"
-          class="text-sm font-medium text-ink-600 transition hover:text-brand-600"
-        >
-          {{ link.label }}
-        </a>
+        <RouterLink :to="{ path: '/', hash: '#features' }" class="text-sm font-medium text-ink-600 transition hover:text-brand-600">
+          امکانات
+        </RouterLink>
+        <RouterLink to="/guide" class="text-sm font-medium text-ink-600 transition hover:text-brand-600">راهنما</RouterLink>
+        <RouterLink to="/about" class="text-sm font-medium text-ink-600 transition hover:text-brand-600">درباره ما</RouterLink>
+        <RouterLink to="/contact" class="text-sm font-medium text-ink-600 transition hover:text-brand-600">تماس با ما</RouterLink>
       </nav>
 
       <div class="hidden items-center gap-3 md:flex">
@@ -65,27 +56,22 @@ function closeMenu(): void {
     <Transition name="fade">
       <div v-if="isMenuOpen" class="border-t border-ink-100 bg-white px-4 py-4 md:hidden">
         <nav class="flex flex-col gap-3">
-          <a
-            v-for="link in navLinks"
-            :key="link.href"
-            :href="link.href"
-            class="rounded-lg px-2 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50"
-            @click="closeMenu"
-          >
-            {{ link.label }}
-          </a>
-          <RouterLink
-            to="/schedules"
-            class="rounded-lg px-2 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50"
-            @click="closeMenu"
-          >
+          <RouterLink :to="{ path: '/', hash: '#features' }" class="rounded-lg px-2 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50" @click="closeMenu">
+            امکانات
+          </RouterLink>
+          <RouterLink to="/guide" class="rounded-lg px-2 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50" @click="closeMenu">
+            راهنما
+          </RouterLink>
+          <RouterLink to="/about" class="rounded-lg px-2 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50" @click="closeMenu">
+            درباره ما
+          </RouterLink>
+          <RouterLink to="/contact" class="rounded-lg px-2 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50" @click="closeMenu">
+            تماس با ما
+          </RouterLink>
+          <RouterLink to="/schedules" class="rounded-lg px-2 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50" @click="closeMenu">
             برنامه‌های من
           </RouterLink>
-          <RouterLink
-            to="/wizard"
-            class="rounded-xl bg-brand-600 px-4 py-2 text-center text-sm font-medium text-white"
-            @click="closeMenu"
-          >
+          <RouterLink to="/wizard" class="rounded-xl bg-brand-600 px-4 py-2 text-center text-sm font-medium text-white" @click="closeMenu">
             شروع کنید
           </RouterLink>
         </nav>

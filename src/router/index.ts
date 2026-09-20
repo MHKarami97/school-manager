@@ -7,6 +7,21 @@ const routes = [
     component: () => import('@/views/HomeView.vue'),
   },
   {
+    path: '/guide',
+    name: 'guide',
+    component: () => import('@/views/GuideView.vue'),
+  },
+  {
+    path: '/about',
+    name: 'about',
+    component: () => import('@/views/AboutView.vue'),
+  },
+  {
+    path: '/contact',
+    name: 'contact',
+    component: () => import('@/views/ContactView.vue'),
+  },
+  {
     path: '/wizard',
     name: 'wizard',
     component: () => import('@/views/WizardView.vue'),
@@ -27,7 +42,8 @@ const routes = [
 const router = createRouter({
   history: createWebHashHistory(),
   routes,
-  scrollBehavior() {
+  scrollBehavior(to) {
+    if (to.hash) return { el: to.hash, behavior: 'smooth' }
     return { top: 0 }
   },
 })
