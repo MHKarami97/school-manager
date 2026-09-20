@@ -9,7 +9,7 @@
 import { computed, ref } from 'vue'
 import { useTeachersStore } from '@/stores/teachers'
 
-const modelValue = defineModel<string>({ required: true })
+const modelValue = defineModel<string>({ default: '' })
 
 defineProps<{
   placeholder?: string
@@ -19,7 +19,7 @@ const teachersStore = useTeachersStore()
 const isOpen = ref(false)
 
 const suggestions = computed(() => {
-  const query = modelValue.value.trim()
+  const query = (modelValue.value ?? '').trim()
   if (!query) return []
   return teachersStore.sortedByName.filter((t) => t.name.includes(query)).slice(0, 6)
 })
@@ -47,7 +47,7 @@ function handleBlur(): void {
       @blur="handleBlur"
     />
     <ul
-      v-if="isOpen && suggestions.length"
+      v-if="isOpen && suggestions.length > 0"
       class="absolute inset-x-0 top-full z-20 mt-1 max-h-48 overflow-auto rounded-lg border border-ink-200 bg-white py-1 shadow-lg"
     >
       <li
