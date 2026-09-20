@@ -101,3 +101,73 @@ export interface SavedSchedule {
 }
 
 export const WEEK_DAYS = ['شنبه', 'یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه'] as const
+
+// ===================== ماژول دانش‌آموزان و گروه‌بندی عادلانه =====================
+
+export type Gender = 'male' | 'female'
+
+/** برای دوره ابتدایی که معدل عددی نیست، بلکه رتبه کیفی است */
+export type ElementaryGpaBand = 'excellent' | 'good' | 'acceptable' | 'needs-effort'
+
+export interface StudentYearlyRecord {
+  /** سال تحصیلی (مثلاً 1403) */
+  year: number
+  grade: number
+  gpa: number | null
+  gpaBand: ElementaryGpaBand | null
+  disciplineScore: number | null
+  teacherId: string | null
+  groupId: string | null
+}
+
+export interface Student {
+  id: string
+  firstName: string
+  lastName: string
+  gender: Gender
+  grade: number
+  levelId: LevelId
+  /** فقط برای متوسطه اول/دوم: عدد صفر تا بیست */
+  gpa: number | null
+  /** فقط برای ابتدایی */
+  gpaBand: ElementaryGpaBand | null
+  disciplineScore: number | null
+  isAcademicallyWeak: boolean
+  isDisruptive: boolean
+  statusTags: string[]
+  currentGroupId: string | null
+  yearlyRecords: StudentYearlyRecord[]
+  createdAt: number
+  updatedAt: number
+}
+
+export interface StudentGroup {
+  id: string
+  title: string
+  grade: number
+  levelId: LevelId
+  gender: Gender
+  capacity: number
+  teacherId: string | null
+  /** امتیاز ذهنی قدرت/تجربه معلم گروه، بین ۱ تا ۵؛ در الگوریتم برای تخصیص دانش‌آموزان ضعیف/بی‌انضباط استفاده می‌شود */
+  teacherStrengthScore: number
+  studentIds: string[]
+  createdAt: number
+  updatedAt: number
+}
+
+export interface GroupingRuleConfig {
+  ruleId: string
+  label: string
+  description: string
+  weight: number
+  enabled: boolean
+}
+
+export interface GroupingRequest {
+  grade: number
+  levelId: LevelId
+  gender: Gender
+  groupCount: number
+  maxCapacity: number
+}
