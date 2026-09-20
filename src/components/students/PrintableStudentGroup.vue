@@ -27,13 +27,15 @@ const printDate = new Date().toLocaleDateString('fa-IR', { year: 'numeric', mont
       <thead>
         <tr>
           <th class="border border-ink-400 bg-ink-100 p-2 w-12">ردیف</th>
-          <th class="border border-ink-400 bg-ink-100 p-2">نام و نام‌خانوادگی</th>
+          <th class="border border-ink-400 bg-ink-100 p-2">نام</th>
+          <th class="border border-ink-400 bg-ink-100 p-2">نام‌خانوادگی</th>
         </tr>
       </thead>
       <tbody>
         <tr v-for="(student, index) in props.students" :key="student.id">
           <td class="border border-ink-400 p-2 text-center">{{ index + 1 }}</td>
-          <td class="border border-ink-400 p-2">{{ student.firstName }} {{ student.lastName }}</td>
+          <td class="border border-ink-400 p-2">{{ student.firstName }}</td>
+          <td class="border border-ink-400 p-2">{{ student.lastName }}</td>
         </tr>
       </tbody>
     </table>
