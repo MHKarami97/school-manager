@@ -27,26 +27,15 @@ function closeMenu(): void {
       </nav>
 
       <div class="hidden items-center gap-3 md:flex">
-        <RouterLink
-          to="/schedules"
-          class="rounded-xl border border-ink-200 px-4 py-2 text-sm font-medium text-ink-700 transition hover:border-brand-300 hover:text-brand-700 dark:border-ink-700 dark:text-ink-200 dark:hover:border-brand-500 dark:hover:text-brand-400"
-        >
+        <RouterLink to="/schedules" class="rounded-xl border border-ink-200 px-4 py-2 text-sm font-medium text-ink-700 transition hover:border-brand-300 hover:text-brand-700 dark:border-ink-700 dark:text-ink-200 dark:hover:border-brand-500 dark:hover:text-brand-400">
           برنامه‌های من
         </RouterLink>
-        <RouterLink
-          to="/wizard"
-          class="rounded-xl bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-brand-700"
-        >
+        <RouterLink to="/wizard" class="rounded-xl bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-brand-700">
           شروع کنید
         </RouterLink>
       </div>
 
-      <button
-        type="button"
-        class="flex h-10 w-10 items-center justify-center rounded-lg text-ink-600 md:hidden dark:text-ink-300"
-        aria-label="باز کردن منو"
-        @click="isMenuOpen = !isMenuOpen"
-      >
+      <button type="button" class="flex h-10 w-10 items-center justify-center rounded-lg text-ink-600 md:hidden dark:text-ink-300" aria-label="باز کردن منو" @click="isMenuOpen = !isMenuOpen">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-6 w-6">
           <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
         </svg>

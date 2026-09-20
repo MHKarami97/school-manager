@@ -1,11 +1,4 @@
 <script setup lang="ts">
-/**
- * ورودی متنی با پیشنهاد خودکار نام معلم (autocomplete سفارشی).
- * به‌جای <datalist> بومی مرورگر ساخته شده چون موقعیت‌دهی dropdown آن در
- * صفحات RTL توسط مرورگر کنترل می‌شود و قابل استایل‌دهی/تصحیح نیست؛ این
- * کامپوننت لیست پیشنهادها را دقیقاً زیر همان ورودی (position: absolute)
- * رندر می‌کند.
- */
 import { computed, ref } from 'vue'
 import { useTeachersStore } from '@/stores/teachers'
 
@@ -42,20 +35,12 @@ function handleBlur(): void {
       v-model="modelValue"
       type="text"
       :placeholder="placeholder"
-      class="w-full rounded-lg border border-ink-200 px-3 py-2 text-sm"
+      class="w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100"
       @focus="isOpen = true"
       @blur="handleBlur"
     />
-    <ul
-      v-if="isOpen && suggestions.length > 0"
-      class="absolute inset-x-0 top-full z-20 mt-1 max-h-48 overflow-auto rounded-lg border border-ink-200 bg-white py-1 shadow-lg"
-    >
-      <li
-        v-for="t in suggestions"
-        :key="t.id"
-        class="cursor-pointer px-3 py-2 text-sm text-ink-700 hover:bg-brand-50"
-        @mousedown.prevent="selectSuggestion(t.name)"
-      >
+    <ul v-if="isOpen && suggestions.length > 0" class="absolute inset-x-0 top-full z-20 mt-1 max-h-48 overflow-auto rounded-lg border border-ink-200 bg-white py-1 shadow-lg dark:border-ink-700 dark:bg-ink-800">
+      <li v-for="t in suggestions" :key="t.id" class="cursor-pointer px-3 py-2 text-sm text-ink-700 hover:bg-brand-50 dark:text-ink-200 dark:hover:bg-ink-700" @mousedown.prevent="selectSuggestion(t.name)">
         {{ t.name }}
       </li>
     </ul>
