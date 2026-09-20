@@ -4,6 +4,8 @@ export type ShiftId = 'morning' | 'noon'
 
 export type SpecialRule = 'quran-first' | 'sport-fixed' | 'none'
 
+export type TeacherGender = 'male' | 'female'
+
 export interface Level {
   id: LevelId
   name: string
@@ -37,6 +39,7 @@ export interface ShiftTimeConfig {
 export interface Teacher {
   id: string
   name: string
+  gender: TeacherGender | null
   courseIds: string[]
   weeklyHoursByCourse?: Record<string, number>
   createdAt: number
@@ -52,13 +55,6 @@ export interface LessonCell {
   isLocked?: boolean
 }
 
-/**
- * وضعیت ویزارد. teacherSelections یک نگاشت عمومی است:
- *  - در دوره‌های single-teacher (ابتدایی) کلیدها با کمک utils/wizard-keys ساخته می‌شوند
- *    (مثلاً main-1، sport-1 برای پایه اول).
- *  - در دوره‌های subject-teachers (متوسطه) کلید همان courseId است و مقدار، آرایه‌ای از
- *    شناسه معلم‌های همان درس (برای توزیع عادلانه ساعت) است.
- */
 export interface WizardState {
   step: number
   audience: Audience | null

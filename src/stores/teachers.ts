@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import type { Teacher } from '@/types'
+import type { Teacher, TeacherGender } from '@/types'
 import { getAllTeachers, putTeacher, deleteTeacher } from '@/db/db'
 
 interface TeachersState {
@@ -22,16 +22,21 @@ export const useTeachersStore = defineStore('teachers', {
       this.items = await getAllTeachers()
       this.isLoaded = true
     },
-    async addTeacher(name: string, courseIds: string[] = []): Promise<Teacher> {
+    async addTeacher(name: string, courseIds: string[] = [], gender: TeacherGender | null = null): Promise<Teacher> {
       const existing = this.items.find((t) => t.name.trim() === name.trim())
       if (existing) {
-        const merged = { ...existing, courseIds: Array.from(new Set([...existing.courseIds, ...courseIds])) }
+        const merged: Teacher = {
+          ...existing,
+          courseIds: Array.from(new Set([...existing.courseIds, ...courseIds])),
+          gender: gender ?? existing.gender,
+        }
         await this.updateTeacher(merged)
         return merged
       }
       const teacher: Teacher = {
         id: crypto.randomUUID(),
         name: name.trim(),
+        gender,
         courseIds,
         weeklyHoursByCourse: {},
         createdAt: Date.now(),

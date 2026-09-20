@@ -19,7 +19,7 @@ function refreshApp(): void {
   <Transition name="slide-up">
     <div
       v-if="needRefresh"
-      class="fixed inset-x-0 bottom-0 z-50 flex justify-center px-4 pb-4 sm:justify-end sm:pe-6"
+      class="fixed inset-x-0 bottom-16 z-50 flex justify-center px-4 pb-4 sm:bottom-0 sm:justify-end sm:pe-6"
       role="status"
     >
       <div class="flex w-full max-w-md items-center gap-3 rounded-2xl border border-ink-200 bg-white p-4 shadow-xl dark:border-ink-700 dark:bg-ink-900">
@@ -32,11 +32,7 @@ function refreshApp(): void {
           <p class="font-medium text-ink-800 dark:text-ink-100">نسخه جدیدی از مدیریار در دسترس است</p>
           <p class="mt-0.5 text-ink-500 dark:text-ink-400">برای استفاده از امکانات و اصلاحات جدید، صفحه را به‌روزرسانی کنید.</p>
         </div>
-        <button
-          type="button"
-          class="shrink-0 rounded-xl bg-brand-600 px-3 py-2 text-xs font-medium text-white hover:bg-brand-700"
-          @click="refreshApp"
-        >
+        <button type="button" class="shrink-0 rounded-xl bg-brand-600 px-3 py-2 text-xs font-medium text-white hover:bg-brand-700" @click="refreshApp">
           به‌روزرسانی
         </button>
       </div>

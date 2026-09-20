@@ -14,10 +14,6 @@ function applyTheme(mode: ThemeMode): void {
   document.documentElement.style.colorScheme = isDark ? 'dark' : 'light'
 }
 
-/**
- * مدیریت حالت روشن/تیره/سیستم. پیش‌فرض همیشه «روشن» است (نه سیستم)، مگر اینکه
- * کاربر قبلاً خودش حالتی را انتخاب کرده باشد که در localStorage نگه‌داری می‌شود.
- */
 export const useThemeStore = defineStore('theme', {
   state: () => ({
     mode: (localStorage.getItem(STORAGE_KEY) as ThemeMode | null) ?? 'light',
