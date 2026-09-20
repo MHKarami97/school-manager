@@ -28,8 +28,8 @@ const year = new Date().getFullYear()
             <a href="https://mhkarami97.ir" target="_blank" rel="noopener" class="text-brand-600 hover:underline">mhkarami97.ir</a>
           </li>
           <li>
-            مخزن پروژه:
-            <a href="https://github.com/MHKarami97/school-manager" target="_blank" rel="noopener" class="text-brand-600 hover:underline">GitHub</a>
+            تلگرام:
+            <a href="https://t.me/mhkarami_97" target="_blank" rel="noopener" class="text-brand-600 hover:underline">@mhkarami_97</a>
           </li>
         </ul>
       </div>

@@ -182,8 +182,8 @@ const steps = [
               <p class="mt-1 text-xs text-ink-300">اجرا در مرورگر، بدون سرور</p>
             </div>
             <div class="rounded-2xl bg-white/5 p-5 text-center">
-              <p class="text-3xl font-extrabold text-white">آزاد</p>
-              <p class="mt-1 text-xs text-ink-300">متن‌باز روی گیت‌هاب</p>
+              <p class="text-3xl font-extrabold text-white">رایگان</p>
+              <p class="mt-1 text-xs text-ink-300">رایگان برای تمام افراد</p>
             </div>
           </div>
         </div>
