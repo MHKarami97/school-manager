@@ -56,7 +56,7 @@ const features = [
   },
   {
     title: 'نصب روی گوشی و کامپیوتر',
-    desc: 'مدیریار یک وب‌اپلیکیشن نصب‌شونده (PWA) است؛ حتی بدون اینترنت هم روی دستگاه شما اجرا می‌شود.',
+    desc: 'مدیریار یک وب‌اپلیکیشن نصب‌شونده است؛ حتی بدون اینترنت هم روی دستگاه شما اجرا می‌شود.',
     icon: 'M12 18h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z',
   },
 ]
@@ -212,8 +212,8 @@ const steps = [
               <p class="mt-1 text-xs text-ink-300">اجرا در سیستم، بدون سرور</p>
             </div>
             <div class="rounded-2xl bg-white/5 p-5 text-center">
-              <p class="text-3xl font-extrabold text-white">آزاد</p>
-              <p class="mt-1 text-xs text-ink-300">متن‌باز روی گیت‌هاب</p>
+              <p class="text-3xl font-extrabold text-white">رایگان</p>
+              <p class="mt-1 text-xs text-ink-300">کاملا رایگان</p>
             </div>
           </div>
         </div>
