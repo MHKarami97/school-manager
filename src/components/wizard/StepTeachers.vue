@@ -101,7 +101,7 @@ function courseLabel(courseId: string): string {
           <div>
             <label class="mb-1 block text-xs font-medium text-ink-600">
               {{ wizard.audience === 'self' ? 'نام شما (معلم این پایه)' : 'نام معلم این پایه' }}
-              <span v-if="currentMainTeacherName(grade)" class="text-brand-600">— ثبت‌شده: {{ currentMainTeacherName(grade) }}</span>
+              <span v-if="currentMainTeacherName(grade)" class="text-brand-600">- ثبت‌شده: {{ currentMainTeacherName(grade) }}</span>
             </label>
             <div class="flex gap-2">
               <input
@@ -124,8 +124,8 @@ function courseLabel(courseId: string): string {
 
           <div v-if="gradeHasSport(grade)">
             <label class="mb-1 block text-xs font-medium text-ink-600">
-              معلم ورزش (اختیاری — در فیر این صورت همان معلم اصلی)
-              <span v-if="currentSportTeacherName(grade)" class="text-brand-600">— ثبت‌شده: {{ currentSportTeacherName(grade) }}</span>
+              معلم ورزش (اختیاری - در فیر این صورت همان معلم اصلی)
+              <span v-if="currentSportTeacherName(grade)" class="text-brand-600">- ثبت‌شده: {{ currentSportTeacherName(grade) }}</span>
             </label>
             <div class="flex gap-2">
               <input

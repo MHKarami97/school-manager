@@ -55,13 +55,13 @@ function clear(): void {
 
         <label class="mb-1 block text-xs font-medium text-ink-600">درس</label>
         <select v-model="selectedCourseId" class="mb-4 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm">
-          <option :value="null">— خالی —</option>
+          <option :value="null">- خالی -</option>
           <option v-for="c in courses" :key="c.id" :value="c.id">{{ c.name }}</option>
         </select>
 
         <label class="mb-1 block text-xs font-medium text-ink-600">معلم</label>
         <select v-model="selectedTeacherId" class="mb-5 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm">
-          <option :value="null">— بدون معلم —</option>
+          <option :value="null">- بدون معلم -</option>
           <option v-for="t in availableTeachers" :key="t.id" :value="t.id">{{ t.name }}</option>
         </select>
 

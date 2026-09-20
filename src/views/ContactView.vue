@@ -16,9 +16,9 @@ const channels = [
     icon: 'M3 12h18M12 3a15 15 0 010 18M12 3a15 15 0 000 18',
   },
   {
-    title: 'گیت‌هاب پروژه',
-    value: 'github.com/MHKarami97/school-manager',
-    href: 'https://github.com/MHKarami97/school-manager',
+    title: 'تلگرام',
+    value: '@mhkarami_97',
+    href: 'https://t.me/mhkarami_97',
     icon: 'M9 19c-5 1.5-5-2.5-7-3m14 6v-3.4c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 00-1.3-3.2 4.2 4.2 0 00-.1-3.2s-1.1-.3-3.5 1.3a12 12 0 00-6.2 0C7.5 3.9 6.4 4.2 6.4 4.2a4.2 4.2 0 00-.1 3.2A4.6 4.6 0 005 10.6c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.1-.5 2V22',
   },
 ]
@@ -60,15 +60,7 @@ const channels = [
         <p class="mt-2">
           چون کد مدیریار متن‌باز و روی گیت‌هاب است، بهترین و سریع‌ترین راه برای گزارش باگ یا پیشنهاد امکان جدید،
           ثبت یک Issue در همان مخزن پروژه است تا در فرایند توسعه بعدی دیده شود.
-        </p>
-        <a
-          href="https://github.com/MHKarami97/school-manager/issues/new"
-          target="_blank"
-          rel="noopener"
-          class="mt-4 inline-block rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700"
-        >
-          ثبت Issue در گیت‌هاب
-        </a>
+        </p>        
       </div>
     </main>
 

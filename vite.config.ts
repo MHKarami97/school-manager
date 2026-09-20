@@ -14,7 +14,7 @@ export default defineConfig({
       injectRegister: false,
       includeAssets: ['favicon.svg', 'icons/*.svg'],
       manifest: {
-        name: 'مدیریار — برنامه‌ریز هوشمند مدرسه',
+        name: 'مدیریار - برنامه‌ریز هوشمند مدرسه',
         short_name: 'مدیریار',
         description: 'ساخت خودکار و ویرایش برنامه هفتگی کلاس‌های ابتدایی، متوسطه اول و دوم',
         theme_color: '#1c5fe0',

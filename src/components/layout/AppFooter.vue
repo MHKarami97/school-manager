@@ -45,7 +45,7 @@ const year = new Date().getFullYear()
     </div>
 
     <div class="border-t border-ink-100 py-4 text-center text-xs text-ink-400">
-      © {{ year }} مدیریار — تمام حقوق محفوظ است.
+      © {{ year }} مدیریار - تمام حقوق محفوظ است.
     </div>
   </footer>
 </template>

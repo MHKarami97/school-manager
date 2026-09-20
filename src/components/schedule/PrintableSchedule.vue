@@ -36,7 +36,7 @@ const printDate = new Date().toLocaleDateString('fa-IR', { year: 'numeric', mont
       <div>
         <h1 class="text-lg font-bold">{{ schedule.title }}</h1>
         <p class="text-xs text-ink-600">
-          پایه {{ gradeLabel(gradeSchedule.grade) }} — {{ schedule.shiftConfig.name }} ({{ schedule.shiftConfig.startTime }}–{{ schedule.shiftConfig.endTime }})
+          پایه {{ gradeLabel(gradeSchedule.grade) }} - {{ schedule.shiftConfig.name }} ({{ schedule.shiftConfig.startTime }}–{{ schedule.shiftConfig.endTime }})
         </p>
       </div>
       <p class="text-xs text-ink-500">تاریخ چاپ: {{ printDate }}</p>
@@ -60,7 +60,7 @@ const printDate = new Date().toLocaleDateString('fa-IR', { year: 'numeric', mont
               <p class="font-medium">{{ courseName(cellAt(dayIndex, p.index - 1)?.courseId) }}</p>
               <p class="text-[10px] text-ink-500">{{ teacherName(cellAt(dayIndex, p.index - 1)?.teacherId) }}</p>
             </template>
-            <template v-else>—</template>
+            <template v-else>-</template>
           </td>
         </tr>
       </tbody>

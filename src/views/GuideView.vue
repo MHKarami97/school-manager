@@ -45,7 +45,7 @@ const steps = [
     <main class="mx-auto max-w-3xl px-4 py-12 sm:px-6">
       <div class="mb-10 text-center">
         <h1 class="text-2xl font-bold text-ink-900 sm:text-3xl">راهنمای کامل استفاده از مدیریار</h1>
-        <p class="mt-3 text-ink-500">از انتخاب پایه تا دریافت خروجی چاپی — مرحله‌به‌مرحله.</p>
+        <p class="mt-3 text-ink-500">از انتخاب پایه تا دریافت خروجی چاپی - مرحله‌به‌مرحله.</p>
       </div>
 
       <ol class="space-y-6">

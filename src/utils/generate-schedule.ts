@@ -148,8 +148,8 @@ export function generateSchedule(input: GenerateInput): GenerateOutput {
 
   const title =
     input.audience === 'school' && input.schoolName
-      ? `${input.schoolName} — ${level?.name ?? ''}`
-      : `${level?.name ?? ''} — پایه ${input.grades.map((g) => gradeLabel(g)).join('، ')}`
+      ? `${input.schoolName} - ${level?.name ?? ''}`
+      : `${level?.name ?? ''} - پایه ${input.grades.map((g) => gradeLabel(g)).join('، ')}`
 
   return {
     schedule: {

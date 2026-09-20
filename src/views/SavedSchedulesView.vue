@@ -46,7 +46,7 @@ async function handleDelete(id: string): Promise<void> {
         <div v-for="item in schedulesStore.items" :key="item.id" class="rounded-2xl border border-ink-100 bg-white p-5">
           <p class="text-base font-semibold text-ink-800">{{ item.title }}</p>
           <p class="mt-1 text-xs text-ink-500">
-            {{ levelName(item.levelId) }} — پایه {{ item.grades.map((g) => gradeLabel(g.grade)).join('، ') }}
+            {{ levelName(item.levelId) }} - پایه {{ item.grades.map((g) => gradeLabel(g.grade)).join('، ') }}
           </p>
           <p class="mt-1 text-xs text-ink-400">آخرین ویرایش: {{ formattedDate(item.updatedAt) }}</p>
 

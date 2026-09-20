@@ -65,7 +65,7 @@ async function handleGenerate(): Promise<void> {
       <dl class="mt-3 grid gap-2 text-sm text-ink-600 sm:grid-cols-2">
         <div>
           <dt class="inline text-ink-400">مخاطب: </dt>
-          <dd class="inline">{{ wizard.audience === 'self' ? 'خودم' : `مدرسه${wizard.schoolName ? ' — ' + wizard.schoolName : ''}` }}</dd>
+          <dd class="inline">{{ wizard.audience === 'self' ? 'خودم' : `مدرسه${wizard.schoolName ? ' - ' + wizard.schoolName : ''}` }}</dd>
         </div>
         <div>
           <dt class="inline text-ink-400">دوره: </dt>

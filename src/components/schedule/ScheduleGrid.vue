@@ -112,7 +112,7 @@ const editingTeacherId = computed(() => (editingCell.value ? cellAt(editingCell.
               <p v-if="courseOf(cellAt(dayIndex, p.index - 1))" class="font-medium text-ink-800">
                 {{ courseOf(cellAt(dayIndex, p.index - 1))!.name }}
               </p>
-              <p v-else class="text-ink-300">—</p>
+              <p v-else class="text-ink-300">-</p>
               <p v-if="teacherOf(cellAt(dayIndex, p.index - 1))" class="text-[10px] text-ink-500">
                 {{ teacherOf(cellAt(dayIndex, p.index - 1))!.name }}
               </p>
