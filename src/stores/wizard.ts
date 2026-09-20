@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import type { WizardState, ShiftId, ShiftTimeConfig, LessonCell, Audience, LevelId, RuleToggles } from '@/types'
 import { cloneDefaultShiftConfigs } from '@/config/schedule-defaults.config'
+import { mustDisableSameDayRepeat } from '@/utils/schedule-feasibility'
 
 const STORAGE_KEY = 'school-manager:wizard-state'
 
@@ -57,6 +58,7 @@ export const useWizardStore = defineStore('wizard', {
       try {
         const parsed = JSON.parse(raw) as WizardState
         this.$patch(parsed)
+        this.applyMandatoryRules()
         return true
       } catch {
         return false
@@ -89,10 +91,12 @@ export const useWizardStore = defineStore('wizard', {
     setLevel(levelId: LevelId): void {
       this.levelId = levelId
       this.selectedGrades = []
+      this.applyMandatoryRules()
       this.persist()
     },
     setSelectedGrades(grades: number[]): void {
       this.selectedGrades = grades
+      this.applyMandatoryRules()
       this.persist()
     },
     setShiftId(shiftId: ShiftId): void {
@@ -115,8 +119,18 @@ export const useWizardStore = defineStore('wizard', {
       this.persist()
     },
     setRuleToggle(rule: keyof RuleToggles, value: boolean): void {
-      this.ruleToggles = { ...this.ruleToggles, [rule]: value }
+      if (rule === 'noSameDayRepeat' && this.levelId === 'elementary' && this.selectedGrades.includes(1)) {
+        this.ruleToggles = { ...this.ruleToggles, noSameDayRepeat: false }
+      } else {
+        this.ruleToggles = { ...this.ruleToggles, [rule]: value }
+      }
       this.persist()
+    },
+    /** پایه اول استثنای رسمی/ضروری است: ۱۱ ساعت فارسی در پنج روز بدون تکرار روزانه قابل چیدن نیست. */
+    applyMandatoryRules(): void {
+      if (this.levelId === 'elementary' && this.selectedGrades.some((grade) => mustDisableSameDayRepeat(this.levelId as LevelId, grade))) {
+        this.ruleToggles = { ...this.ruleToggles, noSameDayRepeat: false }
+      }
     },
   },
 })
