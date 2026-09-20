@@ -1,9 +1,4 @@
 <script setup lang="ts">
-/**
- * نوار اطلاع‌رسانی نسخه جدید PWA. با الگوی Observer از طریق composable
- * useRegisterSW کتابخانه vite-plugin-pwa، وضعیت نیاز به به‌روزرسانی را دریافت
- * و به کاربر پیشنهاد رفرش می‌دهد (تک مسؤولیتی: فقط نمایش و واکنش به آپدیت).
- */
 import { useRegisterSW } from 'virtual:pwa-register/vue'
 
 const { needRefresh, offlineReady, updateServiceWorker } = useRegisterSW({
