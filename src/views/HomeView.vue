@@ -25,11 +25,11 @@ function continueSession(): void {
 
 const features = [
   { title: 'چیدمان خودکار و قانون‌مند', desc: 'برنامه با رعایت دقیق قوانین آموزشی مثل عدم تکرار طولی و عرضی درس‌ها، جایگاه ثابت قرآن در زنگ اول و استثنای ورزش ساخته می‌شود.', icon: 'M9 3v18M15 3v18M3 9h18M3 15h18' },
-  { title: 'کاملاً قابل تنزیم', desc: 'پایه‌ها، درس‌ها، ساعت هفتگی هر درس، شیفت صبح/ظهر، طول زنگ و تفریح، همه به‌صورت کانفیگ و قابل ویرایش هستند.', icon: 'M4 6h16M4 12h10M4 18h6' },
+  { title: 'کاملاً قابل تنظیم', desc: 'پایه‌ها، درس‌ها، ساعت هفتگی هر درس، شیفت صبح/ظهر، طول زنگ و تفریح، همه به‌صورت کانفیگ و قابل ویرایش هستند.', icon: 'M4 6h16M4 12h10M4 18h6' },
   { title: 'مناسب ابتدایی و متوسطه', desc: 'در ابتدایی برنامه با محوریت یک معلم و در متوسطه اول/دوم با چند معلم تخصصی و توزیع عادلانه ساعت تدریس چیده می‌شود.', icon: 'M12 14l9-5-9-5-9 5 9 5zm0 0v7' },
   { title: 'ویرایش دستی نتیجه', desc: 'بعد از چیدمان خودکار، هر خانه از جدول قابل جابجایی و ویرایش دستی است تا نتیجه دقیقاً مطابق نیاز شما باشد.', icon: 'M4 20h4l10-10-4-4L4 16v4z' },
   { title: 'خروجی PDF و تصویر', desc: 'برنامه نهایی را با ظاهر مرتب و فارسی به‌صورت PDF (از طریق چاپ) یا فایل تصویری دریافت کنید.', icon: 'M12 3v12m0 0l-4-4m4 4l4-4M4 21h16' },
-  { title: 'نصب روی گوشی و کامپیوتر', desc: 'مدیریار یک وب‌اپلیکیشن نصب‌شونده (PWA) است؛ حتی بدون اینترنت هم روی دستگاه شما اجرا می‌شود.', icon: 'M12 18h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z' },
+  { title: 'نصب روی گوشی و کامپیوتر', desc: 'مدیریار یک وب‌اپلیکیشن نصب‌شونده است؛ حتی بدون اینترنت هم روی دستگاه شما اجرا می‌شود.', icon: 'M12 18h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z' },
 ]
 
 const steps = [
@@ -122,7 +122,7 @@ const steps = [
             <div class="rounded-2xl bg-white/5 p-5 text-center"><p class="text-3xl font-extrabold text-white">۳</p><p class="mt-1 text-xs text-ink-300">دوره تحصیلی پشتیبانی‌شده</p></div>
             <div class="rounded-2xl bg-white/5 p-5 text-center"><p class="text-3xl font-extrabold text-white">۲</p><p class="mt-1 text-xs text-ink-300">شیفت صبح و ظهر</p></div>
             <div class="rounded-2xl bg-white/5 p-5 text-center"><p class="text-3xl font-extrabold text-white">۱۰۰٪</p><p class="mt-1 text-xs text-ink-300">اجرا در سیستم، بدون سرور</p></div>
-            <div class="rounded-2xl bg-white/5 p-5 text-center"><p class="text-3xl font-extrabold text-white">آزاد</p><p class="mt-1 text-xs text-ink-300">متن‌باز روی گیت‌هاب</p></div>
+            <div class="rounded-2xl bg-white/5 p-5 text-center"><p class="text-3xl font-extrabold text-white">رایگان</p><p class="mt-1 text-xs text-ink-300">کاملا رایگان برای تمام افراد</p></div>
           </div>
         </div>
       </section>

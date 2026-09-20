@@ -28,7 +28,7 @@ const channels = [
       </div>
       <div class="mt-8 rounded-2xl border border-ink-100 bg-white p-6 text-sm leading-7 text-ink-600 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-300">
         <p class="font-semibold text-ink-800 dark:text-ink-100">راه سریع‌تر برای گزارش مشکل یا پیشنهاد ویژگی</p>
-        <p class="mt-2">بهترین راه، ثبت یک Issue در مخزن گیت‌هاب پروژه است.</p>
+        <p class="mt-2">توسط راه‌های ارتباطی می‌توانید با ما در ارتباط باشید</p>
       </div>
     </main>
     <AppFooter />

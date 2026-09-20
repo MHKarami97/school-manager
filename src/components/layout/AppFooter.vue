@@ -34,7 +34,7 @@ function chooseTheme(mode: ThemeMode): void {
         <ul class="mt-3 space-y-2 text-sm text-ink-500 dark:text-ink-400">
           <li>ایمیل: <a href="mailto:mhkarami97@gmail.com" class="text-brand-600 hover:underline dark:text-brand-400">mhkarami97@gmail.com</a></li>
           <li>وب‌سایت: <a href="https://mhkarami97.ir" target="_blank" rel="noopener" class="text-brand-600 hover:underline dark:text-brand-400">mhkarami97.ir</a></li>
-          <li>مخزن پروژه: <a href="https://github.com/MHKarami97/school-manager" target="_blank" rel="noopener" class="text-brand-600 hover:underline dark:text-brand-400">GitHub</a></li>
+          <li>تلگرام: <a href="https://t.me/mhkarami_97" target="_blank" rel="noopener" class="text-brand-600 hover:underline dark:text-brand-400">@mhkarami_97</a></li>
         </ul>
       </div>
 
