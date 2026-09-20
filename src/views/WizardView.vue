@@ -47,54 +47,29 @@ function goBack(): void {
 </script>
 
 <template>
-  <div class="min-h-screen bg-ink-50 pb-16">
+  <div class="min-h-screen bg-ink-50 pb-20 sm:pb-16">
     <AppHeader />
-
     <div class="mx-auto max-w-3xl px-4 pt-8 sm:px-6">
       <ol class="mb-8 flex items-center">
         <li v-for="(step, index) in steps" :key="step.title" class="flex flex-1 items-center">
-          <div
-            class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold transition"
-            :class="index <= currentStepIndex ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-400'"
-          >
+          <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold transition" :class="index <= currentStepIndex ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-400 dark:bg-ink-800 dark:text-ink-500'">
             {{ index + 1 }}
           </div>
-          <div
-            v-if="index < steps.length - 1"
-            class="mx-1 h-0.5 flex-1 transition"
-            :class="index < currentStepIndex ? 'bg-brand-600' : 'bg-ink-100'"
-          ></div>
+          <div v-if="index < steps.length - 1" class="mx-1 h-0.5 flex-1 transition" :class="index < currentStepIndex ? 'bg-brand-600' : 'bg-ink-100 dark:bg-ink-800'"></div>
         </li>
       </ol>
-
-      <h1 class="mb-6 text-xl font-bold text-ink-900">{{ currentStep.title }}</h1>
-
+      <h1 class="mb-6 text-xl font-bold text-ink-900 dark:text-ink-50">{{ currentStep.title }}</h1>
       <component :is="currentStep.component" />
-
       <div v-if="!isLastStep" class="mt-8 flex items-center justify-between">
-        <button
-          type="button"
-          class="rounded-xl border border-ink-200 px-5 py-2.5 text-sm font-medium text-ink-600 transition disabled:opacity-40"
-          :disabled="wizard.step === 1"
-          @click="goBack"
-        >
+        <button type="button" class="rounded-xl border border-ink-200 px-5 py-2.5 text-sm font-medium text-ink-600 transition disabled:opacity-40 dark:border-ink-700 dark:text-ink-300" :disabled="wizard.step === 1" @click="goBack">
           مرحله قبل
         </button>
-        <button
-          type="button"
-          class="rounded-xl bg-brand-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-40"
-          :disabled="!canGoNext"
-          @click="goNext"
-        >
+        <button type="button" class="rounded-xl bg-brand-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-40" :disabled="!canGoNext" @click="goNext">
           مرحله بعد
         </button>
       </div>
       <div v-else class="mt-8">
-        <button
-          type="button"
-          class="rounded-xl border border-ink-200 px-5 py-2.5 text-sm font-medium text-ink-600 transition"
-          @click="goBack"
-        >
+        <button type="button" class="rounded-xl border border-ink-200 px-5 py-2.5 text-sm font-medium text-ink-600 transition dark:border-ink-700 dark:text-ink-300" @click="goBack">
           مرحله قبل
         </button>
       </div>
