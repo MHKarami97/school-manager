@@ -24,36 +24,12 @@ function continueSession(): void {
 }
 
 const features = [
-  {
-    title: 'چیدمان خودکار و قانون‌مند',
-    desc: 'برنامه با رعایت دقیق قوانین آموزشی مثل عدم تکرار طولی و عرضی درس‌ها، جایگاه ثابت قرآن در زنگ اول و استثنای ورزش ساخته می‌شود.',
-    icon: 'M9 3v18M15 3v18M3 9h18M3 15h18',
-  },
-  {
-    title: 'کاملاً قابل تنزیم',
-    desc: 'پایه‌ها، درس‌ها، ساعت هفتگی هر درس، شیفت صبح/ظهر، طول زنگ و تفریح، همه به‌صورت کانفیگ و قابل ویرایش هستند.',
-    icon: 'M4 6h16M4 12h10M4 18h6',
-  },
-  {
-    title: 'مناسب ابتدایی و متوسطه',
-    desc: 'در ابتدایی برنامه با محوریت یک معلم و در متوسطه اول/دوم با چند معلم تخصصی و توزیع عادلانه ساعت تدریس چیده می‌شود.',
-    icon: 'M12 14l9-5-9-5-9 5 9 5zm0 0v7',
-  },
-  {
-    title: 'ویرایش دستی نتیجه',
-    desc: 'بعد از چیدمان خودکار، هر خانه از جدول قابل جابجایی و ویرایش دستی است تا نتیجه دقیقاً مطابق نیاز شما باشد.',
-    icon: 'M4 20h4l10-10-4-4L4 16v4z',
-  },
-  {
-    title: 'خروجی PDF و تصویر',
-    desc: 'برنامه نهایی را با ظاهر مرتب و فارسی به‌صورت PDF (از طریق چاپ) یا فایل تصویری دریافت کنید.',
-    icon: 'M12 3v12m0 0l-4-4m4 4l4-4M4 21h16',
-  },
-  {
-    title: 'نصب روی گوشی و کامپیوتر',
-    desc: 'مدیریار یک وب‌اپلیکیشن نصب‌شونده (PWA) است؛ حتی بدون اینترنت هم روی دستگاه شما اجرا می‌شود.',
-    icon: 'M12 18h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z',
-  },
+  { title: 'چیدمان خودکار و قانون‌مند', desc: 'برنامه با رعایت دقیق قوانین آموزشی مثل عدم تکرار طولی و عرضی درس‌ها، جایگاه ثابت قرآن در زنگ اول و استثنای ورزش ساخته می‌شود.', icon: 'M9 3v18M15 3v18M3 9h18M3 15h18' },
+  { title: 'کاملاً قابل تنزیم', desc: 'پایه‌ها، درس‌ها، ساعت هفتگی هر درس، شیفت صبح/ظهر، طول زنگ و تفریح، همه به‌صورت کانفیگ و قابل ویرایش هستند.', icon: 'M4 6h16M4 12h10M4 18h6' },
+  { title: 'مناسب ابتدایی و متوسطه', desc: 'در ابتدایی برنامه با محوریت یک معلم و در متوسطه اول/دوم با چند معلم تخصصی و توزیع عادلانه ساعت تدریس چیده می‌شود.', icon: 'M12 14l9-5-9-5-9 5 9 5zm0 0v7' },
+  { title: 'ویرایش دستی نتیجه', desc: 'بعد از چیدمان خودکار، هر خانه از جدول قابل جابجایی و ویرایش دستی است تا نتیجه دقیقاً مطابق نیاز شما باشد.', icon: 'M4 20h4l10-10-4-4L4 16v4z' },
+  { title: 'خروجی PDF و تصویر', desc: 'برنامه نهایی را با ظاهر مرتب و فارسی به‌صورت PDF (از طریق چاپ) یا فایل تصویری دریافت کنید.', icon: 'M12 3v12m0 0l-4-4m4 4l4-4M4 21h16' },
+  { title: 'نصب روی گوشی و کامپیوتر', desc: 'مدیریار یک وب‌اپلیکیشن نصب‌شونده (PWA) است؛ حتی بدون اینترنت هم روی دستگاه شما اجرا می‌شود.', icon: 'M12 18h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z' },
 ]
 
 const steps = [
@@ -66,9 +42,8 @@ const steps = [
 </script>
 
 <template>
-  <div class="min-h-screen bg-ink-50">
+  <div class="min-h-screen bg-ink-50 pb-16 sm:pb-0">
     <AppHeader />
-
     <main>
       <section class="relative overflow-hidden">
         <div class="absolute inset-0 -z-10 bg-gradient-to-b from-brand-50 via-white to-transparent dark:from-brand-500/10 dark:via-ink-900 dark:to-transparent"></div>
@@ -85,26 +60,13 @@ const steps = [
               می‌سازد؛ شما فقط پایه، شیفت و معلم‌ها را مشخص می‌کنید.
             </p>
             <div class="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-              <button
-                type="button"
-                class="w-full rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-600/20 transition hover:bg-brand-700 sm:w-auto"
-                @click="startFresh"
-              >
+              <button type="button" class="w-full rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-600/20 transition hover:bg-brand-700 sm:w-auto" @click="startFresh">
                 شروع ساخت برنامه جدید
               </button>
-              <button
-                v-if="canContinue"
-                type="button"
-                class="w-full rounded-xl border border-ink-200 bg-white px-6 py-3 text-sm font-semibold text-ink-700 transition hover:border-brand-300 sm:w-auto dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200"
-                @click="continueSession"
-              >
+              <button v-if="canContinue" type="button" class="w-full rounded-xl border border-ink-200 bg-white px-6 py-3 text-sm font-semibold text-ink-700 transition hover:border-brand-300 sm:w-auto dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200" @click="continueSession">
                 ادامه‌ی برنامه‌ی نیمه‌کاره
               </button>
-              <RouterLink
-                v-else
-                to="/schedules"
-                class="w-full rounded-xl border border-ink-200 bg-white px-6 py-3 text-center text-sm font-semibold text-ink-700 transition hover:border-brand-300 sm:w-auto dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200"
-              >
+              <RouterLink v-else to="/schedules" class="w-full rounded-xl border border-ink-200 bg-white px-6 py-3 text-center text-sm font-semibold text-ink-700 transition hover:border-brand-300 sm:w-auto dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200">
                 مشاهده‌ی برنامه‌های ذخیره‌شده
               </RouterLink>
             </div>
@@ -117,13 +79,8 @@ const steps = [
           <h2 class="text-2xl font-bold text-ink-900 sm:text-3xl dark:text-ink-50">همه‌چیز برای یک برنامه‌ریزی دقیق</h2>
           <p class="mt-3 text-ink-500 dark:text-ink-400">امکاناتی که ساخت و مدیریت برنامه هفتگی مدرسه را ساده و سریع می‌کند.</p>
         </div>
-
         <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          <div
-            v-for="feature in features"
-            :key="feature.title"
-            class="rounded-2xl border border-ink-100 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-ink-800 dark:bg-ink-900"
-          >
+          <div v-for="feature in features" :key="feature.title" class="rounded-2xl border border-ink-100 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-ink-800 dark:bg-ink-900">
             <div class="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-5 w-5">
                 <path :d="feature.icon" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
@@ -141,16 +98,9 @@ const steps = [
             <h2 class="text-2xl font-bold text-ink-900 sm:text-3xl dark:text-ink-50">راهنمای استفاده در ۵ گام</h2>
             <p class="mt-3 text-ink-500 dark:text-ink-400">از انتخاب پایه تا دریافت خروجی چاپی، مسیری کوتاه و بدون پیچیدگی.</p>
           </div>
-
           <ol class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-5">
-            <li
-              v-for="(step, index) in steps"
-              :key="step.title"
-              class="relative rounded-2xl border border-ink-100 p-5 dark:border-ink-800"
-            >
-              <span class="flex h-9 w-9 items-center justify-center rounded-full bg-ink-900 text-sm font-bold text-white dark:bg-brand-600">
-                {{ index + 1 }}
-              </span>
+            <li v-for="(step, index) in steps" :key="step.title" class="relative rounded-2xl border border-ink-100 p-5 dark:border-ink-800">
+              <span class="flex h-9 w-9 items-center justify-center rounded-full bg-ink-900 text-sm font-bold text-white dark:bg-brand-600">{{ index + 1 }}</span>
               <h3 class="mt-4 text-sm font-semibold text-ink-800 dark:text-ink-100">{{ step.title }}</h3>
               <p class="mt-2 text-xs leading-6 text-ink-500 dark:text-ink-400">{{ step.desc }}</p>
             </li>
@@ -169,27 +119,14 @@ const steps = [
             </p>
           </div>
           <div class="grid grid-cols-2 gap-6 self-center">
-            <div class="rounded-2xl bg-white/5 p-5 text-center">
-              <p class="text-3xl font-extrabold text-white">۳</p>
-              <p class="mt-1 text-xs text-ink-300">دوره تحصیلی پشتیبانی‌شده</p>
-            </div>
-            <div class="rounded-2xl bg-white/5 p-5 text-center">
-              <p class="text-3xl font-extrabold text-white">۲</p>
-              <p class="mt-1 text-xs text-ink-300">شیفت صبح و ظهر</p>
-            </div>
-            <div class="rounded-2xl bg-white/5 p-5 text-center">
-              <p class="text-3xl font-extrabold text-white">۱۰۰٪</p>
-              <p class="mt-1 text-xs text-ink-300">اجرا در سیستم، بدون سرور</p>
-            </div>
-            <div class="rounded-2xl bg-white/5 p-5 text-center">
-              <p class="text-3xl font-extrabold text-white">آزاد</p>
-              <p class="mt-1 text-xs text-ink-300">متن‌باز روی گیت‌هاب</p>
-            </div>
+            <div class="rounded-2xl bg-white/5 p-5 text-center"><p class="text-3xl font-extrabold text-white">۳</p><p class="mt-1 text-xs text-ink-300">دوره تحصیلی پشتیبانی‌شده</p></div>
+            <div class="rounded-2xl bg-white/5 p-5 text-center"><p class="text-3xl font-extrabold text-white">۲</p><p class="mt-1 text-xs text-ink-300">شیفت صبح و ظهر</p></div>
+            <div class="rounded-2xl bg-white/5 p-5 text-center"><p class="text-3xl font-extrabold text-white">۱۰۰٪</p><p class="mt-1 text-xs text-ink-300">اجرا در سیستم، بدون سرور</p></div>
+            <div class="rounded-2xl bg-white/5 p-5 text-center"><p class="text-3xl font-extrabold text-white">آزاد</p><p class="mt-1 text-xs text-ink-300">متن‌باز روی گیت‌هاب</p></div>
           </div>
         </div>
       </section>
     </main>
-
     <AppFooter />
   </div>
 </template>
