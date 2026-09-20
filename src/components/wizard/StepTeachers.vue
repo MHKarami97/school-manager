@@ -117,7 +117,7 @@ function courseLabel(courseId: string): string {
 
           <div v-if="gradeHasSport(grade)">
             <label class="mb-1 block text-xs font-medium text-ink-600 dark:text-ink-300">
-              معلم ورزش (اختیاری - در فیر این صورت همان معلم اصلی)
+              معلم ورزش (اختیاری - در غیر این صورت همان معلم اصلی)
               <span v-if="currentSportTeacherLabel(grade)" class="text-brand-600 dark:text-brand-400">- ثبت‌شده: {{ currentSportTeacherLabel(grade) }}</span>
             </label>
             <div class="flex gap-2">

@@ -71,7 +71,7 @@ async function handleGenerate(): Promise<void> {
     </div>
 
     <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-6 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
-      نکته: قرآن به‌صورت خودکار همیشه در زنگ اول قرار می‌گیرد. اگر می‌خواهید زنگ‌های ورزش پشت‌سرهم باشد، بعد از ساخت برنامه در ویرایشگر خانه‌های ورزش را درگودراپ جابجا کنید.
+      نکته: قرآن به‌صورت خودکار همیشه در زنگ اول قرار می‌گیرد. اگر می‌خواهید زنگ‌های ورزش پشت‌سرهم باشد، بعد از ساخت برنامه در ویرایشگر خانه‌های ورزش را جابجا کنید.
     </div>
 
     <div v-if="warnings.length" class="space-y-1 rounded-2xl border border-red-200 bg-red-50 p-4 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
