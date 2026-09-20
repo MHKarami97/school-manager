@@ -46,7 +46,7 @@ const features = [
   },
   {
     title: 'خروجی PDF و تصویر',
-    desc: 'برنامه نهایی را با ظاهر مرتب و فارسی به‌صورت PDF (از طریق چاپ مرورگر) یا فایل تصویری دریافت کنید.',
+    desc: 'برنامه نهایی را با ظاهر مرتب و فارسی به‌صورت PDF (از طریق چاپ) یا فایل تصویری دریافت کنید.',
     icon: 'M12 3v12m0 0l-4-4m4 4l4-4M4 21h16',
   },
   {
@@ -164,7 +164,7 @@ const steps = [
             <h2 class="text-2xl font-bold text-white sm:text-3xl">درباره مدیریار</h2>
             <p class="mt-4 leading-7 text-ink-300">
               مدیریار برای کاهش ساعت‌ها کار دستی مدیران و معاونان اجرایی مدارس در چیدن برنامه هفتگی طراحی شده است.
-              تمام محاسبات در همان مرورگر شما انجام می‌شود؛ نیازی به سرور یا اتصال دائم به اینترنت نیست و
+              تمام محاسبات در همان سیستم شما انجام می‌شود؛ نیازی به سرور یا اتصال دائم به اینترنت نیست و
               اطلاعات معلم‌ها و برنامه‌های ذخیره‌شده فقط روی دستگاه شما باقی می‌مانند.
             </p>
           </div>
@@ -179,7 +179,7 @@ const steps = [
             </div>
             <div class="rounded-2xl bg-white/5 p-5 text-center">
               <p class="text-3xl font-extrabold text-white">۱۰۰٪</p>
-              <p class="mt-1 text-xs text-ink-300">اجرا در مرورگر، بدون سرور</p>
+              <p class="mt-1 text-xs text-ink-300">اجرا در سیستم، بدون سرور</p>
             </div>
             <div class="rounded-2xl bg-white/5 p-5 text-center">
               <p class="text-3xl font-extrabold text-white">رایگان</p>

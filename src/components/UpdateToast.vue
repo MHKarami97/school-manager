@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useRegisterSW } from 'virtual:pwa-register/vue'
 
-const { needRefresh, offlineReady, updateServiceWorker } = useRegisterSW({
+const { needRefresh, updateServiceWorker } = useRegisterSW({
   onRegisteredSW(swUrl) {
     console.info('Service worker registered:', swUrl)
   },
@@ -12,10 +12,6 @@ const { needRefresh, offlineReady, updateServiceWorker } = useRegisterSW({
 
 function refreshApp(): void {
   updateServiceWorker(true)
-}
-
-function dismissOfflineReady(): void {
-  offlineReady.value = false
 }
 </script>
 
@@ -43,19 +39,6 @@ function dismissOfflineReady(): void {
         >
           به‌روزرسانی
         </button>
-      </div>
-    </div>
-  </Transition>
-
-  <Transition name="slide-up">
-    <div
-      v-if="offlineReady"
-      class="fixed inset-x-0 bottom-0 z-40 flex justify-center px-4 pb-4 sm:justify-end sm:pe-6"
-      role="status"
-    >
-      <div class="flex w-full max-w-md items-center gap-3 rounded-2xl border border-ink-200 bg-white p-4 shadow-xl">
-        <div class="flex-1 text-sm text-ink-700">مدیریار برای استفاده آفلاین آماده است.</div>
-        <button type="button" class="text-xs text-ink-400 hover:text-ink-600" @click="dismissOfflineReady">بستن</button>
       </div>
     </div>
   </Transition>
