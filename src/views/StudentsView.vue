@@ -5,7 +5,7 @@ import { useStudentsStore } from '@/stores/students'
 import { LEVELS } from '@/config/levels.config'
 import { gradeLabel } from '@/config/levels.config'
 import AppHeader from '@/components/layout/AppHeader.vue'
-import { downloadStudentImportTemplate, parseStudentImportFile } from '@/utils/student-import-export'
+import { downloadStudentImportTemplate, parseStudentImportFile, exportStudentsToExcel } from '@/utils/student-import-export'
 import type { Gender, LevelId } from '@/types'
 
 const studentsStore = useStudentsStore()
@@ -28,6 +28,12 @@ selectLevel('elementary')
 const visibleStudents = computed(() =>
   activeGrade.value === null ? [] : studentsStore.items.filter((s) => s.grade === activeGrade.value),
 )
+
+function exportVisibleStudents(): void {
+  if (activeGrade.value === null || !visibleStudents.value.length) return
+  const levelName = LEVELS.find((l) => l.id === activeLevelId.value)?.name ?? ''
+  exportStudentsToExcel(visibleStudents.value, `دانش‌آموزان-${levelName}-پایه-${gradeLabel(activeGrade.value)}`)
+}
 
 const newFirstName = ref('')
 const newLastName = ref('')
@@ -179,13 +185,18 @@ async function updateDiscipline(id: string, value: string): Promise<void> {
           <h1 class="text-xl font-bold text-ink-900 dark:text-ink-50">مدیریت دانش‌آموزان</h1>
           <p class="mt-1 text-sm text-ink-500 dark:text-ink-400">افزودن، ویرایش و گروه‌بندی عادلانه دانش‌آموزان هر پایه</p>
         </div>
-        <RouterLink
-          v-if="activeGrade !== null"
-          :to="`/students/grouping?grade=${activeGrade}&level=${activeLevelId}`"
-          class="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-700"
-        >
-          گروه‌بندی عادلانه این پایه
-        </RouterLink>
+        <div class="flex flex-wrap gap-2">
+          <RouterLink to="/students/groups" class="rounded-xl border border-ink-200 bg-white px-4 py-2 text-sm font-medium text-ink-700 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200">
+            گروه‌بندی‌های من
+          </RouterLink>
+          <RouterLink
+            v-if="activeGrade !== null"
+            :to="`/students/grouping?grade=${activeGrade}&level=${activeLevelId}`"
+            class="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-700"
+          >
+            گروه‌بندی عادلانه این پایه
+          </RouterLink>
+        </div>
       </div>
 
       <div class="mb-4 flex flex-wrap gap-2">
@@ -229,10 +240,10 @@ async function updateDiscipline(id: string, value: string): Promise<void> {
         </div>
 
         <div class="rounded-2xl border border-ink-100 bg-white p-4 dark:border-ink-800 dark:bg-ink-900">
-          <p class="mb-3 text-sm font-semibold text-ink-800 dark:text-ink-100">ورود از فایل اکسل / CSV</p>
+          <p class="mb-3 text-sm font-semibold text-ink-800 dark:text-ink-100">ورود / خروجی اکسل و CSV</p>
           <div class="flex flex-wrap gap-2">
             <button type="button" class="rounded-lg border border-ink-200 px-3 py-2 text-xs font-medium text-ink-700 dark:border-ink-700 dark:text-ink-200" @click="downloadStudentImportTemplate">
-              دانلود قالب خالی اکسل
+              دانلود قالب خالی
             </button>
             <button
               type="button"
@@ -241,6 +252,14 @@ async function updateDiscipline(id: string, value: string): Promise<void> {
               @click="triggerFileDialog"
             >
               {{ isImportingFile ? 'در حال خواندن…' : 'انتخاب فایل و ورود' }}
+            </button>
+            <button
+              type="button"
+              class="rounded-lg border border-ink-200 px-3 py-2 text-xs font-medium text-ink-700 disabled:opacity-50 dark:border-ink-700 dark:text-ink-200"
+              :disabled="!visibleStudents.length"
+              @click="exportVisibleStudents"
+            >
+              خروجی اکسل این پایه
             </button>
             <input ref="fileInputRef" type="file" accept=".xlsx,.xls,.csv" class="hidden" @change="handleFileSelected" />
           </div>

@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx'
-import type { Gender } from '@/types'
+import type { Gender, Student } from '@/types'
 
 export interface StudentImportRow {
   firstName: string
@@ -25,18 +25,43 @@ function triggerBlobDownload(blob: Blob, fileName: string): void {
   URL.revokeObjectURL(url)
 }
 
+function buildWorkbookFromRows(headers: string[], rows: (string | number)[][], sheetName: string): ArrayBuffer {
+  const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows])
+  worksheet['!cols'] = headers.map(() => ({ wch: 18 }))
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, worksheet, sheetName)
+  return XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
+}
+
 /**
  * ساخت و دانلود قالب خالی اکسل برای ورود دانش‌آموزان. ستون‌ها فارسی و با یک سطر راهنما/نمونه هستند تا کاربر فرمت
  * مورد انتظار را ببیند؛ خودِ سطر نمونه در زمان وارد کردن فایل توسط کاربر نادیده گرفته نمی‌شود، پس بهتر است کاربر آن را
  * قبل از پر کردن حذف یا با اطلاعات واقعی جایگزین کند.
  */
 export function downloadStudentImportTemplate(): void {
-  const worksheet = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS, ...TEMPLATE_SAMPLE_ROWS])
-  worksheet['!cols'] = [{ wch: 14 }, { wch: 16 }, { wch: 18 }, { wch: 16 }, { wch: 20 }]
-  const workbook = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'دانش‌آموزان')
-  const arrayBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
-  triggerBlobDownload(new Blob([arrayBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), 'قالب-ورود-دانش-آموزان.xlsx')
+  const arrayBuffer = buildWorkbookFromRows(TEMPLATE_HEADERS, TEMPLATE_SAMPLE_ROWS, 'دانش‌آموزان')
+  triggerBlobDownload(
+    new Blob([arrayBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+    'قالب-ورود-دانش-آموزان.xlsx',
+  )
+}
+
+/**
+ * خروجی اکسل از لیست فعلی دانش‌آموزان یک پایه (همان ستون‌بندی قالب ورودی، به‌علاوه ستون‌های وضعیت) تا بتوان آن را ذخیره، چاپ یا دوباره ویرایش‌شده وارد کرد.
+ */
+export function exportStudentsToExcel(students: Student[], fileName: string): void {
+  const headers = [...TEMPLATE_HEADERS, 'ضعیف علمی', 'بی‌انضباط']
+  const rows = students.map((s) => [
+    s.firstName,
+    s.lastName,
+    s.gender === 'female' ? 'دختر' : 'پسر',
+    s.gpa ?? '',
+    s.disciplineScore ?? '',
+    s.isAcademicallyWeak ? 'بله' : '',
+    s.isDisruptive ? 'بله' : '',
+  ])
+  const arrayBuffer = buildWorkbookFromRows(headers, rows, 'دانش‌آموزان')
+  triggerBlobDownload(new Blob([arrayBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `${fileName}.xlsx`)
 }
 
 function parseGenderCell(value: unknown): Gender {

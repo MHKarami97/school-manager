@@ -43,6 +43,11 @@ const routes = [
     component: () => import('@/views/StudentsView.vue'),
   },
   {
+    path: '/students/groups',
+    name: 'student-groups-list',
+    component: () => import('@/views/StudentGroupsListView.vue'),
+  },
+  {
     path: '/students/grouping',
     name: 'students-grouping',
     component: () => import('@/views/GroupingView.vue'),
