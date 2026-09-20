@@ -8,30 +8,18 @@ export interface Level {
   id: LevelId
   name: string
   grades: number[]
-  /** آیا در این دوره برنامه توسط هر معلم چیده می‌شود (ابتدایی) یا توسط کادر (متوسطه) */
   schedulingMode: 'single-teacher' | 'subject-teachers'
 }
 
 export interface CourseDefinition {
   id: string
   name: string
-  /** قانون ویژه برای این درس */
   specialRule: SpecialRule
   color: string
-  /** اگر true باشد توسط کاربر افزوده شده و قابل حذف است */
   isCustom?: boolean
 }
 
-/** ساعت هفتگی هر درس به ازای شناسه درس برای هر (levelId -> grade -> courseId -> hours) */
 export type CurriculumMap = Record<string, Record<number, Record<string, number>>>
-
-export interface BellPeriod {
-  index: number
-  type: 'lesson' | 'break' | 'lunch'
-  start: string
-  end: string
-  durationMinutes: number
-}
 
 export interface ShiftTimeConfig {
   id: ShiftId
@@ -50,25 +38,11 @@ export interface Teacher {
   id: string
   name: string
   courseIds: string[]
-  /** فقط برای دوره‌های متوسطه: ساعت موردنیاز در هفته به ازای courseId */
   weeklyHoursByCourse?: Record<string, number>
   createdAt: number
 }
 
 export type Audience = 'self' | 'school'
-
-export interface WizardState {
-  step: number
-  audience: Audience | null
-  levelId: LevelId | null
-  selectedGrades: number[]
-  shiftId: ShiftId
-  shiftConfigs: Record<ShiftId, ShiftTimeConfig>
-  teacherName: string
-  assignedTeacherIds: string[]
-  schoolName: string
-  updatedAt: number
-}
 
 export interface LessonCell {
   dayIndex: number
@@ -76,6 +50,26 @@ export interface LessonCell {
   courseId: string | null
   teacherId: string | null
   isLocked?: boolean
+}
+
+/**
+ * وضعیت ویزارد. teacherSelections یک نگاشت عمومی است:
+ *  - در دوره‌های single-teacher (ابتدایی) کلیدها با کمک utils/wizard-keys ساخته می‌شوند
+ *    (مثلاً main-1، sport-1 برای پایه اول).
+ *  - در دوره‌های subject-teachers (متوسطه) کلید همان courseId است و مقدار، آرایه‌ای از
+ *    شناسه معلم‌های همان درس (برای توزیع عادلانه ساعت) است.
+ */
+export interface WizardState {
+  step: number
+  audience: Audience | null
+  schoolName: string
+  levelId: LevelId | null
+  selectedGrades: number[]
+  shiftId: ShiftId
+  shiftConfigs: Record<ShiftId, ShiftTimeConfig>
+  teacherSelections: Record<string, string[]>
+  lockedSportCells: Record<number, LessonCell[]>
+  updatedAt: number
 }
 
 export interface GradeSchedule {

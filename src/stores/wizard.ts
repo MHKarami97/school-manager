@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import type { WizardState, ShiftId } from '@/types'
+import type { WizardState, ShiftId, ShiftTimeConfig, LessonCell, Audience, LevelId } from '@/types'
 import { cloneDefaultShiftConfigs } from '@/config/schedule-defaults.config'
 
 const STORAGE_KEY = 'school-manager:wizard-state'
@@ -8,13 +8,13 @@ function createInitialState(): WizardState {
   return {
     step: 1,
     audience: null,
+    schoolName: '',
     levelId: null,
     selectedGrades: [],
-    shiftId: 'morning' as ShiftId,
+    shiftId: 'morning',
     shiftConfigs: cloneDefaultShiftConfigs(),
-    teacherName: '',
-    assignedTeacherIds: [],
-    schoolName: '',
+    teacherSelections: {},
+    lockedSportCells: {},
     updatedAt: Date.now(),
   }
 }
@@ -63,6 +63,42 @@ export const useWizardStore = defineStore('wizard', {
     },
     prevStep(): void {
       this.step = Math.max(1, this.step - 1)
+      this.persist()
+    },
+    setAudience(audience: Audience): void {
+      this.audience = audience
+      this.persist()
+    },
+    setSchoolName(name: string): void {
+      this.schoolName = name
+      this.persist()
+    },
+    setLevel(levelId: LevelId): void {
+      this.levelId = levelId
+      this.selectedGrades = []
+      this.persist()
+    },
+    setSelectedGrades(grades: number[]): void {
+      this.selectedGrades = grades
+      this.persist()
+    },
+    setShiftId(shiftId: ShiftId): void {
+      this.shiftId = shiftId
+      this.persist()
+    },
+    updateShiftConfig(shiftId: ShiftId, patch: Partial<ShiftTimeConfig>): void {
+      this.shiftConfigs = {
+        ...this.shiftConfigs,
+        [shiftId]: { ...this.shiftConfigs[shiftId], ...patch },
+      }
+      this.persist()
+    },
+    setTeacherSelection(key: string, teacherIds: string[]): void {
+      this.teacherSelections = { ...this.teacherSelections, [key]: teacherIds }
+      this.persist()
+    },
+    setLockedSportCells(grade: number, cells: LessonCell[]): void {
+      this.lockedSportCells = { ...this.lockedSportCells, [grade]: cells }
       this.persist()
     },
   },
