@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import type { GradeSchedule, ShiftTimeConfig, CourseDefinition, Teacher, LessonCell } from '@/types'
 import { WEEK_DAYS } from '@/types'
 import { buildBellSchedule } from '@/config/schedule-defaults.config'
+import { formatTeacherName } from '@/utils/teacher-format'
 import CellEditorModal from './CellEditorModal.vue'
 
 const props = defineProps<{
@@ -82,20 +83,17 @@ const editingTeacherId = computed(() => (editingCell.value ? cellAt(editingCell.
     <table class="w-full min-w-[640px] border-collapse text-xs sm:text-sm">
       <thead>
         <tr>
-          <th class="w-20 border border-ink-100 bg-ink-50 p-2 text-center font-medium text-ink-500">زنگ</th>
-          <th v-for="day in WEEK_DAYS" :key="day" class="border border-ink-100 bg-ink-50 p-2 text-center font-medium text-ink-600">
-            {{ day }}
-          </th>
+          <th class="w-20 border border-ink-100 bg-ink-50 p-2 text-center font-medium text-ink-500 dark:border-ink-800 dark:bg-ink-800 dark:text-ink-400">زنگ</th>
+          <th v-for="day in WEEK_DAYS" :key="day" class="border border-ink-100 bg-ink-50 p-2 text-center font-medium text-ink-600 dark:border-ink-800 dark:bg-ink-800 dark:text-ink-300">{{ day }}</th>
         </tr>
       </thead>
       <tbody>
         <tr v-for="p in lessonPeriods" :key="p.index">
-          <td class="border border-ink-100 p-2 text-center text-ink-500">
-            زنگ {{ p.index }}
-            <br />
-            <span class="text-[10px] text-ink-400">{{ p.start }}–{{ p.end }}</span>
+          <td class="border border-ink-100 p-2 text-center text-ink-500 dark:border-ink-800 dark:text-ink-400">
+            زنگ {{ p.index }}<br />
+            <span class="text-[10px] text-ink-400 dark:text-ink-500">{{ p.start }}–{{ p.end }}</span>
           </td>
-          <td v-for="(day, dayIndex) in WEEK_DAYS" :key="day" class="border border-ink-100 p-1 align-top">
+          <td v-for="(day, dayIndex) in WEEK_DAYS" :key="day" class="border border-ink-100 p-1 align-top dark:border-ink-800">
             <div
               class="flex min-h-16 flex-col justify-center gap-0.5 rounded-lg border p-2 text-center transition"
               :class="props.editable ? 'cursor-pointer hover:brightness-95' : ''"
@@ -109,13 +107,9 @@ const editingTeacherId = computed(() => (editingCell.value ? cellAt(editingCell.
               @drop="onDrop(dayIndex, p.index - 1)"
               @click="openEditor(dayIndex, p.index - 1)"
             >
-              <p v-if="courseOf(cellAt(dayIndex, p.index - 1))" class="font-medium text-ink-800">
-                {{ courseOf(cellAt(dayIndex, p.index - 1))!.name }}
-              </p>
-              <p v-else class="text-ink-300">-</p>
-              <p v-if="teacherOf(cellAt(dayIndex, p.index - 1))" class="text-[10px] text-ink-500">
-                {{ teacherOf(cellAt(dayIndex, p.index - 1))!.name }}
-              </p>
+              <p v-if="courseOf(cellAt(dayIndex, p.index - 1))" class="font-medium text-ink-800 dark:text-ink-100">{{ courseOf(cellAt(dayIndex, p.index - 1))!.name }}</p>
+              <p v-else class="text-ink-300 dark:text-ink-600">-</p>
+              <p v-if="teacherOf(cellAt(dayIndex, p.index - 1))" class="text-[10px] text-ink-500 dark:text-ink-400">{{ formatTeacherName(teacherOf(cellAt(dayIndex, p.index - 1))) }}</p>
             </div>
           </td>
         </tr>
@@ -123,12 +117,5 @@ const editingTeacherId = computed(() => (editingCell.value ? cellAt(editingCell.
     </table>
   </div>
 
-  <CellEditorModal
-    v-model="isModalOpen"
-    :course-id="editingCourseId"
-    :teacher-id="editingTeacherId"
-    :courses="courses"
-    :teachers="teachers"
-    @apply="applyEdit"
-  />
+  <CellEditorModal v-model="isModalOpen" :course-id="editingCourseId" :teacher-id="editingTeacherId" :courses="courses" :teachers="teachers" @apply="applyEdit" />
 </template>

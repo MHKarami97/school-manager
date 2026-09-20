@@ -60,87 +60,37 @@ async function handleDelete(): Promise<void> {
 </script>
 
 <template>
-  <div class="min-h-screen bg-ink-50 pb-16 print:bg-white">
-    <div class="print:hidden">
-      <AppHeader />
-    </div>
-
-    <div v-if="isLoading" class="p-10 text-center text-ink-400">در حال بارگذاری…</div>
-
+  <div class="min-h-screen bg-ink-50 pb-20 sm:pb-16 print:bg-white">
+    <div class="print:hidden"><AppHeader /></div>
+    <div v-if="isLoading" class="p-10 text-center text-ink-400 dark:text-ink-500">در حال بارگذاری…</div>
     <div v-else-if="!schedule" class="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-4 text-center">
-      <p class="text-ink-600">برنامه‌ای با این شناسه پیدا نشد؛ ممکن است حذف شده باشد.</p>
+      <p class="text-ink-600 dark:text-ink-300">برنامه‌ای با این شناسه پیدا نشد؛ ممکن است حذف شده باشد.</p>
       <RouterLink to="/schedules" class="rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white">بازگشت به لیست برنامه‌ها</RouterLink>
     </div>
-
     <div v-else class="mx-auto max-w-5xl px-4 pt-8 sm:px-6">
       <div class="print:hidden">
         <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 class="text-xl font-bold text-ink-900">{{ schedule.title }}</h1>
-            <p class="mt-1 text-sm text-ink-500">
-              {{ level?.name }} - {{ schedule.shiftConfig.name }} ({{ schedule.shiftConfig.startTime }}–{{ schedule.shiftConfig.endTime }})
-            </p>
+            <h1 class="text-xl font-bold text-ink-900 dark:text-ink-50">{{ schedule.title }}</h1>
+            <p class="mt-1 text-sm text-ink-500 dark:text-ink-400">{{ level?.name }} - {{ schedule.shiftConfig.name }} ({{ schedule.shiftConfig.startTime }}–{{ schedule.shiftConfig.endTime }})</p>
           </div>
-          <RouterLink to="/schedules" class="text-sm text-ink-500 hover:text-brand-600">بازگشت به لیست ←</RouterLink>
+          <RouterLink to="/schedules" class="text-sm text-ink-500 hover:text-brand-600 dark:text-ink-400 dark:hover:text-brand-400">بازگشت به لیست ←</RouterLink>
         </div>
-
         <div class="mb-4 flex flex-wrap gap-2">
-          <button
-            v-for="(g, i) in schedule.grades"
-            :key="g.grade"
-            type="button"
-            class="rounded-lg px-4 py-2 text-sm font-medium transition"
-            :class="i === activeGradeIndex ? 'bg-brand-600 text-white' : 'border border-ink-200 bg-white text-ink-600'"
-            @click="activeGradeIndex = i"
-          >
-            پایه {{ gradeLabel(g.grade) }}
-          </button>
+          <button v-for="(g, i) in schedule.grades" :key="g.grade" type="button" class="rounded-lg px-4 py-2 text-sm font-medium transition" :class="i === activeGradeIndex ? 'bg-brand-600 text-white' : 'border border-ink-200 bg-white text-ink-600 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-300'" @click="activeGradeIndex = i">پایه {{ gradeLabel(g.grade) }}</button>
         </div>
-
-        <div class="mb-4 flex flex-wrap gap-2">
-          <button
-            type="button"
-            class="rounded-lg border border-ink-200 bg-white px-4 py-2 text-xs font-medium text-ink-700"
-            @click="isEditable = !isEditable"
-          >
-            {{ isEditable ? 'پایان ویرایش' : 'ویرایش برنامه' }}
-          </button>
-          <button v-if="isEditable" type="button" class="rounded-lg bg-ink-900 px-4 py-2 text-xs font-medium text-white" @click="handleSaveChanges">
-            ذخیره تقییرات
-          </button>
-          <button type="button" class="rounded-lg border border-ink-200 bg-white px-4 py-2 text-xs font-medium text-ink-700" @click="handlePrint">
-            چاپ / PDF
-          </button>
-          <button
-            type="button"
-            class="rounded-lg border border-ink-200 bg-white px-4 py-2 text-xs font-medium text-ink-700 disabled:opacity-50"
-            :disabled="isExportingImage"
-            @click="handleExportImage"
-          >
-            {{ isExportingImage ? 'در حال ساخت تصویر…' : 'دانلود تصویر' }}
-          </button>
-          <button type="button" class="rounded-lg border border-red-200 bg-white px-4 py-2 text-xs font-medium text-red-600" @click="handleDelete">
-            حذف برنامه
-          </button>
+        <div class="mb-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+          <button type="button" class="rounded-lg border border-ink-200 bg-white px-3 py-2.5 text-xs font-medium text-ink-700 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200" @click="isEditable = !isEditable">{{ isEditable ? 'پایان ویرایش' : 'ویرایش برنامه' }}</button>
+          <button v-if="isEditable" type="button" class="rounded-lg bg-ink-900 px-3 py-2.5 text-xs font-medium text-white dark:bg-brand-600" @click="handleSaveChanges">ذخیره تقییرات</button>
+          <button type="button" class="rounded-lg border border-ink-200 bg-white px-3 py-2.5 text-xs font-medium text-ink-700 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200" @click="handlePrint">چاپ / PDF</button>
+          <button type="button" class="rounded-lg border border-ink-200 bg-white px-3 py-2.5 text-xs font-medium text-ink-700 disabled:opacity-50 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200" :disabled="isExportingImage" @click="handleExportImage">{{ isExportingImage ? 'در حال ساخت تصویر…' : 'دانلود تصویر' }}</button>
+          <button type="button" class="col-span-2 rounded-lg border border-red-200 bg-white px-3 py-2.5 text-xs font-medium text-red-600 sm:col-span-1 dark:border-red-500/30 dark:bg-ink-900 dark:text-red-400" @click="handleDelete">حذف برنامه</button>
         </div>
-
-        <p v-if="isEditable" class="mb-4 text-xs text-ink-400">
-          برای جابجایی، یک خانه پُر را بکشید و روی خانه مقصد رها کنید؛ برای تفییر درس یا معلم یک خانه، روی آن کلیک کنید.
-        </p>
-
-        <div ref="gridContainer" class="rounded-2xl border border-ink-100 bg-white p-3">
-          <ScheduleGrid
-            v-if="activeGrade"
-            v-model:cells="activeGrade.cells"
-            :grade-schedule="activeGrade"
-            :shift-config="schedule.shiftConfig"
-            :courses="BASE_COURSES"
-            :teachers="schedule.teachers"
-            :editable="isEditable"
-          />
+        <p v-if="isEditable" class="mb-4 text-xs text-ink-400 dark:text-ink-500">برای جابجایی، یک خانه پُر را بکشید و روی خانه مقصد رها کنید؛ برای تفییر درس یا معلم یک خانه، روی آن کلیک کنید.</p>
+        <div ref="gridContainer" class="rounded-2xl border border-ink-100 bg-white p-3 dark:border-ink-800 dark:bg-ink-900">
+          <ScheduleGrid v-if="activeGrade" v-model:cells="activeGrade.cells" :grade-schedule="activeGrade" :shift-config="schedule.shiftConfig" :courses="BASE_COURSES" :teachers="schedule.teachers" :editable="isEditable" />
         </div>
       </div>
-
       <div id="print-root" class="hidden print:block">
         <PrintableSchedule v-if="activeGrade" :schedule="schedule" :grade-schedule="activeGrade" :courses="BASE_COURSES" />
       </div>
