@@ -85,7 +85,7 @@ window.addEventListener('afterprint', () => {
     <div class="mx-auto max-w-5xl px-4 pt-8 sm:px-6 print:hidden">
       <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 class="text-xl font-bold text-ink-900 dark:text-ink-50">گروه‌بندی‌های من</h1>
+          <h1 class="text-xl font-bold text-ink-900 dark:text-ink-200">گروه‌بندی‌های من</h1>
           <p class="mt-1 text-sm text-ink-500 dark:text-ink-400">فهرست گروه‌های ذخیره‌شده به تفکیک پایه؛ برای مشاهده جزئیات کامل روی هر کارت کلیک کنید.</p>
         </div>
         <RouterLink to="/students" class="rounded-xl border border-ink-200 bg-white px-4 py-2 text-sm font-medium text-ink-700 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200">
@@ -108,7 +108,7 @@ window.addEventListener('afterprint', () => {
       <div v-else class="space-y-10">
         <div v-for="[grade, groups] in groupsByGrade" :key="grade">
           <div class="mb-3 flex items-center justify-between">
-            <h2 class="flex items-center gap-2 text-base font-bold text-ink-800 dark:text-ink-100">
+            <h2 class="flex items-center gap-2 text-base font-bold text-ink-800 dark:text-ink-200">
               <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-ink-900 text-xs font-bold text-white dark:bg-brand-600">{{ groups.length }}</span>
               پایه {{ gradeLabel(grade) }}
             </h2>
@@ -136,7 +136,7 @@ window.addEventListener('afterprint', () => {
               ></div>
               <div class="p-4">
                 <div class="mb-2 flex items-start justify-between gap-2">
-                  <p class="text-sm font-semibold text-ink-800 dark:text-ink-100">{{ group.title }}</p>
+                  <p class="text-sm font-semibold text-ink-800 dark:text-ink-200">{{ group.title }}</p>
                   <span
                     class="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium"
                     :class="group.gender === 'female' ? 'bg-pink-50 text-pink-700 dark:bg-pink-500/10 dark:text-pink-300' : 'bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300'"

@@ -58,7 +58,7 @@ function goBack(): void {
           <div v-if="index < steps.length - 1" class="mx-1 h-0.5 flex-1 transition" :class="index < currentStepIndex ? 'bg-brand-600' : 'bg-ink-100 dark:bg-ink-800'"></div>
         </li>
       </ol>
-      <h1 class="mb-6 text-xl font-bold text-ink-900 dark:text-ink-50">{{ currentStep.title }}</h1>
+      <h1 class="mb-6 text-xl font-bold text-ink-900 dark:text-ink-200">{{ currentStep.title }}</h1>
       <component :is="currentStep.component" />
       <div v-if="!isLastStep" class="mt-8 flex items-center justify-between">
         <button type="button" class="rounded-xl border border-ink-200 px-5 py-2.5 text-sm font-medium text-ink-600 transition disabled:opacity-40 dark:border-ink-700 dark:text-ink-300" :disabled="wizard.step === 1" @click="goBack">

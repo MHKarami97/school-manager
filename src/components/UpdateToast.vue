@@ -29,7 +29,7 @@ function refreshApp(): void {
           </svg>
         </div>
         <div class="flex-1 text-sm">
-          <p class="font-medium text-ink-800 dark:text-ink-100">نسخه جدیدی از مدیریار در دسترس است</p>
+          <p class="font-medium text-ink-800 dark:text-ink-200">نسخه جدیدی از مدیریار در دسترس است</p>
           <p class="mt-0.5 text-ink-500 dark:text-ink-400">برای استفاده از امکانات و اصلاحات جدید، صفحه را به‌روزرسانی کنید.</p>
         </div>
         <button type="button" class="shrink-0 rounded-xl bg-brand-600 px-3 py-2 text-xs font-medium text-white hover:bg-brand-700" @click="refreshApp">

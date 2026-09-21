@@ -21,7 +21,7 @@ function chooseTheme(mode: ThemeMode): void {
       <div>
         <div class="flex items-center gap-2">
           <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-xs font-bold text-white">م</span>
-          <span class="text-base font-bold text-ink-800 dark:text-ink-100">مدیریار</span>
+          <span class="text-base font-bold text-ink-800 dark:text-ink-200">مدیریار</span>
         </div>
         <p class="mt-3 text-sm leading-6 text-ink-500 dark:text-ink-400">
           ابزار رایگان و آفلاین برای چیدن، ویرایش و چاپ برنامه هفتگی کلاس‌های ابتدایی، متوسطه اول و دوم.
@@ -30,7 +30,7 @@ function chooseTheme(mode: ThemeMode): void {
       </div>
 
       <div>
-        <h3 class="text-sm font-semibold text-ink-800 dark:text-ink-100">تماس با ما</h3>
+        <h3 class="text-sm font-semibold text-ink-800 dark:text-ink-200">تماس با ما</h3>
         <ul class="mt-3 space-y-2 text-sm text-ink-500 dark:text-ink-400">
           <li>ایمیل: <a href="mailto:mhkarami97@gmail.com" class="text-brand-600 hover:underline dark:text-brand-400">mhkarami97@gmail.com</a></li>
           <li>وب‌سایت: <a href="https://mhkarami97.ir" target="_blank" rel="noopener" class="text-brand-600 hover:underline dark:text-brand-400">mhkarami97.ir</a></li>
@@ -39,7 +39,7 @@ function chooseTheme(mode: ThemeMode): void {
       </div>
 
       <div>
-        <h3 class="text-sm font-semibold text-ink-800 dark:text-ink-100">دسترسی سریع</h3>
+        <h3 class="text-sm font-semibold text-ink-800 dark:text-ink-200">دسترسی سریع</h3>
         <ul class="mt-3 space-y-2 text-sm text-ink-500 dark:text-ink-400">
           <li><a href="#features" class="hover:text-brand-600 dark:hover:text-brand-400">امکانات</a></li>
           <li><a href="/guide" class="hover:text-brand-600 dark:hover:text-brand-400">راهنمای استفاده</a></li>

@@ -65,7 +65,7 @@ function clearSportCells(grade: number): void {
 <template>
   <div class="space-y-5">
     <div class="rounded-2xl border border-ink-100 bg-white p-5 dark:border-ink-800 dark:bg-ink-900">
-      <p class="mb-3 text-sm font-semibold text-ink-800 dark:text-ink-100">قوانین چیدمان برنامه</p>
+      <p class="mb-3 text-sm font-semibold text-ink-800 dark:text-ink-200">قوانین چیدمان برنامه</p>
       <div class="space-y-3">
         <div v-for="rule in visibleRuleItems" :key="rule.key" class="flex items-center justify-between gap-3">
           <span class="text-xs text-ink-600 dark:text-ink-300">{{ rule.label }}</span>
@@ -92,7 +92,7 @@ function clearSportCells(grade: number): void {
     </div>
 
     <div v-if="isElementary && sportGrades.length" class="rounded-2xl border border-ink-100 bg-white p-5 dark:border-ink-800 dark:bg-ink-900">
-      <p class="mb-3 text-sm font-semibold text-ink-800 dark:text-ink-100">زمان‌بندی دلخواه ورزش (اختیاری)</p>
+      <p class="mb-3 text-sm font-semibold text-ink-800 dark:text-ink-200">زمان‌بندی دلخواه ورزش (اختیاری)</p>
       <p class="mb-4 text-xs text-ink-500 dark:text-ink-400">
         اگر مشخص نکنید، موتور خودش برای ورزش هم متل باقی درس‌ها جای مناسب پیدا می‌کند. با کلیک روی خانه‌ها، دقیقاً به
         تعداد ساعت هفتگی ورزش همان پایه انتخاب کنید (مثلاً دو زنگ پشت‌سرهم در یک روز).

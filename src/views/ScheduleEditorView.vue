@@ -71,7 +71,7 @@ async function handleDelete(): Promise<void> {
       <div class="print:hidden">
         <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 class="text-xl font-bold text-ink-900 dark:text-ink-50">{{ schedule.title }}</h1>
+            <h1 class="text-xl font-bold text-ink-900 dark:text-ink-200">{{ schedule.title }}</h1>
             <p class="mt-1 text-sm text-ink-500 dark:text-ink-400">{{ level?.name }} - {{ schedule.shiftConfig.name }} ({{ schedule.shiftConfig.startTime }}–{{ schedule.shiftConfig.endTime }})</p>
           </div>
           <RouterLink to="/schedules" class="text-sm text-ink-500 hover:text-brand-600 dark:text-ink-400 dark:hover:text-brand-400">بازگشت به لیست ←</RouterLink>

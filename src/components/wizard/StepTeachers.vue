@@ -98,7 +98,7 @@ function courseLabel(courseId: string): string {
   <div class="space-y-6">
     <template v-if="isSingleTeacherMode">
       <div v-for="grade in wizard.selectedGrades" :key="grade" class="rounded-2xl border border-ink-100 bg-white p-5 dark:border-ink-800 dark:bg-ink-900">
-        <p class="mb-3 text-sm font-semibold text-ink-800 dark:text-ink-100">پایه {{ gradeLabel(grade) }}</p>
+        <p class="mb-3 text-sm font-semibold text-ink-800 dark:text-ink-200">پایه {{ gradeLabel(grade) }}</p>
         <div class="grid gap-4 sm:grid-cols-2">
           <div>
             <label class="mb-1 block text-xs font-medium text-ink-600 dark:text-ink-300">
@@ -135,7 +135,7 @@ function courseLabel(courseId: string): string {
 
     <template v-else>
       <div v-for="courseId in requiredCourseIds" :key="courseId" class="rounded-2xl border border-ink-100 bg-white p-5 dark:border-ink-800 dark:bg-ink-900">
-        <p class="mb-3 text-sm font-semibold text-ink-800 dark:text-ink-100">{{ courseLabel(courseId) }}</p>
+        <p class="mb-3 text-sm font-semibold text-ink-800 dark:text-ink-200">{{ courseLabel(courseId) }}</p>
         <div class="mb-3 flex flex-wrap gap-2">
           <span v-for="teacherId in wizard.teacherSelections[courseId] ?? []" :key="teacherId" class="flex items-center gap-1 rounded-full bg-brand-50 px-3 py-1 text-xs text-brand-700 dark:bg-brand-500/10 dark:text-brand-300">
             {{ formatTeacherName(teachersStore.byId(teacherId)) }}

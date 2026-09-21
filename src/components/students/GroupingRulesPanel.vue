@@ -14,7 +14,7 @@ function updateWeight(ruleId: string, value: number): void {
 
 <template>
   <div class="rounded-2xl border border-ink-100 bg-white p-5 dark:border-ink-800 dark:bg-ink-900">
-    <p class="mb-3 text-sm font-semibold text-ink-800 dark:text-ink-100">قوانین گروه‌بندی</p>
+    <p class="mb-3 text-sm font-semibold text-ink-800 dark:text-ink-200">قوانین گروه‌بندی</p>
     <div class="space-y-4">
       <div v-for="rule in rules" :key="rule.ruleId" class="rounded-xl border border-ink-100 p-3 dark:border-ink-800">
         <div class="flex items-center justify-between gap-3">

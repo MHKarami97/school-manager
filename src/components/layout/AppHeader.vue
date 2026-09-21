@@ -14,7 +14,7 @@ function closeMenu(): void {
     <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
       <RouterLink to="/" class="flex items-center gap-2">
         <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600 text-sm font-bold text-white">م</span>
-        <span class="text-lg font-bold text-ink-800 dark:text-ink-100">مدیریار</span>
+        <span class="text-lg font-bold text-ink-800 dark:text-ink-200">مدیریار</span>
       </RouterLink>
 
       <nav class="hidden items-center gap-8 md:flex">

@@ -35,7 +35,7 @@ function handleBlur(): void {
       v-model="modelValue"
       type="text"
       :placeholder="placeholder"
-      class="w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100"
+      class="w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200"
       @focus="isOpen = true"
       @blur="handleBlur"
     />

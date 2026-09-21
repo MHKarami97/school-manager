@@ -72,16 +72,16 @@ function clear(): void {
   <Teleport to="body">
     <div v-if="modelValue" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" @click.self="close">
       <div class="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl dark:bg-ink-900">
-        <p class="mb-4 text-sm font-semibold text-ink-800 dark:text-ink-100">ویرایش این زنگ</p>
+        <p class="mb-4 text-sm font-semibold text-ink-800 dark:text-ink-200">ویرایش این زنگ</p>
 
         <label class="mb-1 block text-xs font-medium text-ink-600 dark:text-ink-300">درس</label>
-        <select v-model="selectedCourseId" class="mb-3 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100">
+        <select v-model="selectedCourseId" class="mb-3 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200">
           <option :value="null">- خالی -</option>
           <option v-for="c in courses" :key="c.id" :value="c.id">{{ c.name }}</option>
         </select>
 
         <label class="mb-1 block text-xs font-medium text-ink-600 dark:text-ink-300">معلم</label>
-        <select v-model="selectedTeacherId" class="mb-3 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100">
+        <select v-model="selectedTeacherId" class="mb-3 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200">
           <option :value="null">- بدون معلم -</option>
           <option v-for="t in availableTeachers" :key="t.id" :value="t.id">{{ formatTeacherName(t) }}</option>
         </select>
@@ -93,13 +93,13 @@ function clear(): void {
 
         <template v-if="isCombo">
           <label class="mb-1 block text-xs font-medium text-ink-600 dark:text-ink-300">درس دوم</label>
-          <select v-model="selectedSecondaryCourseId" class="mb-3 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100">
+          <select v-model="selectedSecondaryCourseId" class="mb-3 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200">
             <option :value="null">- خالی -</option>
             <option v-for="c in courses" :key="c.id" :value="c.id">{{ c.name }}</option>
           </select>
 
           <label class="mb-1 block text-xs font-medium text-ink-600 dark:text-ink-300">معلم درس دوم</label>
-          <select v-model="selectedSecondaryTeacherId" class="mb-3 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100">
+          <select v-model="selectedSecondaryTeacherId" class="mb-3 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200">
             <option :value="null">- بدون معلم -</option>
             <option v-for="t in availableSecondaryTeachers" :key="t.id" :value="t.id">{{ formatTeacherName(t) }}</option>
           </select>

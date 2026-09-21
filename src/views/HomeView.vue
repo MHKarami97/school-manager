@@ -35,11 +35,6 @@ const features = [
     icon: 'M4 6h16M4 12h10M4 18h6',
   },
   {
-    title: 'مناسب ابتدایی و متوسطه',
-    desc: 'در ابتدایی برنامه با محوریت یک معلم و در متوسطه اول/دوم با چند معلم تخصصی و توزیع عادلانه ساعت تدریس چیده می‌شود.',
-    icon: 'M12 14l9-5-9-5-9 5 9 5zm0 0v7',
-  },
-  {
     title: 'ویرایش دستی نتیجه',
     desc: 'بعد از چیدمان خودکار، هر خانه از جدول قابل جابجایی و ویرایش دستی است تا نتیجه دقیقاً مطابق نیاز شما باشد.',
     icon: 'M4 20h4l10-10-4-4L4 16v4z',
@@ -82,7 +77,7 @@ const steps = [
             <span class="inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-medium text-brand-700 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-300">
               مخصوص مدیران، معاونان و معلمان
             </span>
-            <h1 class="mt-5 text-3xl font-extrabold leading-tight text-ink-900 sm:text-5xl dark:text-ink-50">
+            <h1 class="mt-5 text-3xl font-extrabold leading-tight text-ink-900 sm:text-5xl dark:text-ink-200">
               برنامه هفتگی کلاس را در چند دقیقه، قانون‌مند و بی‌نقص بچینید
             </h1>
             <p class="mt-4 text-base leading-7 text-ink-500 sm:text-lg dark:text-ink-400">
@@ -107,25 +102,19 @@ const steps = [
               </button>
               <RouterLink
                 v-else
-                to="/schedules"
+                to="/students"
                 class="w-full rounded-xl border border-ink-200 bg-white px-6 py-3 text-center text-sm font-semibold text-ink-700 transition hover:border-brand-300 sm:w-auto dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200"
               >
-                مشاهده‌ی برنامه‌های ذخیره‌شده
+                گروه‌بندی عادلانه دانش‌آموزان
               </RouterLink>
             </div>
-            <RouterLink
-              to="/students"
-              class="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
-            >
-              یا شروع گروه‌بندی عادلانه دانش‌آموزان ←
-            </RouterLink>
           </div>
         </div>
       </section>
 
       <section id="features" class="mx-auto max-w-6xl px-4 py-16 sm:px-6">
         <div class="mx-auto max-w-2xl text-center">
-          <h2 class="text-2xl font-bold text-ink-900 sm:text-3xl dark:text-ink-50">همه‌چیز برای یک برنامه‌ریزی دقیق</h2>
+          <h2 class="text-2xl font-bold text-ink-900 sm:text-3xl dark:text-ink-200">همه‌چیز برای یک برنامه‌ریزی دقیق</h2>
           <p class="mt-3 text-ink-500 dark:text-ink-400">امکاناتی که ساخت و مدیریت برنامه هفتگی مدرسه را ساده و سریع می‌کند.</p>
         </div>
 
@@ -140,7 +129,7 @@ const steps = [
                 <path :d="feature.icon" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
             </div>
-            <h3 class="mt-4 text-base font-semibold text-ink-800 dark:text-ink-100">{{ feature.title }}</h3>
+            <h3 class="mt-4 text-base font-semibold text-ink-800 dark:text-ink-200">{{ feature.title }}</h3>
             <p class="mt-2 text-sm leading-6 text-ink-500 dark:text-ink-400">{{ feature.desc }}</p>
           </div>
         </div>
@@ -168,7 +157,7 @@ const steps = [
       <section id="guide" class="bg-white py-16 dark:bg-ink-900">
         <div class="mx-auto max-w-6xl px-4 sm:px-6">
           <div class="mx-auto max-w-2xl text-center">
-            <h2 class="text-2xl font-bold text-ink-900 sm:text-3xl dark:text-ink-50">راهنمای استفاده در ۵ گام</h2>
+            <h2 class="text-2xl font-bold text-ink-900 sm:text-3xl dark:text-ink-200">راهنمای استفاده در ۵ گام</h2>
             <p class="mt-3 text-ink-500 dark:text-ink-400">از انتخاب پایه تا دریافت خروجی چاپی، مسیری کوتاه و بدون پیچیدگی.</p>
           </div>
 
@@ -181,7 +170,7 @@ const steps = [
               <span class="flex h-9 w-9 items-center justify-center rounded-full bg-ink-900 text-sm font-bold text-white dark:bg-brand-600">
                 {{ index + 1 }}
               </span>
-              <h3 class="mt-4 text-sm font-semibold text-ink-800 dark:text-ink-100">{{ step.title }}</h3>
+              <h3 class="mt-4 text-sm font-semibold text-ink-800 dark:text-ink-200">{{ step.title }}</h3>
               <p class="mt-2 text-xs leading-6 text-ink-500 dark:text-ink-400">{{ step.desc }}</p>
             </li>
           </ol>

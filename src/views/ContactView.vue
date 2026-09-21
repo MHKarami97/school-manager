@@ -14,7 +14,7 @@ const channels = [
     <AppHeader />
     <main class="mx-auto max-w-3xl px-4 py-12 sm:px-6">
       <div class="mb-10 text-center">
-        <h1 class="text-2xl font-bold text-ink-900 sm:text-3xl dark:text-ink-50">تماس با ما</h1>
+        <h1 class="text-2xl font-bold text-ink-900 sm:text-3xl dark:text-ink-200">تماس با ما</h1>
         <p class="mt-3 text-ink-500 dark:text-ink-400">سوال، پیشنهاد یا گزارش خطا دارید؟ خوشحال می‌شویم از شما بشنویم.</p>
       </div>
       <div class="grid gap-4 sm:grid-cols-3">
@@ -22,12 +22,12 @@ const channels = [
           <div class="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-5 w-5"><path :d="channel.icon" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </div>
-          <p class="mt-3 text-sm font-semibold text-ink-800 dark:text-ink-100">{{ channel.title }}</p>
+          <p class="mt-3 text-sm font-semibold text-ink-800 dark:text-ink-200">{{ channel.title }}</p>
           <p class="mt-1 break-all text-xs text-ink-500 dark:text-ink-400">{{ channel.value }}</p>
         </a>
       </div>
       <div class="mt-8 rounded-2xl border border-ink-100 bg-white p-6 text-sm leading-7 text-ink-600 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-300">
-        <p class="font-semibold text-ink-800 dark:text-ink-100">راه سریع‌تر برای گزارش مشکل یا پیشنهاد ویژگی</p>
+        <p class="font-semibold text-ink-800 dark:text-ink-200">راه سریع‌تر برای گزارش مشکل یا پیشنهاد ویژگی</p>
         <p class="mt-2">توسط راه‌های ارتباطی می‌توانید با ما در ارتباط باشید</p>
       </div>
     </main>

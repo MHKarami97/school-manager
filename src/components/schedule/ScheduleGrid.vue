@@ -128,7 +128,7 @@ const editingSecondaryTeacherId = computed(() => (editingCell.value ? cellAt(edi
               @click="openEditor(dayIndex, p.index - 1)"
             >
               <template v-if="courseOf(cellAt(dayIndex, p.index - 1))">
-                <p class="font-medium text-ink-800 dark:text-ink-100">
+                <p class="font-medium text-ink-800 dark:text-ink-200">
                   {{ courseOf(cellAt(dayIndex, p.index - 1))!.name }}
                   <span v-if="secondaryCourseOf(cellAt(dayIndex, p.index - 1))"> / {{ secondaryCourseOf(cellAt(dayIndex, p.index - 1))!.name }}</span>
                 </p>

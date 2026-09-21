@@ -182,7 +182,7 @@ async function updateDiscipline(id: string, value: string): Promise<void> {
     <div class="mx-auto max-w-6xl px-4 pt-8 sm:px-6">
       <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 class="text-xl font-bold text-ink-900 dark:text-ink-50">مدیریت دانش‌آموزان</h1>
+          <h1 class="text-xl font-bold text-ink-900 dark:text-ink-200">مدیریت دانش‌آموزان</h1>
           <p class="mt-1 text-sm text-ink-500 dark:text-ink-400">افزودن، ویرایش و گروه‌بندی عادلانه دانش‌آموزان هر پایه</p>
         </div>
         <div class="flex flex-wrap gap-2">
@@ -227,11 +227,11 @@ async function updateDiscipline(id: string, value: string): Promise<void> {
 
       <div class="mb-6 grid gap-4 sm:grid-cols-2">
         <div class="rounded-2xl border border-ink-100 bg-white p-4 dark:border-ink-800 dark:bg-ink-900">
-          <p class="mb-3 text-sm font-semibold text-ink-800 dark:text-ink-100">افزودن سریع دانش‌آموز</p>
+          <p class="mb-3 text-sm font-semibold text-ink-800 dark:text-ink-200">افزودن سریع دانش‌آموز</p>
           <div class="flex flex-wrap gap-2">
-            <input v-model="newFirstName" type="text" placeholder="نام" class="min-w-[100px] flex-1 rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100" />
-            <input v-model="newLastName" type="text" placeholder="نام‌خانوادگی" class="min-w-[100px] flex-1 rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100" />
-            <select v-model="newGender" class="rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100">
+            <input v-model="newFirstName" type="text" placeholder="نام" class="min-w-[100px] flex-1 rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200" />
+            <input v-model="newLastName" type="text" placeholder="نام‌خانوادگی" class="min-w-[100px] flex-1 rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200" />
+            <select v-model="newGender" class="rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200">
               <option value="male">پسر</option>
               <option value="female">دختر</option>
             </select>
@@ -240,7 +240,7 @@ async function updateDiscipline(id: string, value: string): Promise<void> {
         </div>
 
         <div class="rounded-2xl border border-ink-100 bg-white p-4 dark:border-ink-800 dark:bg-ink-900">
-          <p class="mb-3 text-sm font-semibold text-ink-800 dark:text-ink-100">ورود / خروجی اکسل و CSV</p>
+          <p class="mb-3 text-sm font-semibold text-ink-800 dark:text-ink-200">ورود / خروجی اکسل و CSV</p>
           <div class="flex flex-wrap gap-2">
             <button type="button" class="rounded-lg border border-ink-200 px-3 py-2 text-xs font-medium text-ink-700 dark:border-ink-700 dark:text-ink-200" @click="downloadStudentImportTemplate">
               دانلود قالب خالی
@@ -277,7 +277,7 @@ async function updateDiscipline(id: string, value: string): Promise<void> {
             </div>
             <template v-if="isImportOpen">
               <p class="mt-2 text-xs text-ink-400 dark:text-ink-500">هر سطر یک دانش‌آموز: نام, نام‌خانوادگی, جنسیت(m/f)</p>
-              <textarea v-model="importText" rows="4" placeholder="علی, رضایی, m&#10;سارا, احمدی, f" class="mt-2 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100"></textarea>
+              <textarea v-model="importText" rows="4" placeholder="علی, رضایی, m&#10;سارا, احمدی, f" class="mt-2 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200"></textarea>
               <button type="button" class="mt-2 rounded-lg bg-brand-600 px-4 py-2 text-xs font-medium text-white" @click="importBulk">ثبت همه</button>
             </template>
           </div>
@@ -306,7 +306,7 @@ async function updateDiscipline(id: string, value: string): Promise<void> {
           <tbody>
             <tr v-for="student in visibleStudents" :key="student.id" class="border-b border-ink-50 dark:border-ink-800/60">
               <td class="p-3"><input type="checkbox" :checked="selectedIds.has(student.id)" @change="toggleSelect(student.id)" /></td>
-              <td class="p-3 text-ink-800 dark:text-ink-100">{{ student.firstName }} {{ student.lastName }}</td>
+              <td class="p-3 text-ink-800 dark:text-ink-200">{{ student.firstName }} {{ student.lastName }}</td>
               <td class="p-3 text-ink-500 dark:text-ink-400">{{ student.gender === 'male' ? 'پسر' : 'دختر' }}</td>
               <td class="p-3">
                 <input
@@ -316,7 +316,7 @@ async function updateDiscipline(id: string, value: string): Promise<void> {
                   step="0.5"
                   :value="student.gpa ?? ''"
                   placeholder="-"
-                  class="w-20 rounded-lg border border-ink-200 bg-white px-2 py-1 text-xs text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100"
+                  class="w-20 rounded-lg border border-ink-200 bg-white px-2 py-1 text-xs text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200"
                   @change="updateGpa(student.id, ($event.target as HTMLInputElement).value)"
                 />
               </td>
@@ -328,7 +328,7 @@ async function updateDiscipline(id: string, value: string): Promise<void> {
                   step="0.5"
                   :value="student.disciplineScore ?? ''"
                   placeholder="-"
-                  class="w-20 rounded-lg border border-ink-200 bg-white px-2 py-1 text-xs text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100"
+                  class="w-20 rounded-lg border border-ink-200 bg-white px-2 py-1 text-xs text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200"
                   @change="updateDiscipline(student.id, ($event.target as HTMLInputElement).value)"
                 />
               </td>

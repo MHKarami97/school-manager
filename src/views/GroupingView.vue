@@ -153,37 +153,37 @@ async function saveResult(): Promise<void> {
     <AppHeader />
 
     <div class="mx-auto max-w-4xl px-4 pt-8 sm:px-6">
-      <h1 class="mb-6 text-xl font-bold text-ink-900 dark:text-ink-50">گروه‌بندی عادلانه دانش‌آموزان</h1>
+      <h1 class="mb-6 text-xl font-bold text-ink-900 dark:text-ink-200">گروه‌بندی عادلانه دانش‌آموزان</h1>
 
       <div v-if="phase === 'setup'" class="space-y-4">
         <div class="rounded-2xl border border-ink-100 bg-white p-5 dark:border-ink-800 dark:bg-ink-900">
           <div class="grid gap-4 sm:grid-cols-2">
             <div>
               <label class="mb-1 block text-xs font-medium text-ink-600 dark:text-ink-300">دوره تحصیلی</label>
-              <select v-model="levelId" class="w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100">
+              <select v-model="levelId" class="w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200">
                 <option v-for="l in LEVELS" :key="l.id" :value="l.id">{{ l.name }}</option>
               </select>
             </div>
             <div>
               <label class="mb-1 block text-xs font-medium text-ink-600 dark:text-ink-300">پایه</label>
-              <select v-model.number="grade" class="w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100">
+              <select v-model.number="grade" class="w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200">
                 <option v-for="g in getLevelById(levelId)?.grades ?? []" :key="g" :value="g">پایه {{ gradeLabel(g) }}</option>
               </select>
             </div>
             <div v-if="gendersPresent.length > 1">
               <label class="mb-1 block text-xs font-medium text-ink-600 dark:text-ink-300">جنسیت هدف</label>
-              <select v-model="gender" class="w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100">
+              <select v-model="gender" class="w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200">
                 <option value="male">پسر</option>
                 <option value="female">دختر</option>
               </select>
             </div>
             <div>
               <label class="mb-1 block text-xs font-medium text-ink-600 dark:text-ink-300">تعداد گروه‌ها</label>
-              <input v-model.number="groupCount" type="number" min="2" max="8" class="w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100" />
+              <input v-model.number="groupCount" type="number" min="2" max="8" class="w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200" />
             </div>
             <div>
               <label class="mb-1 block text-xs font-medium text-ink-600 dark:text-ink-300">حداکثر ظرفیت هر گروه</label>
-              <input v-model.number="maxCapacity" type="number" min="5" max="45" class="w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100" />
+              <input v-model.number="maxCapacity" type="number" min="5" max="45" class="w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200" />
             </div>
           </div>
 
@@ -191,7 +191,7 @@ async function saveResult(): Promise<void> {
           <div class="flex flex-wrap gap-3">
             <div v-for="(_, i) in teacherStrengths" :key="i" class="flex items-center gap-2 rounded-lg border border-ink-200 px-3 py-1.5 dark:border-ink-700">
               <span class="text-xs text-ink-500 dark:text-ink-400">گروه {{ i + 1 }}</span>
-              <input v-model.number="teacherStrengths[i]" type="number" min="1" max="5" class="w-12 rounded border border-ink-200 bg-white px-1 py-0.5 text-xs text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100" />
+              <input v-model.number="teacherStrengths[i]" type="number" min="1" max="5" class="w-12 rounded border border-ink-200 bg-white px-1 py-0.5 text-xs text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200" />
             </div>
           </div>
 
@@ -228,7 +228,7 @@ async function saveResult(): Promise<void> {
             @drop="onDropToGroup(index)"
           >
             <div class="mb-2 flex items-center justify-between">
-              <p class="text-sm font-semibold text-ink-800 dark:text-ink-100">{{ group.title }}</p>
+              <p class="text-sm font-semibold text-ink-800 dark:text-ink-200">{{ group.title }}</p>
               <span class="text-[11px] text-ink-400 dark:text-ink-500">{{ groupStats(group).count }} / {{ maxCapacity }} نفر</span>
             </div>
             <div class="mb-3 grid grid-cols-2 gap-2 text-[11px] text-ink-500 dark:text-ink-400">

@@ -31,7 +31,7 @@ async function handleDelete(id: string): Promise<void> {
     <div class="mx-auto max-w-5xl px-4 pt-8 sm:px-6">
       <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 class="text-xl font-bold text-ink-900 dark:text-ink-50">برنامه‌های ذخیره‌شده من</h1>
+          <h1 class="text-xl font-bold text-ink-900 dark:text-ink-200">برنامه‌های ذخیره‌شده من</h1>
           <p class="mt-1 text-sm text-ink-500 dark:text-ink-400">{{ schedulesStore.items.length }} برنامه ذخیره‌شده روی همین دستگاه</p>
         </div>
         <RouterLink to="/wizard" class="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-700">+ ساخت برنامه جدید</RouterLink>
@@ -50,7 +50,7 @@ async function handleDelete(id: string): Promise<void> {
           <div class="h-1.5 bg-gradient-to-l from-brand-600 to-brand-400"></div>
           <div class="p-5">
             <div class="flex items-start justify-between gap-2">
-              <p class="text-base font-semibold text-ink-800 dark:text-ink-100">{{ item.title }}</p>
+              <p class="text-base font-semibold text-ink-800 dark:text-ink-200">{{ item.title }}</p>
               <span class="shrink-0 rounded-full bg-brand-50 px-2.5 py-1 text-[11px] font-medium text-brand-700 dark:bg-brand-500/10 dark:text-brand-300">{{ levelName(item.levelId) }}</span>
             </div>
             <div class="mt-3 flex flex-wrap gap-1.5">

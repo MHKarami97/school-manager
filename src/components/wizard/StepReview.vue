@@ -104,7 +104,7 @@ async function handleGenerate(): Promise<void> {
 <template>
   <div class="space-y-6">
     <div class="rounded-2xl border border-ink-100 bg-white p-5 dark:border-ink-800 dark:bg-ink-900">
-      <p class="text-sm font-semibold text-ink-800 dark:text-ink-100">خلاصه انتخاب‌های شما</p>
+      <p class="text-sm font-semibold text-ink-800 dark:text-ink-200">خلاصه انتخاب‌های شما</p>
       <dl class="mt-3 grid gap-2 text-sm text-ink-600 sm:grid-cols-2 dark:text-ink-300">
         <div>
           <dt class="inline text-ink-400 dark:text-ink-500">مخاطب: </dt>
@@ -126,7 +126,7 @@ async function handleGenerate(): Promise<void> {
     </div>
 
     <div class="rounded-2xl border border-ink-100 bg-white p-5 dark:border-ink-800 dark:bg-ink-900">
-      <p class="mb-1 text-sm font-semibold text-ink-800 dark:text-ink-100">ساعات هفتگی موردنیاز دروس</p>
+      <p class="mb-1 text-sm font-semibold text-ink-800 dark:text-ink-200">ساعات هفتگی موردنیاز دروس</p>
       <p class="mb-4 text-xs text-ink-500 dark:text-ink-400">مقادیر زیر از جدول رسمی ساعات درسی تنظیم‌شده برای هر پایه خوانده می‌شوند.</p>
       <div v-for="item in weeklyHoursByGrade" :key="item.grade" class="mb-4 last:mb-0">
         <div class="mb-2 flex items-center justify-between">
@@ -136,7 +136,7 @@ async function handleGenerate(): Promise<void> {
         <div class="grid gap-1.5 sm:grid-cols-2">
           <div v-for="course in item.courses" :key="course.courseId" class="flex items-center justify-between rounded-lg bg-ink-50 px-3 py-2 text-xs dark:bg-ink-800">
             <span class="text-ink-600 dark:text-ink-300">{{ course.name }}</span>
-            <span class="font-medium text-ink-800 dark:text-ink-100">{{ course.hours }} ساعت</span>
+            <span class="font-medium text-ink-800 dark:text-ink-200">{{ course.hours }} ساعت</span>
           </div>
         </div>
       </div>

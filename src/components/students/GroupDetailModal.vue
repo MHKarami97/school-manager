@@ -37,7 +37,7 @@ const stats = computed(() => {
       <div class="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-xl dark:bg-ink-900">
         <div class="mb-4 flex items-start justify-between gap-3">
           <div>
-            <p class="text-base font-bold text-ink-900 dark:text-ink-50">{{ group.title }}</p>
+            <p class="text-base font-bold text-ink-900 dark:text-ink-200">{{ group.title }}</p>
             <p class="mt-1 text-xs text-ink-500 dark:text-ink-400">
               پایه {{ gradeLabel(group.grade) }} - {{ group.gender === 'female' ? 'دختر' : 'پسر' }}
             </p>
@@ -47,19 +47,19 @@ const stats = computed(() => {
 
         <div class="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div class="rounded-xl bg-ink-50 p-3 text-center dark:bg-ink-800">
-            <p class="text-lg font-bold text-ink-800 dark:text-ink-100">{{ students.length }}/{{ group.capacity }}</p>
+            <p class="text-lg font-bold text-ink-800 dark:text-ink-200">{{ students.length }}/{{ group.capacity }}</p>
             <p class="text-[10px] text-ink-500 dark:text-ink-400">نفرات</p>
           </div>
           <div class="rounded-xl bg-ink-50 p-3 text-center dark:bg-ink-800">
-            <p class="text-lg font-bold text-ink-800 dark:text-ink-100">{{ stats.avgGpa }}</p>
+            <p class="text-lg font-bold text-ink-800 dark:text-ink-200">{{ stats.avgGpa }}</p>
             <p class="text-[10px] text-ink-500 dark:text-ink-400">میانگین معدل</p>
           </div>
           <div class="rounded-xl bg-ink-50 p-3 text-center dark:bg-ink-800">
-            <p class="text-lg font-bold text-ink-800 dark:text-ink-100">{{ stats.avgDiscipline }}</p>
+            <p class="text-lg font-bold text-ink-800 dark:text-ink-200">{{ stats.avgDiscipline }}</p>
             <p class="text-[10px] text-ink-500 dark:text-ink-400">میانگین انضباط</p>
           </div>
           <div class="rounded-xl bg-ink-50 p-3 text-center dark:bg-ink-800">
-            <p class="text-lg font-bold text-ink-800 dark:text-ink-100">{{ group.teacherStrengthScore }}/۵</p>
+            <p class="text-lg font-bold text-ink-800 dark:text-ink-200">{{ group.teacherStrengthScore }}/۵</p>
             <p class="text-[10px] text-ink-500 dark:text-ink-400">قدرت معلم</p>
           </div>
         </div>
@@ -79,7 +79,7 @@ const stats = computed(() => {
             </thead>
             <tbody>
               <tr v-for="student in students" :key="student.id" class="border-t border-ink-50 dark:border-ink-800/60">
-                <td class="p-2 text-ink-800 dark:text-ink-100">{{ student.firstName }} {{ student.lastName }}</td>
+                <td class="p-2 text-ink-800 dark:text-ink-200">{{ student.firstName }} {{ student.lastName }}</td>
                 <td class="p-2 text-ink-500 dark:text-ink-400">{{ student.gpa ?? '-' }}</td>
                 <td class="p-2 text-ink-500 dark:text-ink-400">{{ student.disciplineScore ?? '-' }}</td>
                 <td class="p-2">

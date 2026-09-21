@@ -67,22 +67,22 @@ const groupingSteps = [
 
     <main class="mx-auto max-w-3xl px-4 py-12 sm:px-6">
       <div class="mb-10 text-center">
-        <h1 class="text-2xl font-bold text-ink-900 sm:text-3xl dark:text-ink-50">راهنمای کامل استفاده از مدیریار</h1>
+        <h1 class="text-2xl font-bold text-ink-900 sm:text-3xl dark:text-ink-200">راهنمای کامل استفاده از مدیریار</h1>
         <p class="mt-3 text-ink-500 dark:text-ink-400">از انتخاب پایه تا دریافت خروجی چاپی - مرحله‌به‌مرحله.</p>
       </div>
 
-      <h2 class="mb-4 text-lg font-bold text-ink-800 dark:text-ink-100">بخش اول: ساخت برنامه هفتگی</h2>
+      <h2 class="mb-4 text-lg font-bold text-ink-800 dark:text-ink-200">بخش اول: ساخت برنامه هفتگی</h2>
       <ol class="space-y-6">
         <li v-for="step in steps" :key="step.title" class="rounded-2xl border border-ink-100 bg-white p-6 dark:border-ink-800 dark:bg-ink-900">
-          <h2 class="text-base font-semibold text-ink-800 dark:text-ink-100">{{ step.title }}</h2>
+          <h2 class="text-base font-semibold text-ink-800 dark:text-ink-200">{{ step.title }}</h2>
           <p class="mt-2 text-sm leading-7 text-ink-600 dark:text-ink-300">{{ step.body }}</p>
         </li>
       </ol>
 
-      <h2 class="mb-4 mt-12 text-lg font-bold text-ink-800 dark:text-ink-100">بخش دوم: مدیریت و گروه‌بندی عادلانه دانش‌آموزان</h2>
+      <h2 class="mb-4 mt-12 text-lg font-bold text-ink-800 dark:text-ink-200">بخش دوم: مدیریت و گروه‌بندی عادلانه دانش‌آموزان</h2>
       <ol class="space-y-6">
         <li v-for="step in groupingSteps" :key="step.title" class="rounded-2xl border border-ink-100 bg-white p-6 dark:border-ink-800 dark:bg-ink-900">
-          <h2 class="text-base font-semibold text-ink-800 dark:text-ink-100">{{ step.title }}</h2>
+          <h2 class="text-base font-semibold text-ink-800 dark:text-ink-200">{{ step.title }}</h2>
           <p class="mt-2 text-sm leading-7 text-ink-600 dark:text-ink-300">{{ step.body }}</p>
         </li>
       </ol>
