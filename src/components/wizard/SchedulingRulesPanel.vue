@@ -94,7 +94,7 @@ function clearSportCells(grade: number): void {
     <div v-if="isElementary && sportGrades.length" class="rounded-2xl border border-ink-100 bg-white p-5 dark:border-ink-800 dark:bg-ink-900">
       <p class="mb-3 text-sm font-semibold text-ink-800 dark:text-ink-200">زمان‌بندی دلخواه ورزش (اختیاری)</p>
       <p class="mb-4 text-xs text-ink-500 dark:text-ink-400">
-        اگر مشخص نکنید، موتور خودش برای ورزش هم متل باقی درس‌ها جای مناسب پیدا می‌کند. با کلیک روی خانه‌ها، دقیقاً به
+        اگر مشخص نکنید، موتور خودش برای ورزش هم مثل باقی درس‌ها جای مناسب پیدا می‌کند. با کلیک روی خانه‌ها، دقیقاً به
         تعداد ساعت هفتگی ورزش همان پایه انتخاب کنید (مثلاً دو زنگ پشت‌سرهم در یک روز).
       </p>
 

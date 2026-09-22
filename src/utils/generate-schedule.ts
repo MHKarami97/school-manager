@@ -97,7 +97,7 @@ export function generateSchedule(input: GenerateInput): GenerateOutput {
 
       if (!result.success && result.unplaced.length > 0) {
         warnings.push(
-          `پایه ${gradeLabel(grade)}: برخی واحدها به دلیل ناسازگاری قوانین یا ظرفیت کامل جا نگرفت (${result.unplaced.map((u) => u.courseId).join('، ')}).`,
+          `پایه ${gradeLabel(grade)}: برخی واحدها به دلیل ناسازگاری قوانین یا ظرفیت کامل جا نگرفت (لطفا دوباره تلاش کنید).`,
         )
       }
 
@@ -159,7 +159,7 @@ export function generateSchedule(input: GenerateInput): GenerateOutput {
 
       if (!result.success && result.unplaced.length > 0) {
         warnings.push(
-          `پایه ${gradeLabel(grade)}: برخی واحدها به دلیل ناسازگاری قوانین یا ظرفیت کامل جا نگرفت (${result.unplaced.map((u) => u.courseId).join('، ')}).`,
+          `پایه ${gradeLabel(grade)}: برخی واحدها به دلیل ناسازگاری قوانین یا ظرفیت کامل جا نگرفت (لطفا دوباره تلاش کنید).`,
         )
       }
 

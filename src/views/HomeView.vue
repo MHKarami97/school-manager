@@ -92,16 +92,7 @@ const steps = [
               >
                 شروع ساخت برنامه جدید
               </button>
-              <button
-                v-if="canContinue"
-                type="button"
-                class="w-full rounded-xl border border-ink-200 bg-white px-6 py-3 text-sm font-semibold text-ink-700 transition hover:border-brand-300 sm:w-auto dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200"
-                @click="continueSession"
-              >
-                ادامه‌ی برنامه‌ی نیمه‌کاره
-              </button>
               <RouterLink
-                v-else
                 to="/students"
                 class="w-full rounded-xl border border-ink-200 bg-white px-6 py-3 text-center text-sm font-semibold text-ink-700 transition hover:border-brand-300 sm:w-auto dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200"
               >

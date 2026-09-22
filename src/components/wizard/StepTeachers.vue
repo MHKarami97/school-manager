@@ -49,9 +49,27 @@ async function saveMainTeacher(grade: number): Promise<void> {
   mainNameInputs.value[grade] = ''
 }
 
+async function saveMainTeacherWithGender(grade: number, gender: TeacherGender): Promise<void> {
+  const name = (mainNameInputs.value[grade] ?? '').trim()
+  if (!name) return
+  mainGenderInputs.value[grade] = gender
+  const teacher = await teachersStore.addTeacher(name, [], mainGenderInputs.value[grade] ?? null)
+  wizard.setTeacherSelection(mainTeacherKey(grade), [teacher.id])
+  mainNameInputs.value[grade] = ''
+}
+
 async function saveSportTeacher(grade: number): Promise<void> {
   const name = (sportNameInputs.value[grade] ?? '').trim()
   if (!name) return
+  const teacher = await teachersStore.addTeacher(name, ['sport'], sportGenderInputs.value[grade] ?? null)
+  wizard.setTeacherSelection(sportTeacherKey(grade), [teacher.id])
+  sportNameInputs.value[grade] = ''
+}
+
+async function saveSportTeacherWithGender(grade: number, gender: TeacherGender): Promise<void> {
+  const name = (sportNameInputs.value[grade] ?? '').trim()
+  if (!name) return
+  sportGenderInputs.value[grade] = gender
   const teacher = await teachersStore.addTeacher(name, ['sport'], sportGenderInputs.value[grade] ?? null)
   wizard.setTeacherSelection(sportTeacherKey(grade), [teacher.id])
   sportNameInputs.value[grade] = ''
@@ -110,8 +128,8 @@ function courseLabel(courseId: string): string {
               <button type="button" class="shrink-0 rounded-lg bg-ink-800 px-3 text-xs font-medium text-white dark:bg-ink-700" @click="saveMainTeacher(grade)">ثبت</button>
             </div>
             <div class="mt-1.5 flex gap-1.5">
-              <button type="button" class="rounded-full px-3 py-1 text-[11px] font-medium transition" :class="mainGenderInputs[grade] === 'male' ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-500 dark:bg-ink-800 dark:text-ink-400'" @click="mainGenderInputs[grade] = 'male'">آقا</button>
-              <button type="button" class="rounded-full px-3 py-1 text-[11px] font-medium transition" :class="mainGenderInputs[grade] === 'female' ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-500 dark:bg-ink-800 dark:text-ink-400'" @click="mainGenderInputs[grade] = 'female'">خانم</button>
+              <button type="button" class="rounded-full px-3 py-1 text-[11px] font-medium transition" :class="mainGenderInputs[grade] === 'male' ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-500 dark:bg-ink-800 dark:text-ink-400'" @click="saveMainTeacherWithGender(grade, 'male')">آقا</button>
+              <button type="button" class="rounded-full px-3 py-1 text-[11px] font-medium transition" :class="mainGenderInputs[grade] === 'female' ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-500 dark:bg-ink-800 dark:text-ink-400'" @click="saveMainTeacherWithGender(grade, 'female')">خانم</button>
             </div>
           </div>
 
@@ -125,8 +143,8 @@ function courseLabel(courseId: string): string {
               <button type="button" class="shrink-0 rounded-lg bg-ink-800 px-3 text-xs font-medium text-white dark:bg-ink-700" @click="saveSportTeacher(grade)">ثبت</button>
             </div>
             <div class="mt-1.5 flex gap-1.5">
-              <button type="button" class="rounded-full px-3 py-1 text-[11px] font-medium transition" :class="sportGenderInputs[grade] === 'male' ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-500 dark:bg-ink-800 dark:text-ink-400'" @click="sportGenderInputs[grade] = 'male'">آقا</button>
-              <button type="button" class="rounded-full px-3 py-1 text-[11px] font-medium transition" :class="sportGenderInputs[grade] === 'female' ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-500 dark:bg-ink-800 dark:text-ink-400'" @click="sportGenderInputs[grade] = 'female'">خانم</button>
+              <button type="button" class="rounded-full px-3 py-1 text-[11px] font-medium transition" :class="sportGenderInputs[grade] === 'male' ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-500 dark:bg-ink-800 dark:text-ink-400'" @click="saveSportTeacherWithGender(grade, 'male')">آقا</button>
+              <button type="button" class="rounded-full px-3 py-1 text-[11px] font-medium transition" :class="sportGenderInputs[grade] === 'female' ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-500 dark:bg-ink-800 dark:text-ink-400'" @click="saveSportTeacherWithGender(grade, 'female')">خانم</button>
             </div>
           </div>
         </div>
