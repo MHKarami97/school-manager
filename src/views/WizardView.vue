@@ -24,6 +24,13 @@ const currentStepIndex = computed(() => Math.min(Math.max(wizard.step, 1), steps
 const currentStep = computed(() => steps[currentStepIndex.value])
 const isLastStep = computed(() => currentStepIndex.value === steps.length - 1)
 
+/** درصد پیشرفت نوار پس‌زمینه؛ از مرکز دایره اول تا مرکز دایره فعلی. */
+const progressPercent = computed(() => {
+  if (steps.length <= 1) return 0
+  return (currentStepIndex.value / (steps.length - 1)) * 100
+})
+
+
 const canGoNext = computed(() => {
   switch (wizard.step) {
     case 1:
@@ -77,30 +84,40 @@ onMounted(() => {
           شروع دوباره (پاک‌کردن اطلاعات)
         </button>
       </div>
-      <ol class="mb-8 flex items-start">
-        <li v-for="(step, index) in steps" :key="step.title" class="flex flex-1 flex-col items-center">
-          <div class="flex w-full items-center">
-            <button
-              type="button"
-              class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold transition"
-              :class="[
-                index <= currentStepIndex ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-400 dark:bg-ink-800 dark:text-ink-500',
-                index <= currentStepIndex ? 'cursor-pointer hover:opacity-90' : 'cursor-not-allowed',
-              ]"
-              :disabled="index > currentStepIndex"
-              :aria-label="step.title"
-              :title="step.title"
-              @click="goToStep(index)"
-            >
-              {{ index + 1 }}
-            </button>
-            <div v-if="index < steps.length - 1" class="mx-1 h-0.5 flex-1 transition" :class="index < currentStepIndex ? 'bg-brand-600' : 'bg-ink-100 dark:bg-ink-800'"></div>
-          </div>
-          <span class="mt-1.5 max-w-[70px] truncate text-center text-[10px] font-medium text-ink-500 dark:text-ink-400">
+
+      <ol class="relative mb-10 flex justify-between px-1">
+        <!-- نوار پس‌زمینه خاکستری؛ پشت دایره‌ها، دقیقاً هم‌ارتفاع مرکز آن‌ها -->
+        <div class="pointer-events-none absolute top-3.5 right-4 left-4 h-0.5 -translate-y-1/2 bg-ink-100 dark:bg-ink-800 sm:top-4"></div>
+        <!-- نوار پیشرفت رنگی روی همان مسیر -->
+        <div
+          class="pointer-events-none absolute top-3.5 right-4 h-0.5 -translate-y-1/2 bg-brand-600 transition-all sm:top-4"
+          :style="{ width: `calc((100% - 2rem) * ${progressPercent / 100})` }"
+        ></div>
+
+        <li v-for="(step, index) in steps" :key="step.title" class="relative z-10 flex flex-1 flex-col items-center">
+          <button
+            type="button"
+            class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold transition sm:h-8 sm:w-8 sm:text-xs"
+            :class="[
+              index <= currentStepIndex ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-400 dark:bg-ink-800 dark:text-ink-500',
+              index <= currentStepIndex ? 'cursor-pointer hover:opacity-90' : 'cursor-not-allowed',
+            ]"
+            :disabled="index > currentStepIndex"
+            :aria-label="step.title"
+            :title="step.title"
+            @click="goToStep(index)"
+          >
+            {{ index + 1 }}
+          </button>
+          <span
+            class="mt-1.5 w-full text-center text-[9px] font-medium leading-tight text-ink-500 dark:text-ink-400 sm:text-[11px]"
+            style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;"
+          >
             {{ step.title }}
           </span>
         </li>
       </ol>
+
       <h1 class="mb-6 text-xl font-bold text-ink-900 dark:text-ink-200">{{ currentStep.title }}</h1>
       <component :is="currentStep.component" />
       <div v-if="!isLastStep" class="mt-8 flex items-center justify-between">
