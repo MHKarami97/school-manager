@@ -18,11 +18,6 @@ function startFresh(): void {
   router.push('/wizard')
 }
 
-function continueSession(): void {
-  wizardStore.restore()
-  router.push('/wizard')
-}
-
 const features = [
   {
     title: 'چیدمان خودکار و قانون‌مند',
