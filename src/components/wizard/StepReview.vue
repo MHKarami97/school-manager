@@ -90,7 +90,6 @@ async function handleGenerate(): Promise<void> {
     const now = Date.now()
     await schedulesStore.save({ id, createdAt: now, updatedAt: now, ...schedule })
 
-    wizard.reset()
     router.push(`/schedules/${id}`)
   } catch (error) {
     errorMessage.value = 'ساخت برنامه با خطا مواجه شد. لطفاً مراحل قبل را بررسی کنید.'
