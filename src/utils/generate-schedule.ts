@@ -16,7 +16,7 @@ import { getSinglePeriodPair } from '@/config/single-period-pairs.config'
 import { generateGradeSchedule, type CourseRequirement, type AdjacencyPair, type ComboRequirement } from './scheduler'
 import { assignTeachersFairly, type GradeCourseLoad } from './teacher-assignment'
 import { mainTeacherKey, sportTeacherKey } from './wizard-keys'
-import { mandatoryRuleOverridesForGrade } from './schedule-feasibility'
+import { relaxableRulesForGrade } from './schedule-feasibility'
 
 export interface GenerateInput {
   audience: Audience
@@ -69,11 +69,17 @@ export function generateSchedule(input: GenerateInput): GenerateOutput {
       const comboRequirements = comboRequirementsFor(grade)
       const comboCourseIds = new Set(comboRequirements.flatMap((c) => [c.primaryCourseId, c.secondaryCourseId]))
 
-      /** override per-grade: پایه‌های ۱ و ۲ همیشه بدون عدم‌تکرار روزانه/طولی چیده می‌شوند؛ بقیه طبق انتخاب کاربر. */
-      const effectiveRuleToggles: RuleToggles = {
-        ...input.ruleToggles,
-        ...mandatoryRuleOverridesForGrade(input.levelId, grade),
-      }
+      /**
+       * پایه‌های ۱ و ۲: ابتدا با هر دو قانون فعال تلاش می‌شود؛ فقط در صورت
+       * ناسازگاری، اول «عرضی» و در نهایت «طولی» کنار گذاشته می‌شود. برای بقیه
+       * پایه‌ها، هیچ Escalation‌ای رخ نمی‌دهد و قوانین طبق انتخاب کاربر سخت باقی
+       * می‌مانند.
+       */
+      const relaxableRules = relaxableRulesForGrade(input.levelId, grade)
+      const baseRuleToggles: RuleToggles =
+        relaxableRules.length > 0
+          ? { ...input.ruleToggles, noSameDayRepeat: true, noSameColumnRepeat: true }
+          : input.ruleToggles
 
       const requirements: CourseRequirement[] = Object.entries(hours)
         .map(([courseId, weeklyHours]) => {
@@ -89,11 +95,12 @@ export function generateSchedule(input: GenerateInput): GenerateOutput {
         requirements,
         courses: BASE_COURSES,
         lockedCells,
-        ruleToggles: effectiveRuleToggles,
+        ruleToggles: baseRuleToggles,
+        relaxableRules,
         adjacencyPairs: adjacencyPairsFor(input.levelId),
         comboRequirements,
         avoidLastPeriodCourseIds: AVOID_LAST_PERIOD_COURSES[input.levelId],
-        distributeAcrossDays: input.levelId === 'elementary' && grade === 1,
+        preferEvenSpread: relaxableRules.length > 0,
       })
 
       if (!result.success && result.unplaced.length > 0) {
@@ -150,18 +157,12 @@ export function generateSchedule(input: GenerateInput): GenerateOutput {
         weeklyHours: a.weeklyHours,
       }))
 
-      /** override per-grade نیز در مسیر subject-teacher اعمال می‌شود. */
-      const effectiveRuleToggles: RuleToggles = {
-        ...input.ruleToggles,
-        ...mandatoryRuleOverridesForGrade(input.levelId, grade),
-      }
-
       const result = generateGradeSchedule({
         shiftConfig: input.shiftConfig,
         requirements,
         courses: BASE_COURSES,
         lockedCells: input.lockedSportCells[grade] ?? [],
-        ruleToggles: effectiveRuleToggles,
+        ruleToggles: input.ruleToggles,
       })
 
       if (!result.success && result.unplaced.length > 0) {

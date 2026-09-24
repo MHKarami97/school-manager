@@ -3,7 +3,6 @@ import { WEEK_DAYS } from '@/types'
 
 export interface CourseRequirement {
   courseId: string
-  /** واحد درسی؛ مقادیر اعشاری فقط توسط زنگ مشترک نیم‌واحدی پوشش داده می‌شوند. */
   weeklyHours: number
 }
 
@@ -23,10 +22,11 @@ export interface SchedulerOptions {
   courses: CourseDefinition[]
   lockedCells?: LessonCell[]
   ruleToggles?: RuleToggles
+  relaxableRules?: (keyof RuleToggles)[]
   adjacencyPairs?: AdjacencyPair[]
   comboRequirements?: ComboRequirement[]
   avoidLastPeriodCourseIds?: string[]
-  distributeAcrossDays?: boolean
+  preferEvenSpread?: boolean
   maxAttempts?: number
 }
 
@@ -48,11 +48,33 @@ const DEFAULT_RULE_TOGGLES: RuleToggles = {
 type Token = { kind: 'course'; courseId: string } | { kind: 'combo'; primaryCourseId: string; secondaryCourseId: string }
 
 /**
- * موتور چیدمان bounded: ابتدا قیدهای سخت را جاگذاری می‌کند، سپس با Greedy چندتلاشی
- * برنامه را می‌سازد. واحدهای اعشاری باید از طریق یک زنگ ترکیبی نیم‌واحدی به
- * واحدهای کامل قابل چیدمان تبدیل شوند؛ مسئله ناسازگار هرگز مرورگر را فریز نمی‌کند.
+ * موتور Escalation: مرحله ۰ با ruleToggles اصلی (سخت‌گیرانه) تلاش می‌کند. اگر
+ * جا نشود، به‌ترتیب relaxableRules را یکی‌یکی کنار می‌گذارد و دوباره تلاش
+ * می‌کند. هر مرحله محدود به maxAttempts تلاش bounded است؛ هرگز مرورگر فریز
+ * نمی‌شود.
  */
 export function generateGradeSchedule(options: SchedulerOptions): SchedulerResult {
+  const { ruleToggles = DEFAULT_RULE_TOGGLES, relaxableRules = [], requirements } = options
+
+  const stages: RuleToggles[] = [ruleToggles]
+  let current = { ...ruleToggles }
+  for (const rule of relaxableRules) {
+    if (current[rule]) {
+      current = { ...current, [rule]: false }
+      stages.push({ ...current })
+    }
+  }
+
+  let best: SchedulerResult | null = null
+  for (const stageRules of stages) {
+    const result = runAttempts({ ...options, ruleToggles: stageRules })
+    if (result.success) return result
+    if (!best || result.unplaced.length < best.unplaced.length) best = result
+  }
+  return best ?? { success: false, cells: [], unplaced: requirements }
+}
+
+function runAttempts(options: SchedulerOptions): SchedulerResult {
   const {
     shiftConfig,
     requirements,
@@ -62,7 +84,7 @@ export function generateGradeSchedule(options: SchedulerOptions): SchedulerResul
     adjacencyPairs = [],
     comboRequirements = [],
     avoidLastPeriodCourseIds = [],
-    distributeAcrossDays = false,
+    preferEvenSpread = false,
     maxAttempts = 20,
   } = options
   const periodsCount = shiftConfig.periodsCount
@@ -76,14 +98,18 @@ export function generateGradeSchedule(options: SchedulerOptions): SchedulerResul
     const grid: (LessonCell | null)[][] = Array.from({ length: DAYS_COUNT }, () => Array(periodsCount).fill(null))
     const dayHasCourse = new Map<string, Set<number>>()
     const columnHasCourse = new Map<string, Set<number>>()
+    const dayUsageCount = new Map<string, Map<number, number>>()
+    const columnUsageCount = new Map<string, Map<number, number>>()
 
     for (const cell of lockedCells) {
       if (cell.dayIndex >= DAYS_COUNT || cell.periodIndex >= periodsCount) continue
       grid[cell.dayIndex][cell.periodIndex] = { ...cell, isLocked: true }
-      if (cell.courseId) markUsage(dayHasCourse, columnHasCourse, cell.courseId, cell.dayIndex, cell.periodIndex)
+      if (cell.courseId) {
+        markUsage(dayHasCourse, columnHasCourse, dayUsageCount, columnUsageCount, cell.courseId, cell.dayIndex, cell.periodIndex)
+      }
     }
 
-    if (!placeFirstPeriodCourses(quranReqs, grid, dayHasCourse, columnHasCourse, attempt)) continue
+    if (!placeFirstPeriodCourses(quranReqs, grid, dayHasCourse, columnHasCourse, dayUsageCount, columnUsageCount, attempt)) continue
 
     const comboCourseIds = new Set(comboRequirements.flatMap((combo) => [combo.primaryCourseId, combo.secondaryCourseId]))
     const remaining = new Map(
@@ -92,7 +118,7 @@ export function generateGradeSchedule(options: SchedulerOptions): SchedulerResul
 
     if (ruleToggles.persianWritingAdjacency) {
       for (const pair of adjacencyPairs) {
-        placeAdjacencyPair(pair, grid, remaining, dayHasCourse, columnHasCourse, periodsCount, attempt, ruleToggles)
+        placeAdjacencyPair(pair, grid, remaining, dayHasCourse, columnHasCourse, dayUsageCount, columnUsageCount, periodsCount, attempt, ruleToggles, preferEvenSpread)
       }
     }
 
@@ -102,9 +128,11 @@ export function generateGradeSchedule(options: SchedulerOptions): SchedulerResul
       grid,
       dayHasCourse,
       columnHasCourse,
+      dayUsageCount,
+      columnUsageCount,
       ruleToggles,
       avoidLastPeriodCourseIds,
-      distributeAcrossDays,
+      preferEvenSpread,
       attempt,
     )
 
@@ -122,6 +150,8 @@ function placeFirstPeriodCourses(
   grid: (LessonCell | null)[][],
   dayHasCourse: Map<string, Set<number>>,
   columnHasCourse: Map<string, Set<number>>,
+  dayUsageCount: Map<string, Map<number, number>>,
+  columnUsageCount: Map<string, Map<number, number>>,
   attempt: number,
 ): boolean {
   for (const [index, requirement] of requirements.entries()) {
@@ -131,7 +161,7 @@ function placeFirstPeriodCourses(
       if (placed >= requirement.weeklyHours) break
       if (grid[day][0] !== null) continue
       grid[day][0] = { dayIndex: day, periodIndex: 0, courseId: requirement.courseId, teacherId: null }
-      markUsage(dayHasCourse, columnHasCourse, requirement.courseId, day, 0)
+      markUsage(dayHasCourse, columnHasCourse, dayUsageCount, columnUsageCount, requirement.courseId, day, 0)
       placed++
     }
     if (placed < requirement.weeklyHours) return false
@@ -153,9 +183,11 @@ function placeGreedily(
   grid: (LessonCell | null)[][],
   dayHasCourse: Map<string, Set<number>>,
   columnHasCourse: Map<string, Set<number>>,
+  dayUsageCount: Map<string, Map<number, number>>,
+  columnUsageCount: Map<string, Map<number, number>>,
   rules: RuleToggles,
   avoidLast: string[],
-  distributeAcrossDays: boolean,
+  preferEvenSpread: boolean,
   attempt: number,
 ): boolean {
   const periodsCount = grid[0]?.length ?? 0
@@ -166,8 +198,9 @@ function placeGreedily(
       periodsCount,
       token.kind === 'course' && avoidLast.includes(token.courseId),
       token.kind === 'course' ? token.courseId : null,
-      dayHasCourse,
-      distributeAcrossDays,
+      dayUsageCount,
+      columnUsageCount,
+      preferEvenSpread,
       attempt + index * 71,
     )
     const target = candidates.find(([day, period]) => courseIds.every((courseId) => isAllowed(courseId, day, period, dayHasCourse, columnHasCourse, rules)))
@@ -176,7 +209,7 @@ function placeGreedily(
     grid[day][period] = token.kind === 'course'
       ? { dayIndex: day, periodIndex: period, courseId: token.courseId, teacherId: null }
       : { dayIndex: day, periodIndex: period, courseId: token.primaryCourseId, teacherId: null, secondaryCourseId: token.secondaryCourseId, secondaryTeacherId: null }
-    for (const courseId of courseIds) markUsage(dayHasCourse, columnHasCourse, courseId, day, period)
+    for (const courseId of courseIds) markUsage(dayHasCourse, columnHasCourse, dayUsageCount, columnUsageCount, courseId, day, period)
   }
   return true
 }
@@ -187,13 +220,21 @@ function isAllowed(courseId: string, day: number, period: number, dayMap: Map<st
   return true
 }
 
+/**
+ * وقتی preferEvenSpread فعال است، سلول‌ها بر اساس کمترین سابقه‌ی استفاده‌ی
+ * همین درس در همان روز (وزن بالاتر) و همان شماره‌زنگ (وزن پایین‌تر) مرتب
+ * می‌شوند؛ یعنی اول تلاش می‌شود درس در روزهای تازه قرار گیرد، و در میان
+ * روزهای هم‌رتبه، در زنگ‌های کمتر تکراری. این باعث می‌شود حتی وقتی قانون سخت
+ * نیست، درس به‌طور طبیعی در طول هفته پخش شود نه خوشه‌ای در یک روز/زنگ خاص.
+ */
 function orderedFreeCells(
   grid: (LessonCell | null)[][],
   periodsCount: number,
   avoidLast: boolean,
   courseId: string | null,
-  dayMap: Map<string, Set<number>>,
-  distributeAcrossDays: boolean,
+  dayUsageCount: Map<string, Map<number, number>>,
+  columnUsageCount: Map<string, Map<number, number>>,
+  preferEvenSpread: boolean,
   seed: number,
 ): [number, number][] {
   const cells: [number, number][] = []
@@ -204,12 +245,16 @@ function orderedFreeCells(
   }
   let result = shuffle(cells, seed)
 
-  if (distributeAcrossDays && courseId) {
-    result = result.sort(([dayA], [dayB]) => {
-      const countA = dayMap.get(courseId)?.has(dayA) ? 1 : 0
-      const countB = dayMap.get(courseId)?.has(dayB) ? 1 : 0
-      return countA - countB
-    })
+  if (preferEvenSpread && courseId) {
+    const dayCounts = dayUsageCount.get(courseId)
+    const columnCounts = columnUsageCount.get(courseId)
+    result = result
+      .map((cell) => ({
+        cell,
+        cost: (dayCounts?.get(cell[0]) ?? 0) * 100 + (columnCounts?.get(cell[1]) ?? 0),
+      }))
+      .sort((a, b) => a.cost - b.cost)
+      .map((x) => x.cell)
   }
 
   if (!avoidLast) return result
@@ -223,14 +268,21 @@ function placeAdjacencyPair(
   remaining: Map<string, number>,
   dayHasCourse: Map<string, Set<number>>,
   columnHasCourse: Map<string, Set<number>>,
+  dayUsageCount: Map<string, Map<number, number>>,
+  columnUsageCount: Map<string, Map<number, number>>,
   periodsCount: number,
   attempt: number,
   rules: RuleToggles,
+  preferEvenSpread: boolean,
 ): void {
   const anchorCount = remaining.get(pair.anchorCourseId) ?? 0
   const followers = pair.followerCourseIds.flatMap((id) => Array(remaining.get(id) ?? 0).fill(id))
   const targetCount = Math.min(anchorCount, followers.length)
-  const days = shuffle(range(grid.length), attempt * 131 + 17)
+  let days = shuffle(range(grid.length), attempt * 131 + 17)
+  if (preferEvenSpread) {
+    const anchorDayCounts = dayUsageCount.get(pair.anchorCourseId)
+    days = [...days].sort((a, b) => (anchorDayCounts?.get(a) ?? 0) - (anchorDayCounts?.get(b) ?? 0))
+  }
   let placed = 0
 
   for (const day of days) {
@@ -241,8 +293,8 @@ function placeAdjacencyPair(
       if (!isAllowed(follower, day, period + 1, dayHasCourse, columnHasCourse, rules)) continue
       grid[day][period] = { dayIndex: day, periodIndex: period, courseId: pair.anchorCourseId, teacherId: null }
       grid[day][period + 1] = { dayIndex: day, periodIndex: period + 1, courseId: follower, teacherId: null }
-      markUsage(dayHasCourse, columnHasCourse, pair.anchorCourseId, day, period)
-      markUsage(dayHasCourse, columnHasCourse, follower, day, period + 1)
+      markUsage(dayHasCourse, columnHasCourse, dayUsageCount, columnUsageCount, pair.anchorCourseId, day, period)
+      markUsage(dayHasCourse, columnHasCourse, dayUsageCount, columnUsageCount, follower, day, period + 1)
       remaining.set(pair.anchorCourseId, (remaining.get(pair.anchorCourseId) ?? 1) - 1)
       remaining.set(follower, (remaining.get(follower) ?? 1) - 1)
       placed++
@@ -272,11 +324,27 @@ function summarizeUnplaced(tokens: Token[], grid: (LessonCell | null)[][]): Cour
     .filter((item) => item.weeklyHours > 0)
 }
 
-function markUsage(dayMap: Map<string, Set<number>>, columnMap: Map<string, Set<number>>, courseId: string, day: number, period: number): void {
+function markUsage(
+  dayMap: Map<string, Set<number>>,
+  columnMap: Map<string, Set<number>>,
+  dayUsageCount: Map<string, Map<number, number>>,
+  columnUsageCount: Map<string, Map<number, number>>,
+  courseId: string,
+  day: number,
+  period: number,
+): void {
   if (!dayMap.has(courseId)) dayMap.set(courseId, new Set())
   if (!columnMap.has(courseId)) columnMap.set(courseId, new Set())
   dayMap.get(courseId)!.add(day)
   columnMap.get(courseId)!.add(period)
+
+  if (!dayUsageCount.has(courseId)) dayUsageCount.set(courseId, new Map())
+  const dayCounts = dayUsageCount.get(courseId)!
+  dayCounts.set(day, (dayCounts.get(day) ?? 0) + 1)
+
+  if (!columnUsageCount.has(courseId)) columnUsageCount.set(courseId, new Map())
+  const columnCounts = columnUsageCount.get(courseId)!
+  columnCounts.set(period, (columnCounts.get(period) ?? 0) + 1)
 }
 
 function flatten(grid: (LessonCell | null)[][]): LessonCell[] {

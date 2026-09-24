@@ -53,54 +53,41 @@ function isExemptGrade(levelId: LevelId | null, grade: number): boolean {
 }
 
 /**
- * override واقعیِ per-grade. مستقل از این‌که چه پایه‌های دیگری هم‌زمان انتخاب
- * شده‌اند، همیشه فقط برای خودِ این پایه (۱ یا ۲) اعمال می‌شود. این تابع باید در
- * generate-schedule.ts به‌ازای هر پایه جداگانه صدا زده شود، نه یک‌بار برای کل
- * دسته‌ی انتخاب‌شده.
+ * ترتیب اولویت کنارگذاشتن قوانین برای یک پایه‌ی خاص، فقط در صورت نیاز واقعی.
+ * موتور ابتدا با هر دو قانون فعال تلاش می‌کند؛ اگر جا نشد، اول «عرضی»
+ * (noSameDayRepeat) و در نهایت «طولی» (noSameColumnRepeat) را کنار می‌گذارد.
+ * برای پایه‌های غیرمستثنا آرایه خالی برمی‌گردد، یعنی Escalation انجام نمی‌شود.
  */
-export function mandatoryRuleOverridesForGrade(
+export function relaxableRulesForGrade(
   levelId: LevelId | null,
   grade: number,
-): Partial<RuleToggles> {
-  if (isExemptGrade(levelId, grade)) {
-    return { noSameDayRepeat: false, noSameColumnRepeat: false };
-  }
-  return {};
+): (keyof RuleToggles)[] {
+  return isExemptGrade(levelId, grade)
+    ? ["noSameDayRepeat", "noSameColumnRepeat"]
+    : [];
 }
 
 /**
- * override در سطح UI/Store. توگل فقط وقتی به‌طور کامل قفل می‌شود که همه‌ی
- * پایه‌های انتخاب‌شده مستثنا باشند (فقط ۱ و/یا ۲). اگر ترکیبی از پایه‌های
- * مستثنا و غیرمستثنا انتخاب شده (مثلاً ۱،۲،۳،۴)، این تابع دیگر توگل را قفل
- * نمی‌کند؛ استثنای واقعی فقط در چیدمان داخلی پایه‌های ۱ و ۲ از طریق
- * mandatoryRuleOverridesForGrade اعمال می‌شود، نه در کل دسته.
+ * @deprecated دیگر توگل را force نمی‌کند؛ چون موتور جدید فقط در صورت نیاز
+ * واقعی قانون را کنار می‌گذارد (Escalation)، نه به‌طور کامل و از پیش. برای
+ * سازگاری با کدهای موجود (wizard.ts) نگه داشته شده و همیشه {} برمی‌گرداند.
  */
 export function mandatoryRuleOverrides(
-  levelId: LevelId | null,
-  grades: number[],
+  _levelId: LevelId | null,
+  _grades: number[],
 ): Partial<RuleToggles> {
-  if (grades.length === 0) return {};
-  const allExempt = grades.every((g) => isExemptGrade(levelId, g));
-  if (allExempt) {
-    return { noSameDayRepeat: false, noSameColumnRepeat: false };
-  }
   return {};
 }
 
 /**
- * پایه‌های مستثنایی که هم‌زمان با پایه‌های غیرمستثنا انتخاب شده‌اند؛ برای نمایش
- * پیام زرد هشدار در UI استفاده می‌شود. اگر همه انتخاب‌ها مستثنا باشند یا هیچ‌کدام
- * مستثنا نباشند، آرایه خالی برمی‌گردد (چون در آن حالت‌ها نیازی به توضیح ترکیبی
- * نیست).
+ * @deprecated دیگر لازم نیست؛ توگل هیچ‌وقت force-لاک نمی‌شود. برای سازگاری با
+ * SchedulingRulesPanel.vue نگه داشته شده و همیشه آرایه خالی برمی‌گرداند.
  */
 export function partialExemptGrades(
-  levelId: LevelId | null,
-  grades: number[],
+  _levelId: LevelId | null,
+  _grades: number[],
 ): number[] {
-  if (grades.length === 0) return [];
-  const exempt = grades.filter((g) => isExemptGrade(levelId, g));
-  const hasNonExempt = grades.some((g) => !isExemptGrade(levelId, g));
-  return exempt.length > 0 && hasNonExempt ? exempt : [];
+  return [];
 }
 
 export function firstGradeRuleExplanation(
@@ -111,11 +98,11 @@ export function firstGradeRuleExplanation(
 
   if (grade === 1) {
     const curriculum = getCurriculumForGrade(levelId, grade);
-    return `پایه اول ${curriculum["persian-reading"] ?? 0} ساعت فارسی دارد و انشا/املا ندارد؛ بنابراین دو قانون «عدم تکرار در روز» و «عدم تکرار در یک شماره‌زنگ هفته» فقط برای قابل‌ساخت‌بودن این پایه به‌صورت خودکار غیرفعال شده‌اند. این یک ضرورت ریاضی است.`;
+    return `پایه اول ${curriculum["persian-reading"] ?? 0} ساعت فارسی دارد. موتور ابتدا سعی می‌کند بدون تکرار روزانه/طولی بچیند؛ اگر ممکن نبود، فقط به‌اندازه‌ی لازم و به‌ترتیب (اول عدم‌تکرار در روز، سپس عدم‌تکرار در شماره‌زنگ) کنار گذاشته می‌شود تا دروس تا حد امکان در طول هفته پخش بمانند.`;
   }
 
   if (grade === 2) {
-    return `برای پایه دوم، دو قانون «عدم تکرار در روز» و «عدم تکرار در یک شماره‌زنگ هفته» غیرفعال شده‌اند؛ برخلاف پایه اول، این مورد یک ضرورت ریاضی نیست (بالاترین ساعت هفتگی این پایه ۵ ساعت است و در ۵ روز بدون تکرار هم قابل‌چیدمان است)، بلکه برای انعطاف بیشتر چیدمان در حالت انتخاب دستی ورزش انتخاب شده است.`;
+    return `برای پایه دوم، موتور ابتدا با هر دو قانون فعال تلاش می‌کند. فقط اگر ترکیب دروس ناسازگار باشد، به همان ترتیب (اول عدم‌تکرار در روز، سپس عدم‌تکرار در شماره‌زنگ) به‌اندازه‌ی لازم کنار گذاشته می‌شود؛ نه از پیش و به‌طور کامل.`;
   }
 
   return null;
