@@ -16,6 +16,7 @@ import { getSinglePeriodPair } from '@/config/single-period-pairs.config'
 import { generateGradeSchedule, type CourseRequirement, type AdjacencyPair, type ComboRequirement } from './scheduler'
 import { assignTeachersFairly, type GradeCourseLoad } from './teacher-assignment'
 import { mainTeacherKey, sportTeacherKey } from './wizard-keys'
+import { mandatoryRuleOverridesForGrade } from './schedule-feasibility'
 
 export interface GenerateInput {
   audience: Audience
@@ -68,16 +69,16 @@ export function generateSchedule(input: GenerateInput): GenerateOutput {
       const comboRequirements = comboRequirementsFor(grade)
       const comboCourseIds = new Set(comboRequirements.flatMap((c) => [c.primaryCourseId, c.secondaryCourseId]))
 
+      /** override per-grade: پایه‌های ۱ و ۲ همیشه بدون عدم‌تکرار روزانه/طولی چیده می‌شوند؛ بقیه طبق انتخاب کاربر. */
+      const effectiveRuleToggles: RuleToggles = {
+        ...input.ruleToggles,
+        ...mandatoryRuleOverridesForGrade(input.levelId, grade),
+      }
+
       const requirements: CourseRequirement[] = Object.entries(hours)
         .map(([courseId, weeklyHours]) => {
           let unitsNeeded = weeklyHours
           if (courseId === 'sport') unitsNeeded = Math.max(0, unitsNeeded - lockedSportCount)
-          /*
-           * واحدهای اعشاری (مثلاً ۲.۵) از طریق زنگ ترکیبی نیم‌واحدی پوشش داده می‌شوند.
-           * در اینجا فقط بخش صحیح را به موتور می‌دهیم؛ نیم‌واحد مشترک درون یک سلول
-           * combo جای می‌گیرد و در UI به‌شکل «هنر / علوم» یا «هنر / مطالعات» نمایش
-           * داده می‌شود.
-           */
           if (comboCourseIds.has(courseId)) unitsNeeded = Math.floor(weeklyHours)
           return { courseId, weeklyHours: unitsNeeded }
         })
@@ -88,7 +89,7 @@ export function generateSchedule(input: GenerateInput): GenerateOutput {
         requirements,
         courses: BASE_COURSES,
         lockedCells,
-        ruleToggles: input.ruleToggles,
+        ruleToggles: effectiveRuleToggles,
         adjacencyPairs: adjacencyPairsFor(input.levelId),
         comboRequirements,
         avoidLastPeriodCourseIds: AVOID_LAST_PERIOD_COURSES[input.levelId],
@@ -97,7 +98,7 @@ export function generateSchedule(input: GenerateInput): GenerateOutput {
 
       if (!result.success && result.unplaced.length > 0) {
         warnings.push(
-          `پایه ${gradeLabel(grade)}: برخی واحدها به دلیل ناسازگاری قوانین یا ظرفیت کامل جا نگرفت (لطفا دوباره تلاش کنید).`,
+          `پایه ${gradeLabel(grade)}: برخی واحدها به دلیل ناسازگاری قوانین یا ظرفیت کامل جا نگرفت (${result.unplaced.map((u) => u.courseId).join('، ')}).`,
         )
       }
 
@@ -149,17 +150,23 @@ export function generateSchedule(input: GenerateInput): GenerateOutput {
         weeklyHours: a.weeklyHours,
       }))
 
+      /** override per-grade نیز در مسیر subject-teacher اعمال می‌شود. */
+      const effectiveRuleToggles: RuleToggles = {
+        ...input.ruleToggles,
+        ...mandatoryRuleOverridesForGrade(input.levelId, grade),
+      }
+
       const result = generateGradeSchedule({
         shiftConfig: input.shiftConfig,
         requirements,
         courses: BASE_COURSES,
         lockedCells: input.lockedSportCells[grade] ?? [],
-        ruleToggles: input.ruleToggles,
+        ruleToggles: effectiveRuleToggles,
       })
 
       if (!result.success && result.unplaced.length > 0) {
         warnings.push(
-          `پایه ${gradeLabel(grade)}: برخی واحدها به دلیل ناسازگاری قوانین یا ظرفیت کامل جا نگرفت (لطفا دوباره تلاش کنید).`,
+          `پایه ${gradeLabel(grade)}: برخی واحدها به دلیل ناسازگاری قوانین یا ظرفیت کامل جا نگرفت (${result.unplaced.map((u) => u.courseId).join('، ')}).`,
         )
       }
 
