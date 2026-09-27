@@ -1,6 +1,9 @@
-export type LevelId = 'elementary' | 'lowersecondary' | 'uppersecondary'
+export type LevelId = 'elementary' | 'lower_secondary' | 'upper_secondary'
+
 export type ShiftId = 'morning' | 'noon'
+
 export type SpecialRule = 'quran-first' | 'sport-fixed' | 'none'
+
 export type TeacherGender = 'male' | 'female'
 
 export interface Level {
@@ -97,7 +100,7 @@ export interface SavedSchedule {
   updatedAt: number
 }
 
-export const WEEKDAYS = ['شنبه', 'یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه'] as const
+export const WEEK_DAYS = ['شنبه', 'یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه'] as const
 
 export type Gender = 'male' | 'female'
 export type ElementaryGpaBand = 'excellent' | 'good' | 'acceptable' | 'needs-effort'
@@ -161,13 +164,8 @@ export interface GroupingRequest {
   maxCapacity: number
 }
 
-/* ==========================================================================
- * Lesson Plan (طرح درس معلم‌ها)
- * ========================================================================== */
-
 export type LessonPlanStatus = 'draft' | 'final' | 'executed'
 
-/** یک بخش زمان‌بندی‌شده از جلسه (مثلاً "مقدمه ۵ دقیقه"، "تمرین ۱۵ دقیقه") */
 export interface LessonPlanBlock {
   id: string
   title: string
@@ -175,14 +173,12 @@ export interface LessonPlanBlock {
   estimatedMinutes: number
 }
 
-/** یک نسخه‌ی آرشیو شده از طرح درس، قبل از اعمال ویرایش جدید */
 export interface LessonPlanHistoryEntry {
   versionNumber: number
   savedAt: number
   snapshot: LessonPlanSnapshot
 }
 
-/** تصویر لحظه‌ای از فیلدهای قابل‌ویرایش طرح درس (بدون id/history) برای آرشیو نسخه */
 export interface LessonPlanSnapshot {
   title: string
   teacherId: string

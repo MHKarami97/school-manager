@@ -1,5 +1,5 @@
 import { openDB, type IDBPDatabase } from 'idb'
-import type { Teacher, SavedSchedule, Student, StudentGroup, LessonPlan } from '../types'
+import type { Teacher, SavedSchedule, Student, StudentGroup, LessonPlan } from '@/types'
 
 const DB_NAME = 'school-manager-db'
 const DB_VERSION = 3
