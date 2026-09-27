@@ -1,9 +1,6 @@
-export type LevelId = 'elementary' | 'lower_secondary' | 'upper_secondary'
-
+export type LevelId = 'elementary' | 'lowersecondary' | 'uppersecondary'
 export type ShiftId = 'morning' | 'noon'
-
 export type SpecialRule = 'quran-first' | 'sport-fixed' | 'none'
-
 export type TeacherGender = 'male' | 'female'
 
 export interface Level {
@@ -100,17 +97,12 @@ export interface SavedSchedule {
   updatedAt: number
 }
 
-export const WEEK_DAYS = ['شنبه', 'یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه'] as const
-
-// ===================== ماژول دانش‌آموزان و گروه‌بندی عادلانه =====================
+export const WEEKDAYS = ['شنبه', 'یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه'] as const
 
 export type Gender = 'male' | 'female'
-
-/** برای دوره ابتدایی که معدل عددی نیست، بلکه رتبه کیفی است */
 export type ElementaryGpaBand = 'excellent' | 'good' | 'acceptable' | 'needs-effort'
 
 export interface StudentYearlyRecord {
-  /** سال تحصیلی (مثلاً 1403) */
   year: number
   grade: number
   gpa: number | null
@@ -127,9 +119,7 @@ export interface Student {
   gender: Gender
   grade: number
   levelId: LevelId
-  /** فقط برای متوسطه اول/دوم: عدد صفر تا بیست */
   gpa: number | null
-  /** فقط برای ابتدایی */
   gpaBand: ElementaryGpaBand | null
   disciplineScore: number | null
   isAcademicallyWeak: boolean
@@ -149,7 +139,6 @@ export interface StudentGroup {
   gender: Gender
   capacity: number
   teacherId: string | null
-  /** امتیاز ذهنی قدرت/تجربه معلم گروه، بین ۱ تا ۵؛ در الگوریتم برای تخصیص دانش‌آموزان ضعیف/بی‌انضباط استفاده می‌شود */
   teacherStrengthScore: number
   studentIds: string[]
   createdAt: number
@@ -170,4 +159,49 @@ export interface GroupingRequest {
   gender: Gender
   groupCount: number
   maxCapacity: number
+}
+
+/* ==========================================================================
+ * Lesson Plan (طرح درس معلم‌ها)
+ * ========================================================================== */
+
+export type LessonPlanStatus = 'draft' | 'final' | 'executed'
+
+/** یک بخش زمان‌بندی‌شده از جلسه (مثلاً "مقدمه ۵ دقیقه"، "تمرین ۱۵ دقیقه") */
+export interface LessonPlanBlock {
+  id: string
+  title: string
+  description: string
+  estimatedMinutes: number
+}
+
+/** یک نسخه‌ی آرشیو شده از طرح درس، قبل از اعمال ویرایش جدید */
+export interface LessonPlanHistoryEntry {
+  versionNumber: number
+  savedAt: number
+  snapshot: LessonPlanSnapshot
+}
+
+/** تصویر لحظه‌ای از فیلدهای قابل‌ویرایش طرح درس (بدون id/history) برای آرشیو نسخه */
+export interface LessonPlanSnapshot {
+  title: string
+  teacherId: string
+  courseId: string
+  grade: number
+  levelId: LevelId
+  sessionDate: string
+  weekNumber: number
+  objectives: string
+  teachingMethod: string
+  resources: string
+  assessment: string
+  blocks: LessonPlanBlock[]
+  status: LessonPlanStatus
+}
+
+export interface LessonPlan extends LessonPlanSnapshot {
+  id: string
+  history: LessonPlanHistoryEntry[]
+  createdAt: number
+  updatedAt: number
 }

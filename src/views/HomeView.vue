@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppFooter from '@/components/layout/AppFooter.vue'
 import { useWizardStore } from '@/stores/wizard'
+import { SITE_FEATURES } from '@/config/features.config'
 
 const router = useRouter()
 const wizardStore = useWizardStore()
@@ -18,7 +19,9 @@ function startFresh(): void {
   router.push('/wizard')
 }
 
-const features = [
+// این‌ها ویژگی‌های فنی «چیدمان برنامه» هستند (نه ابزارهای مستقل سایت)؛
+// ابزارهای مستقل سایت از src/config/features.config.ts خوانده می‌شوند.
+const schedulingCapabilities = [
   {
     title: 'چیدمان خودکار و قانون‌مند',
     desc: 'برنامه با رعایت دقیق قوانین آموزشی مثل عدم تکرار طولی و عرضی درس‌ها، جایگاه ثابت قرآن در زنگ اول و استثنای ورزش ساخته می‌شود.',
@@ -38,11 +41,6 @@ const features = [
     title: 'خروجی PDF و تصویر',
     desc: 'برنامه نهایی را با ظاهر مرتب و فارسی به‌صورت PDF (از طریق چاپ) یا فایل تصویری دریافت کنید.',
     icon: 'M12 3v12m0 0l-4-4m4 4l4-4M4 21h16',
-  },
-  {
-    title: 'گروه‌بندی عادلانه دانش‌آموزان',
-    desc: 'دانش‌آموزان هر پایه را با رعایت تفکیک جنسیتی، توازن معدل و انضباط، و تخصیص هدفمند دانش‌آموزان ضعیف به معلم قوی‌تر، به‌صورت خودکار بین گروه‌ها تقسیم کنید.',
-    icon: 'M17 21v-2a4 4 0 00-4-4H7a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75',
   },
   {
     title: 'نصب روی گوشی و کامپیوتر',
@@ -79,88 +77,120 @@ const steps = [
               مدیریار برای دوره‌های ابتدایی، متوسطه اول و متوسطه دوم، برنامه هفتگی را بر اساس قوانین رسمی آموزشی
               می‌سازد؛ شما فقط پایه، شیفت و معلم‌ها را مشخص می‌کنید.
             </p>
+            <!--
+              فقط ۲ دکمه‌ی ثابت، مستقل از تعداد امکانات سایت:
+              «شروع کنید» به صفحه‌ی ابزارها (لیست همه‌ی امکانات) می‌رود،
+              «تاریخچه» به صفحه‌ی تاریخچه (لیست همه‌ی آرشیوها) می‌رود.
+            -->
             <div class="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-              <button
-                type="button"
-                class="w-full rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-600/20 transition hover:bg-brand-700 sm:w-auto"
-                @click="startFresh"
-              >
-                شروع ساخت برنامه جدید
-              </button>
               <RouterLink
-                to="/students"
+                to="/tools"
+                class="w-full rounded-xl bg-brand-600 px-6 py-3 text-center text-sm font-semibold text-white shadow-lg shadow-brand-600/20 transition hover:bg-brand-700 sm:w-auto"
+              >
+                شروع کنید
+              </RouterLink>
+              <RouterLink
+                to="/history"
                 class="w-full rounded-xl border border-ink-200 bg-white px-6 py-3 text-center text-sm font-semibold text-ink-700 transition hover:border-brand-300 sm:w-auto dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200"
               >
-                گروه‌بندی عادلانه دانش‌آموزان
+                تاریخچه
+              </RouterLink>
+            </div>
+            <button
+              v-if="canContinue"
+              type="button"
+              class="mt-4 text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+              @click="startFresh"
+            >
+              یا شروع دوباره‌ی ساخت برنامه (نشست قبلی پاک می‌شود)
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- هر امکان مستقل سایت، معرفی جدا + دکمه‌ی شروع مخصوص خودش -->
+      <section id="features" class="mx-auto max-w-6xl px-4 py-16 sm:px-6">
+        <div class="mx-auto max-w-2xl text-center">
+          <h2 class="text-2xl font-bold text-ink-900 sm:text-3xl dark:text-ink-200">ابزارهای مدیریار</h2>
+          <p class="mt-3 text-ink-500 dark:text-ink-400">هر ابزار مستقل است؛ روی «شروع» بزن یا سراغ تاریخچه‌ی همان ابزار برو.</p>
+        </div>
+
+        <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <div
+            v-for="feature in SITE_FEATURES"
+            :key="feature.id"
+            class="flex flex-col rounded-2xl border border-ink-100 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-ink-800 dark:bg-ink-900"
+          >
+            <div class="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-5 w-5">
+                <path :d="feature.icon" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </div>
+            <h3 class="mt-4 text-base font-semibold text-ink-800 dark:text-ink-200">{{ feature.title }}</h3>
+            <p class="mt-2 flex-1 text-sm leading-6 text-ink-500 dark:text-ink-400">{{ feature.description }}</p>
+            <div class="mt-5 flex items-center gap-2">
+              <RouterLink
+                :to="feature.startPath"
+                class="flex-1 rounded-xl bg-brand-600 px-4 py-2.5 text-center text-sm font-semibold text-white transition hover:bg-brand-700"
+              >
+                {{ feature.startLabel }}
+              </RouterLink>
+              <RouterLink
+                :to="feature.historyPath"
+                class="rounded-xl border border-ink-200 px-3 py-2.5 text-xs font-medium text-ink-600 dark:border-ink-700 dark:text-ink-300"
+              >
+                تاریخچه
               </RouterLink>
             </div>
           </div>
         </div>
       </section>
 
-      <section id="features" class="mx-auto max-w-6xl px-4 py-16 sm:px-6">
-        <div class="mx-auto max-w-2xl text-center">
-          <h2 class="text-2xl font-bold text-ink-900 sm:text-3xl dark:text-ink-200">همه‌چیز برای یک برنامه‌ریزی دقیق</h2>
-          <p class="mt-3 text-ink-500 dark:text-ink-400">امکاناتی که ساخت و مدیریت برنامه هفتگی مدرسه را ساده و سریع می‌کند.</p>
-        </div>
-
-        <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          <div
-            v-for="feature in features"
-            :key="feature.title"
-            class="rounded-2xl border border-ink-100 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-ink-800 dark:bg-ink-900"
-          >
-            <div class="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-5 w-5">
-                <path :d="feature.icon" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </div>
-            <h3 class="mt-4 text-base font-semibold text-ink-800 dark:text-ink-200">{{ feature.title }}</h3>
-            <p class="mt-2 text-sm leading-6 text-ink-500 dark:text-ink-400">{{ feature.desc }}</p>
-          </div>
-        </div>
-      </section>
-
-      <section class="mx-auto max-w-6xl px-4 pb-16 sm:px-6">
-        <div class="flex flex-col items-center justify-between gap-4 rounded-3xl bg-gradient-to-l from-brand-600 to-brand-500 p-8 text-center sm:flex-row sm:text-right">
-          <div>
-            <span class="inline-flex items-center rounded-full bg-white/15 px-3 py-1 text-xs font-medium text-white">قابلیت جدید</span>
-            <h3 class="mt-3 text-xl font-bold text-white">مدیریت و گروه‌بندی عادلانه دانش‌آموزان</h3>
-            <p class="mt-2 max-w-xl text-sm leading-6 text-brand-50">
-              لیست دانش‌آموزان هر پایه را وارد کنید، معدل و امتیاز انضباطی را ثبت کنید و با یک کلیک، آن‌ها را با رعایت
-              تفکیک جنسیتی، توازن معدل/انضباط و تخصیص هدفمند دانش‌آموزان ضعیف به معلم قوی‌تر، بین چند کلاس تقسیم کنید.
-            </p>
-          </div>
-          <RouterLink
-            to="/students"
-            class="shrink-0 rounded-xl bg-white px-6 py-3 text-sm font-semibold text-brand-700 shadow-lg transition hover:bg-brand-50"
-          >
-            شروع گروه‌بندی دانش‌آموزان
-          </RouterLink>
-        </div>
-      </section>
-
-      <section id="guide" class="bg-white py-16 dark:bg-ink-900">
+      <!-- امکانات فنی چیدمان برنامه (زیرمجموعه‌ی همان ابزار اول) -->
+      <section class="bg-white py-16 dark:bg-ink-900">
         <div class="mx-auto max-w-6xl px-4 sm:px-6">
           <div class="mx-auto max-w-2xl text-center">
-            <h2 class="text-2xl font-bold text-ink-900 sm:text-3xl dark:text-ink-200">راهنمای استفاده در ۵ گام</h2>
-            <p class="mt-3 text-ink-500 dark:text-ink-400">از انتخاب پایه تا دریافت خروجی چاپی، مسیری کوتاه و بدون پیچیدگی.</p>
+            <h2 class="text-2xl font-bold text-ink-900 sm:text-3xl dark:text-ink-200">امکانات چیدمان برنامه هفتگی</h2>
+            <p class="mt-3 text-ink-500 dark:text-ink-400">آن‌چه ساخت و مدیریت برنامه هفتگی مدرسه را ساده و سریع می‌کند.</p>
           </div>
 
-          <ol class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-5">
-            <li
-              v-for="(step, index) in steps"
-              :key="step.title"
-              class="relative rounded-2xl border border-ink-100 p-5 dark:border-ink-800"
+          <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            <div
+              v-for="capability in schedulingCapabilities"
+              :key="capability.title"
+              class="rounded-2xl border border-ink-100 p-6 dark:border-ink-800"
             >
-              <span class="flex h-9 w-9 items-center justify-center rounded-full bg-ink-900 text-sm font-bold text-white dark:bg-brand-600">
-                {{ index + 1 }}
-              </span>
-              <h3 class="mt-4 text-sm font-semibold text-ink-800 dark:text-ink-200">{{ step.title }}</h3>
-              <p class="mt-2 text-xs leading-6 text-ink-500 dark:text-ink-400">{{ step.desc }}</p>
-            </li>
-          </ol>
+              <div class="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-5 w-5">
+                  <path :d="capability.icon" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </div>
+              <h3 class="mt-4 text-base font-semibold text-ink-800 dark:text-ink-200">{{ capability.title }}</h3>
+              <p class="mt-2 text-sm leading-6 text-ink-500 dark:text-ink-400">{{ capability.desc }}</p>
+            </div>
+          </div>
         </div>
+      </section>
+
+      <section id="guide" class="mx-auto max-w-6xl px-4 py-16 sm:px-6">
+        <div class="mx-auto max-w-2xl text-center">
+          <h2 class="text-2xl font-bold text-ink-900 sm:text-3xl dark:text-ink-200">راهنمای استفاده در ۵ گام</h2>
+          <p class="mt-3 text-ink-500 dark:text-ink-400">از انتخاب پایه تا دریافت خروجی چاپی، مسیری کوتاه و بدون پیچیدگی.</p>
+        </div>
+
+        <ol class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-5">
+          <li
+            v-for="(step, index) in steps"
+            :key="step.title"
+            class="relative rounded-2xl border border-ink-100 p-5 dark:border-ink-800"
+          >
+            <span class="flex h-9 w-9 items-center justify-center rounded-full bg-ink-900 text-sm font-bold text-white dark:bg-brand-600">
+              {{ index + 1 }}
+            </span>
+            <h3 class="mt-4 text-sm font-semibold text-ink-800 dark:text-ink-200">{{ step.title }}</h3>
+            <p class="mt-2 text-xs leading-6 text-ink-500 dark:text-ink-400">{{ step.desc }}</p>
+          </li>
+        </ol>
       </section>
 
       <section id="about" class="mx-auto max-w-6xl px-4 py-16 sm:px-6">
@@ -168,19 +198,19 @@ const steps = [
           <div>
             <h2 class="text-2xl font-bold text-white sm:text-3xl">درباره مدیریار</h2>
             <p class="mt-4 leading-7 text-ink-300">
-              مدیریار برای کاهش ساعت‌ها کار دستی مدیران و معاونان اجرایی مدارس در چیدن برنامه هفتگی طراحی شده است.
+              مدیریار برای کاهش ساعت‌ها کار دستی مدیران و معاونان اجرایی مدارس طراحی شده است.
               تمام محاسبات در همان سیستم شما انجام می‌شود؛ نیازی به سرور یا اتصال دائم به اینترنت نیست و
               اطلاعات معلم‌ها و برنامه‌های ذخیره‌شده فقط روی دستگاه شما باقی می‌مانند.
             </p>
           </div>
           <div class="grid grid-cols-2 gap-6 self-center">
             <div class="rounded-2xl bg-white/5 p-5 text-center">
-              <p class="text-3xl font-extrabold text-white">۳</p>
-              <p class="mt-1 text-xs text-ink-300">دوره تحصیلی پشتیبانی‌شده</p>
+              <p class="text-3xl font-extrabold text-white">{{ SITE_FEATURES.length }}</p>
+              <p class="mt-1 text-xs text-ink-300">ابزار مستقل در سایت</p>
             </div>
             <div class="rounded-2xl bg-white/5 p-5 text-center">
-              <p class="text-3xl font-extrabold text-white">۲</p>
-              <p class="mt-1 text-xs text-ink-300">شیفت صبح و ظهر</p>
+              <p class="text-3xl font-extrabold text-white">۳</p>
+              <p class="mt-1 text-xs text-ink-300">دوره تحصیلی پشتیبانی‌شده</p>
             </div>
             <div class="rounded-2xl bg-white/5 p-5 text-center">
               <p class="text-3xl font-extrabold text-white">۱۰۰٪</p>

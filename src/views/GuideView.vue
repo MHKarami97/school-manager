@@ -59,6 +59,29 @@ const groupingSteps = [
     body: 'با دکمه «ذخیره گروه‌ها» نتیجه نهایی ثبت می‌شود. در پایان سال تحصیلی، از صفحه دانش‌آموزان می‌توانید یک یا چند نفر را انتخاب و «ارتقا به پایه بعد» را بزنید؛ اطلاعات همان سال (معدل، انضباط، گروه) در تاریخچه دانش‌آموز بایگانی و فیلدها برای سال جدید خالی می‌شوند.',
   },
 ]
+
+const lessonPlanSteps = [
+  {
+    title: 'ساخت طرح درس جدید',
+    body: 'از صفحه «طرح درس معلم‌ها» روی «طرح درس جدید» بزن، معلم/درس/پایه/تاریخ جلسه را انتخاب کن و اهداف، روش تدریس، منابع و ارزشیابی را بنویس.',
+  },
+  {
+    title: 'زمان‌بندی جلسه',
+    body: 'در بخش «بخش‌های زمان‌بندی‌شده جلسه» هر مرحله از تدریس (مقدمه، تدریس، تمرین، جمع‌بندی) را با مدت‌زمان تخمینی جدا ثبت کن.',
+  },
+  {
+    title: 'کپی برای جلسه بعد',
+    body: 'روی دکمه «کپی برای جلسه بعد» بزن تا محتوای طرح درس فعلی به‌عنوان قالب برای جلسه‌ی جدید کپی شود؛ فقط تاریخ و هفته را به‌روز کن.',
+  },
+  {
+    title: 'تاریخچه و نسخه‌بندی',
+    body: 'هر بار که یک طرح درس موجود را ذخیره می‌کنی، نسخه‌ی قبلی آن در «تاریخچه» بایگانی می‌شود و می‌توانی همه‌ی ویرایش‌های قبلی را مرور کنی.',
+  },
+  {
+    title: 'خروجی PDF',
+    body: 'روی «خروجی PDF» بزن تا طرح درس در قالب استاندارد A4 برای ارائه به مدیریت چاپ/ذخیره شود.',
+  },
+]
 </script>
 
 <template>
@@ -82,6 +105,14 @@ const groupingSteps = [
       <h2 class="mb-4 mt-12 text-lg font-bold text-ink-800 dark:text-ink-200">بخش دوم: مدیریت و گروه‌بندی عادلانه دانش‌آموزان</h2>
       <ol class="space-y-6">
         <li v-for="step in groupingSteps" :key="step.title" class="rounded-2xl border border-ink-100 bg-white p-6 dark:border-ink-800 dark:bg-ink-900">
+          <h2 class="text-base font-semibold text-ink-800 dark:text-ink-200">{{ step.title }}</h2>
+          <p class="mt-2 text-sm leading-7 text-ink-600 dark:text-ink-300">{{ step.body }}</p>
+        </li>
+      </ol>
+
+      <h2 class="mb-4 mt-12 text-lg font-bold text-ink-800 dark:text-ink-200">بخش سوم: طرح درس معلمان</h2>
+      <ol class="space-y-6">
+        <li v-for="step in lessonPlanSteps" :key="step.title" class="rounded-2xl border border-ink-100 bg-white p-6 dark:border-ink-800 dark:bg-ink-900">
           <h2 class="text-base font-semibold text-ink-800 dark:text-ink-200">{{ step.title }}</h2>
           <p class="mt-2 text-sm leading-7 text-ink-600 dark:text-ink-300">{{ step.body }}</p>
         </li>
