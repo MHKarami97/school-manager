@@ -3,7 +3,7 @@ import type { LessonPlan } from '@/types'
 import { gradeLabel } from '@/config/levels.config'
 import { LESSON_PLAN_STATUS_LABELS } from '@/config/lesson-plan.config'
 
-const props = defineProps<{
+defineProps<{
   modelValue: boolean
   plan: LessonPlan | null
 }>()
