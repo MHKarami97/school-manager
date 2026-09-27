@@ -59,22 +59,40 @@ function onDragStart(day: number, period: number): void {
 
 function onDrop(day: number, period: number): void {
   if (!draggedFrom.value || !props.editable) return
+
   const from = draggedFrom.value
+  draggedFrom.value = null
+
+  // درگ روی همان سلول -> بدون تغییر
+  if (from.day === day && from.period === period) return
+
   const fromCell = cellAt(from.day, from.period)
   const toCell = cellAt(day, period)
-  setCell(from.day, from.period, {
+
+  const fromPatch: Partial<LessonCell> = {
     courseId: toCell.courseId,
     teacherId: toCell.teacherId,
     secondaryCourseId: toCell.secondaryCourseId ?? null,
     secondaryTeacherId: toCell.secondaryTeacherId ?? null,
-  })
-  setCell(day, period, {
+  }
+  const toPatch: Partial<LessonCell> = {
     courseId: fromCell.courseId,
     teacherId: fromCell.teacherId,
     secondaryCourseId: fromCell.secondaryCourseId ?? null,
     secondaryTeacherId: fromCell.secondaryTeacherId ?? null,
-  })
-  draggedFrom.value = null
+  }
+
+  const others = cells.value.filter(
+    (c) =>
+      !(c.dayIndex === from.day && c.periodIndex === from.period) &&
+      !(c.dayIndex === day && c.periodIndex === period),
+  )
+
+  cells.value = [
+    ...others,
+    { dayIndex: from.day, periodIndex: from.period, courseId: null, teacherId: null, ...fromPatch },
+    { dayIndex: day, periodIndex: period, courseId: null, teacherId: null, ...toPatch },
+  ]
 }
 
 const editingCell = ref<{ day: number; period: number } | null>(null)

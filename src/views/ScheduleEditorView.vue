@@ -9,6 +9,8 @@ import AppHeader from '@/components/layout/AppHeader.vue'
 import ScheduleGrid from '@/components/schedule/ScheduleGrid.vue'
 import PrintableSchedule from '@/components/schedule/PrintableSchedule.vue'
 import { exportElementAsImage, printPage } from '@/utils/export'
+import { getCurriculumForGrade } from '@/config/curriculum.config'
+import type { CourseDefinition } from '@/types'
 
 const props = defineProps<{ id?: string }>()
 
@@ -57,6 +59,15 @@ async function handleDelete(): Promise<void> {
   await schedulesStore.remove(schedule.value.id)
   router.push('/schedules')
 }
+
+const gradeCourses = computed<CourseDefinition[]>(() => {
+  if (!schedule.value || !activeGrade.value) return BASE_COURSES
+
+  const curriculum = getCurriculumForGrade(schedule.value.levelId, activeGrade.value.grade)
+  const allowedCourseIds = new Set(Object.keys(curriculum))
+
+  return BASE_COURSES.filter((course) => allowedCourseIds.has(course.id))
+})
 </script>
 
 <template>
@@ -88,11 +99,11 @@ async function handleDelete(): Promise<void> {
         </div>
         <p v-if="isEditable" class="mb-4 text-xs text-ink-400 dark:text-ink-500">برای جابجایی، یک خانه پُر را بکشید و روی خانه مقصد رها کنید؛ برای تفییر درس یا معلم یک خانه، روی آن کلیک کنید.</p>
         <div ref="gridContainer" class="rounded-2xl border border-ink-100 bg-white p-3 dark:border-ink-800 dark:bg-ink-900">
-          <ScheduleGrid v-if="activeGrade" v-model:cells="activeGrade.cells" :grade-schedule="activeGrade" :shift-config="schedule.shiftConfig" :courses="BASE_COURSES" :teachers="schedule.teachers" :editable="isEditable" />
+          <ScheduleGrid v-if="activeGrade" v-model:cells="activeGrade.cells" :grade-schedule="activeGrade" :shift-config="schedule.shiftConfig" :courses="gradeCourses" :teachers="schedule.teachers" :editable="isEditable" />
         </div>
       </div>
       <div id="print-root" class="hidden print:block">
-        <PrintableSchedule v-if="activeGrade" :schedule="schedule" :grade-schedule="activeGrade" :courses="BASE_COURSES" />
+        <PrintableSchedule v-if="activeGrade" :schedule="schedule" :grade-schedule="activeGrade" :courses="gradeCourses" />
       </div>
     </div>
   </div>
