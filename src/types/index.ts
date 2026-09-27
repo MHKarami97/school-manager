@@ -36,12 +36,21 @@ export interface ShiftTimeConfig {
   periodsCount: number
 }
 
+export interface TeacherAvailabilitySlot {
+  dayIndex: number
+  startTime: string
+  endTime: string
+}
+
 export interface Teacher {
   id: string
   name: string
   gender: TeacherGender | null
   courseIds: string[]
   weeklyHoursByCourse?: Record<string, number>
+  availability?: TeacherAvailabilitySlot[]
+  maxWeeklyHours?: number
+  levelIds?: LevelId[]
   createdAt: number
 }
 
@@ -199,5 +208,55 @@ export interface LessonPlan extends LessonPlanSnapshot {
   id: string
   history: LessonPlanHistoryEntry[]
   createdAt: number
+  updatedAt: number
+}
+
+export interface SportFacility {
+  id: string
+  name: string
+  concurrentCapacity: number
+  createdAt: number
+}
+
+export interface SportClassDefinition {
+  id: string
+  grade: number
+  label: string
+}
+
+export interface SportSlot {
+  classId: string
+  dayIndex: number
+  periodIndex: number
+  teacherId: string | null
+  facilityId: string | null
+  isLocked?: boolean
+}
+
+export interface SportPlan {
+  id: string
+  title: string
+  levelId: LevelId
+  grades: number[]
+  classes: SportClassDefinition[]
+  periodsPerWeekByClass: Record<string, number>
+  shiftId: ShiftId
+  shiftConfig: ShiftTimeConfig
+  slots: SportSlot[]
+  teachers: Teacher[]
+  facilities: SportFacility[]
+  createdAt: number
+  updatedAt: number
+}
+
+export interface SportWizardState {
+  step: number
+  levelId: LevelId | null
+  selectedGrades: number[]
+  classesPerGrade: Record<number, number>
+  shiftId: ShiftId
+  shiftConfigs: Record<ShiftId, ShiftTimeConfig>
+  selectedTeacherIds: string[]
+  selectedFacilityIds: string[]
   updatedAt: number
 }

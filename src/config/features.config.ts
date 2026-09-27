@@ -47,4 +47,16 @@ export const SITE_FEATURES: SiteFeature[] = [
     historyPath: '/lesson-plans',
     historyLabel: 'آرشیو طرح درس‌ها',
   },
+  {
+    id: 'sport-scheduling',
+    title: 'برنامه ورزش مدرسه',
+    shortTitle: 'برنامه ورزش',
+    description:
+      'ساعات درس ورزش را بین معلمان ورزش و کلاس‌ها، با رعایت ساعات حضور هر معلم، سقف ساعت هفتگی و جلوگیری از تداخل زمانی، به‌صورت خودکار یا دستی تخصیص دهید.',
+    icon: 'M12 6V4m0 2a6 6 0 100 12 6 6 0 000-12zm0 0v2m6 4h2M6 12H4m12.95 6.95l-1.41-1.41M6.46 6.46L5.05 5.05m13.9 0l-1.41 1.41M6.46 17.54l-1.41 1.41',
+    startPath: '/sport/new',
+    startLabel: 'شروع برنامه ورزش',
+    historyPath: '/sport',
+    historyLabel: 'برنامه‌های ورزش ذخیره‌شده',
+  },
 ]

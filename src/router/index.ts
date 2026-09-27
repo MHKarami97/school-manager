@@ -78,6 +78,22 @@ const routes = [
     component: () => import("@/views/LessonPlanEditorView.vue"),
     props: true,
   },
+  {
+    path: "/sport",
+    name: "sport-plans",
+    component: () => import("@/views/SportPlansView.vue"),
+  },
+  {
+    path: "/sport/new",
+    name: "sport-wizard",
+    component: () => import("@/views/SportWizardView.vue"),
+  },
+  {
+    path: "/sport/:id",
+    name: "sport-plan-editor",
+    component: () => import("@/views/SportPlanEditorView.vue"),
+    props: true,
+  },
 ];
 
 const router = createRouter({

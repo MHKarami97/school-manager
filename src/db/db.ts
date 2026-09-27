@@ -1,14 +1,25 @@
 import { openDB, type IDBPDatabase } from 'idb'
-import type { Teacher, SavedSchedule, Student, StudentGroup, LessonPlan } from '@/types'
+import type {
+  Teacher,
+  SavedSchedule,
+  Student,
+  StudentGroup,
+  LessonPlan,
+  SportFacility,
+  SportPlan,
+} from '@/types'
 
 const DB_NAME = 'school-manager-db'
-const DB_VERSION = 3
+
+const DB_VERSION = 4
 
 export const STORE_TEACHERS = 'teachers'
 export const STORE_SCHEDULES = 'schedules'
 export const STORE_STUDENTS = 'students'
 export const STORE_STUDENT_GROUPS = 'studentGroups'
 export const STORE_LESSON_PLANS = 'lessonPlans'
+export const STORE_SPORT_FACILITIES = 'sportFacilities'
+export const STORE_SPORT_PLANS = 'sportPlans'
 
 let dbPromise: Promise<IDBPDatabase> | null = null
 
@@ -38,6 +49,13 @@ export function getDb(): Promise<IDBPDatabase> {
           store.createIndex('by-teacher', 'teacherId')
           store.createIndex('by-grade', 'grade')
           store.createIndex('by-date', 'sessionDate')
+        }
+        if (!db.objectStoreNames.contains(STORE_SPORT_FACILITIES)) {
+          db.createObjectStore(STORE_SPORT_FACILITIES, { keyPath: 'id' })
+        }
+        if (!db.objectStoreNames.contains(STORE_SPORT_PLANS)) {
+          const store = db.createObjectStore(STORE_SPORT_PLANS, { keyPath: 'id' })
+          store.createIndex('by-updatedAt', 'updatedAt')
         }
       },
     })
@@ -138,4 +156,35 @@ export async function putLessonPlan(plan: LessonPlan): Promise<void> {
 export async function deleteLessonPlan(id: string): Promise<void> {
   const db = await getDb()
   await db.delete(STORE_LESSON_PLANS, id)
+}
+
+export async function getAllSportFacilities(): Promise<SportFacility[]> {
+  const db = await getDb()
+  return db.getAll(STORE_SPORT_FACILITIES)
+}
+export async function putSportFacility(facility: SportFacility): Promise<void> {
+  const db = await getDb()
+  await db.put(STORE_SPORT_FACILITIES, toPlain(facility))
+}
+export async function deleteSportFacility(id: string): Promise<void> {
+  const db = await getDb()
+  await db.delete(STORE_SPORT_FACILITIES, id)
+}
+
+export async function getAllSportPlans(): Promise<SportPlan[]> {
+  const db = await getDb()
+  const all = await db.getAll(STORE_SPORT_PLANS)
+  return all.sort((a, b) => b.updatedAt - a.updatedAt)
+}
+export async function getSportPlan(id: string): Promise<SportPlan | undefined> {
+  const db = await getDb()
+  return db.get(STORE_SPORT_PLANS, id)
+}
+export async function putSportPlan(plan: SportPlan): Promise<void> {
+  const db = await getDb()
+  await db.put(STORE_SPORT_PLANS, toPlain(plan))
+}
+export async function deleteSportPlan(id: string): Promise<void> {
+  const db = await getDb()
+  await db.delete(STORE_SPORT_PLANS, id)
 }
