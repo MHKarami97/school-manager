@@ -1,12 +1,10 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppFooter from '@/components/layout/AppFooter.vue'
 import { useWizardStore } from '@/stores/wizard'
 import { SITE_FEATURES } from '@/config/features.config'
 
-const router = useRouter()
 const wizardStore = useWizardStore()
 const canContinue = ref(false)
 
@@ -14,13 +12,6 @@ onMounted(() => {
   canContinue.value = wizardStore.hasInProgressSession
 })
 
-function startFresh(): void {
-  wizardStore.reset()
-  router.push('/wizard')
-}
-
-// این‌ها ویژگی‌های فنی «چیدمان برنامه» هستند (نه ابزارهای مستقل سایت)؛
-// ابزارهای مستقل سایت از src/config/features.config.ts خوانده می‌شوند.
 const schedulingCapabilities = [
   {
     title: 'چیدمان خودکار و قانون‌مند',
@@ -36,6 +27,11 @@ const schedulingCapabilities = [
     title: 'ویرایش دستی نتیجه',
     desc: 'بعد از چیدمان خودکار، هر خانه از جدول قابل جابجایی و ویرایش دستی است تا نتیجه دقیقاً مطابق نیاز شما باشد.',
     icon: 'M4 20h4l10-10-4-4L4 16v4z',
+  },
+  {
+    title: 'هوشمند و خودکار',
+    desc: 'تا جای ممکن تمام موارد بصورت خودکار و هوشمند انجام می‌شود تا نیاز به کار دستی نباشد.',
+    icon: 'M9 3v18M15 3v18M3 9h18M3 15h18',
   },
   {
     title: 'خروجی PDF و تصویر',
@@ -77,11 +73,6 @@ const steps = [
               مدیریار برای دوره‌های ابتدایی، متوسطه اول و متوسطه دوم، برنامه هفتگی را بر اساس قوانین رسمی آموزشی
               می‌سازد؛ شما فقط پایه، شیفت و معلم‌ها را مشخص می‌کنید.
             </p>
-            <!--
-              فقط ۲ دکمه‌ی ثابت، مستقل از تعداد امکانات سایت:
-              «شروع کنید» به صفحه‌ی ابزارها (لیست همه‌ی امکانات) می‌رود،
-              «تاریخچه» به صفحه‌ی تاریخچه (لیست همه‌ی آرشیوها) می‌رود.
-            -->
             <div class="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
               <RouterLink
                 to="/tools"
@@ -96,19 +87,10 @@ const steps = [
                 تاریخچه
               </RouterLink>
             </div>
-            <button
-              v-if="canContinue"
-              type="button"
-              class="mt-4 text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
-              @click="startFresh"
-            >
-              یا شروع دوباره‌ی ساخت برنامه (نشست قبلی پاک می‌شود)
-            </button>
           </div>
         </div>
       </section>
 
-      <!-- هر امکان مستقل سایت، معرفی جدا + دکمه‌ی شروع مخصوص خودش -->
       <section id="features" class="mx-auto max-w-6xl px-4 py-16 sm:px-6">
         <div class="mx-auto max-w-2xl text-center">
           <h2 class="text-2xl font-bold text-ink-900 sm:text-3xl dark:text-ink-200">ابزارهای مدیریار</h2>
@@ -146,7 +128,6 @@ const steps = [
         </div>
       </section>
 
-      <!-- امکانات فنی چیدمان برنامه (زیرمجموعه‌ی همان ابزار اول) -->
       <section class="bg-white py-16 dark:bg-ink-900">
         <div class="mx-auto max-w-6xl px-4 sm:px-6">
           <div class="mx-auto max-w-2xl text-center">
