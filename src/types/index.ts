@@ -260,3 +260,34 @@ export interface SportWizardState {
   selectedFacilityIds: string[]
   updatedAt: number
 }
+
+export type CelebrationStatus = 'planned' | 'in-progress' | 'held'
+
+export type CelebrationTaskStatus = 'todo' | 'in-progress' | 'done'
+
+export interface CelebrationTask {
+  id: string
+  celebrationId: string
+  title: string
+  assignee: string
+  dueDate: string
+  status: CelebrationTaskStatus
+}
+
+export interface CelebrationBudget {
+  estimatedCost: number
+  actualCost: number
+}
+
+export interface Celebration {
+  id: string
+  title: string
+  date: string
+  location: string
+  organizer: string
+  status: CelebrationStatus
+  tasks: CelebrationTask[]
+  budget: CelebrationBudget
+  createdAt: number
+  updatedAt: number
+}

@@ -94,6 +94,22 @@ const routes = [
     component: () => import("@/views/SportPlanEditorView.vue"),
     props: true,
   },
+  {
+    path: "/celebrations",
+    name: "celebrations",
+    component: () => import("../views/CelebrationsView.vue"),
+  },
+  {
+    path: "/celebrations/new",
+    name: "celebration-new",
+    component: () => import("../views/CelebrationEditorView.vue"),
+  },
+  {
+    path: "/celebrations/:id",
+    name: "celebration-editor",
+    component: () => import("../views/CelebrationEditorView.vue"),
+    props: true,
+  },
 ];
 
 const router = createRouter({

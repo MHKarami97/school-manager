@@ -121,6 +121,29 @@ const sportPlanSteps = [
     body: 'می‌توانید برنامه کلاس انتخاب‌شده، برنامه یک معلم، کل مدرسه در یک جدول فشرده، یا کل مدرسه به تفکیک هر زنگ را چاپ کنید. برای چاپ کل مدرسه، برنامه به‌صورت افقی A4 آماده می‌شود تا جدول روزها و زنگ‌ها خوانا باشد.',
   },
 ]
+
+const celebrationSteps = [
+  {
+    title: '۱. ثبت جشن جدید',
+    body: 'از صفحه «برنامه‌ریزی جشن‌ها» روی «جشن جدید» بزن و عنوان، تاریخ (شمسی)، مکان برگزاری و مسئول جشن را وارد کن.',
+  },
+  {
+    title: '۲. چک‌لیست کارها',
+    body: 'برای هر جشن، در سه ستون «انجام‌نشده»، «در حال انجام» و «انجام‌شده» کارها را با دکمه‌ی «+ افزودن کار» بساز و با درگ‌ودراپ بین ستون‌ها جابه‌جا کن.',
+  },
+  {
+    title: '۳. سررسید و هشدار کارهای عقب‌افتاده',
+    body: 'برای هر کار یک سررسید شمسی تعیین کن. کارهایی که سررسیدشان گذشته و هنوز انجام نشده‌اند، خودکار قرمز می‌شوند و در بالای فهرست جشن‌ها و صفحه‌ی هر جشن هشدار داده می‌شوند.',
+  },
+  {
+    title: '۴. بودجه جشن',
+    body: 'هزینه‌ی تخمینی و هزینه‌ی واقعی جشن را وارد کن (با جداکننده‌ی هزارگان برای خوانایی بهتر)؛ اختلاف این دو مقدار زیر فرم بودجه نمایش داده می‌شود.',
+  },
+  {
+    title: '۵. تقویم کل سال و خروجی PDF',
+    body: 'از تب «تقویم کل سال» می‌توانی جشن‌های هر ۱۲ ماه سال شمسی را یکجا ببینی، بر اساس ماه یا وضعیت (جشن‌های مانده / برگزار شده) فیلتر کنی، روی هر روز کلیک کنی تا جشن‌های همان روز را ببینی، و با دکمه‌ی «چاپ / خروجی PDF» یک نسخه‌ی چاپی از تقویم بگیری.',
+  },
+]
 </script>
 
 <template>
@@ -160,6 +183,14 @@ const sportPlanSteps = [
       <h2 class="mb-4 mt-12 text-lg font-bold text-ink-800 dark:text-ink-200">بخش چهارم: برنامه ورزش مدرسه</h2>
       <ol class="space-y-6">
         <li v-for="step in sportPlanSteps" :key="step.title" class="rounded-2xl border border-ink-100 bg-white p-6 dark:border-ink-800 dark:bg-ink-900">
+          <h3 class="text-base font-semibold text-ink-800 dark:text-ink-200">{{ step.title }}</h3>
+          <p class="mt-2 text-sm leading-7 text-ink-600 dark:text-ink-300">{{ step.body }}</p>
+        </li>
+      </ol>
+
+      <h2 class="mb-4 mt-12 text-lg font-bold text-ink-800 dark:text-ink-200">بخش پنجم: برنامه جشن‌های مدرسه</h2>
+      <ol class="space-y-6">
+        <li v-for="step in celebrationSteps" :key="step.title" class="rounded-2xl border border-ink-100 bg-white p-6 dark:border-ink-800 dark:bg-ink-900">
           <h3 class="text-base font-semibold text-ink-800 dark:text-ink-200">{{ step.title }}</h3>
           <p class="mt-2 text-sm leading-7 text-ink-600 dark:text-ink-300">{{ step.body }}</p>
         </li>
