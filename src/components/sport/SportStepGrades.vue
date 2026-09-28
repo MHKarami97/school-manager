@@ -13,6 +13,18 @@ function toggle(grade: number): void {
   else set.add(grade)
   wizard.setSelectedGrades(Array.from(set).sort((a, b) => a - b))
 }
+
+function classesOf(grade: number): number {
+  return wizard.classesPerGrade[grade] ?? 1
+}
+
+function incrementClasses(grade: number): void {
+  wizard.setClassesForGrade(grade, Math.min(10, classesOf(grade) + 1))
+}
+
+function decrementClasses(grade: number): void {
+  wizard.setClassesForGrade(grade, Math.max(1, classesOf(grade) - 1))
+}
 </script>
 
 <template>
@@ -23,9 +35,11 @@ function toggle(grade: number): void {
         :key="grade"
         type="button"
         class="rounded-xl border-2 px-5 py-3 text-sm font-medium transition"
-        :class="wizard.selectedGrades.includes(grade)
-          ? 'border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300'
-          : 'border-ink-200 bg-white text-ink-600 hover:border-brand-200 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-300'"
+        :class="
+          wizard.selectedGrades.includes(grade)
+            ? 'border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-900/10 dark:text-brand-300'
+            : 'border-ink-200 bg-white text-ink-600 hover:border-brand-200 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-300'
+        "
         @click="toggle(grade)"
       >
         {{ gradeLabel(grade) }}
@@ -41,14 +55,25 @@ function toggle(grade: number): void {
           class="flex items-center justify-between rounded-xl border border-ink-200 px-4 py-2.5 dark:border-ink-700"
         >
           <span class="text-sm text-ink-700 dark:text-ink-200">{{ gradeLabel(grade) }}</span>
-          <input
-            type="number"
-            min="1"
-            max="10"
-            :value="wizard.classesPerGrade[grade] ?? 1"
-            class="w-16 rounded-lg border border-ink-200 bg-white px-2 py-1 text-center text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200"
-            @change="wizard.setClassesForGrade(grade, Number(($event.target as HTMLInputElement).value))"
-          />
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              class="flex h-8 w-8 items-center justify-center rounded-lg border border-ink-200 text-ink-600 hover:bg-ink-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-ink-700 dark:text-ink-300 dark:hover:bg-ink-800"
+              :disabled="classesOf(grade) <= 1"
+              @click="decrementClasses(grade)"
+            >
+              −
+            </button>
+            <span class="w-6 text-center text-sm font-semibold text-ink-800 dark:text-ink-200">{{ classesOf(grade) }}</span>
+            <button
+              type="button"
+              class="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-40"
+              :disabled="classesOf(grade) >= 10"
+              @click="incrementClasses(grade)"
+            >
+              +
+            </button>
+          </div>
         </div>
       </div>
     </div>

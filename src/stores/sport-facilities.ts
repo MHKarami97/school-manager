@@ -12,18 +12,15 @@ export const useSportFacilitiesStore = defineStore('sportFacilities', {
     items: [],
     isLoaded: false,
   }),
-
   getters: {
     byId: (state) => (id: string) => state.items.find((f) => f.id === id),
   },
-
   actions: {
     async loadFromDb(): Promise<void> {
       if (this.isLoaded) return
       this.items = await getAllSportFacilities()
       this.isLoaded = true
     },
-
     async addFacility(name: string, concurrentCapacity: number): Promise<SportFacility> {
       const facility: SportFacility = {
         id: crypto.randomUUID(),
@@ -35,7 +32,12 @@ export const useSportFacilitiesStore = defineStore('sportFacilities', {
       await putSportFacility(facility)
       return facility
     },
-
+    async updateFacility(facility: SportFacility): Promise<void> {
+      const idx = this.items.findIndex((f) => f.id === facility.id)
+      if (idx >= 0) this.items[idx] = facility
+      else this.items.push(facility)
+      await putSportFacility(facility)
+    },
     async removeFacility(id: string): Promise<void> {
       this.items = this.items.filter((f) => f.id !== id)
       await deleteSportFacility(id)

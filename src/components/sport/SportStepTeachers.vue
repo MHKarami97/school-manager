@@ -34,8 +34,25 @@ async function addNewSportTeacher(): Promise<void> {
   newTeacherName.value = ''
 }
 
+/** ساعت‌های شروع/پایان شیفتی که در مرحله قبل (صبح/ظهر) انتخاب شده است. */
+const activeShiftConfig = computed(() => wizard.shiftConfigs[wizard.shiftId])
+
 function availabilityOf(teacher: Teacher, dayIndex: number): TeacherAvailabilitySlot | undefined {
   return teacher.availability?.find((a) => a.dayIndex === dayIndex)
+}
+
+/** فاصله‌ی زمانی دو ساعت "HH:MM" به ساعت (اعشاری). */
+function hoursBetween(start: string, end: string): number {
+  const [startHour, startMinute] = start.split(':').map(Number)
+  const [endHour, endMinute] = end.split(':').map(Number)
+  const minutes = endHour * 60 + endMinute - (startHour * 60 + startMinute)
+  return Math.max(0, minutes / 60)
+}
+
+/** مجموع ساعت‌های حضور از روی روزهای انتخاب‌شده، برای همگام‌سازی خودکار سقف ساعت هفتگی. */
+function totalWeeklyHoursOf(availability: TeacherAvailabilitySlot[]): number {
+  const total = availability.reduce((sum, slot) => sum + hoursBetween(slot.startTime, slot.endTime), 0)
+  return Math.round(total * 4) / 4
 }
 
 async function toggleDayAvailability(teacher: Teacher, dayIndex: number): Promise<void> {
@@ -43,18 +60,29 @@ async function toggleDayAvailability(teacher: Teacher, dayIndex: number): Promis
   const exists = availabilityOf(teacher, dayIndex)
   const next = exists
     ? current.filter((a) => a.dayIndex !== dayIndex)
-    : [...current, { dayIndex, startTime: '08:00', endTime: '13:00' }]
-  await teachersStore.updateTeacher({ ...teacher, availability: next })
+    : [
+        ...current,
+        {
+          dayIndex,
+          startTime: activeShiftConfig.value.startTime,
+          endTime: activeShiftConfig.value.endTime,
+        },
+      ]
+  await teachersStore.updateTeacher({
+    ...teacher,
+    availability: next,
+    maxWeeklyHours: totalWeeklyHoursOf(next),
+  })
 }
 
-async function updateDayTime(
-  teacher: Teacher,
-  dayIndex: number,
-  patch: Partial<TeacherAvailabilitySlot>,
-): Promise<void> {
+async function updateDayTime(teacher: Teacher, dayIndex: number, patch: Partial<TeacherAvailabilitySlot>): Promise<void> {
   const current = teacher.availability ?? []
   const next = current.map((a) => (a.dayIndex === dayIndex ? { ...a, ...patch } : a))
-  await teachersStore.updateTeacher({ ...teacher, availability: next })
+  await teachersStore.updateTeacher({
+    ...teacher,
+    availability: next,
+    maxWeeklyHours: totalWeeklyHoursOf(next),
+  })
 }
 
 async function updateMaxWeeklyHours(teacher: Teacher, value: number): Promise<void> {
@@ -70,7 +98,7 @@ async function updateMaxWeeklyHours(teacher: Teacher, value: number): Promise<vo
         <input
           v-model="newTeacherName"
           type="text"
-          placeholder="نام معلم"
+          placeholder="نام معلم ورزش"
           class="w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200"
           @keyup.enter="addNewSportTeacher"
         />
@@ -83,12 +111,16 @@ async function updateMaxWeeklyHours(teacher: Teacher, value: number): Promise<vo
         </button>
       </div>
       <p v-if="!sportTeachers.length" class="mt-2 text-11px text-ink-400 dark:text-ink-500">
-        هنوز معلم ورزشی ثبت نشده؛ از همین باکس اولین معلم را اضافه کن.
+        هنوز معلم ورزشی ثبت نشده است.
       </p>
     </div>
 
-    <div v-for="teacher in sportTeachers" :key="teacher.id" class="rounded-2xl border border-ink-100 bg-white p-5 dark:border-ink-800 dark:bg-ink-900">
-      <div class="mb-3 flex items-center justify-between">
+    <div
+      v-for="teacher in sportTeachers"
+      :key="teacher.id"
+      class="rounded-2xl border border-ink-100 bg-white p-5 dark:border-ink-800 dark:bg-ink-900"
+    >
+      <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
         <label class="flex items-center gap-2">
           <input
             type="checkbox"
@@ -104,20 +136,26 @@ async function updateMaxWeeklyHours(teacher: Teacher, value: number): Promise<vo
             type="number"
             min="1"
             max="40"
+            step="0.25"
             :value="teacher.maxWeeklyHours ?? 24"
             class="w-16 rounded-lg border border-ink-200 bg-white px-2 py-1 text-center dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200"
             @change="updateMaxWeeklyHours(teacher, Number(($event.target as HTMLInputElement).value))"
           />
         </div>
       </div>
-
-      <p class="mb-2 text-11px font-medium text-ink-500 dark:text-ink-400">روزها و ساعت حضور</p>
+      <p class="mb-2 text-11px font-medium text-ink-500 dark:text-ink-400">
+        روزهای حضور و بازه‌ی زمانی (سقف ساعت هفتگی بالا به‌صورت خودکار از مجموع همین روزها محاسبه می‌شود)
+      </p>
       <div class="flex flex-wrap gap-2">
         <div
           v-for="(day, dayIndex) in WEEK_DAYS"
           :key="day"
           class="flex items-center gap-2 rounded-lg border px-2.5 py-1.5"
-          :class="availabilityOf(teacher, dayIndex) ? 'border-brand-300 bg-brand-50 dark:bg-brand-500/10' : 'border-ink-200 dark:border-ink-700'"
+          :class="
+            availabilityOf(teacher, dayIndex)
+              ? 'border-brand-300 bg-brand-50 dark:bg-brand-900/10'
+              : 'border-ink-200 dark:border-ink-700'
+          "
         >
           <button
             type="button"
@@ -145,7 +183,8 @@ async function updateMaxWeeklyHours(teacher: Teacher, value: number): Promise<vo
         </div>
       </div>
       <p class="mt-2 text-11px text-ink-400 dark:text-ink-500">
-        اگر هیچ روزی را فعال نکنی، این معلم در همه‌ی روزها/ساعت‌های شیفت در دسترس فرض می‌شود.
+        زنگ اول هر روزی که فعال می‌کنی، پیش‌فرض بازه‌ی شیفت {{ activeShiftConfig.name }} ({{ activeShiftConfig.startTime }}
+        تا {{ activeShiftConfig.endTime }}) پر می‌شود؛ در صورت نیاز می‌توانی همان روز را دستی اصلاح کنی.
       </p>
     </div>
   </div>

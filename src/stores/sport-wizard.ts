@@ -14,13 +14,13 @@ function createInitialState(): SportWizardState {
     shiftConfigs: cloneDefaultShiftConfigs(),
     selectedTeacherIds: [],
     selectedFacilityIds: [],
+    noConsecutiveSportPeriods: false,
     updatedAt: Date.now(),
   }
 }
 
 export const useSportWizardStore = defineStore('sportWizard', {
   state: (): SportWizardState => createInitialState(),
-
   getters: {
     hasInProgressSession(): boolean {
       const raw = localStorage.getItem(STORAGE_KEY)
@@ -33,13 +33,11 @@ export const useSportWizardStore = defineStore('sportWizard', {
       }
     },
   },
-
   actions: {
     persist(): void {
       this.updatedAt = Date.now()
       localStorage.setItem(STORAGE_KEY, JSON.stringify(this.$state))
     },
-
     restore(): boolean {
       const raw = localStorage.getItem(STORAGE_KEY)
       if (!raw) return false
@@ -51,12 +49,10 @@ export const useSportWizardStore = defineStore('sportWizard', {
         return false
       }
     },
-
     reset(): void {
       this.$patch(createInitialState())
       localStorage.removeItem(STORAGE_KEY)
     },
-
     goToStep(step: number): void {
       this.step = step
       this.persist()
@@ -69,14 +65,12 @@ export const useSportWizardStore = defineStore('sportWizard', {
       this.step = Math.max(1, this.step - 1)
       this.persist()
     },
-
     setLevel(levelId: LevelId): void {
       this.levelId = levelId
       this.selectedGrades = []
       this.classesPerGrade = {}
       this.persist()
     },
-
     setSelectedGrades(grades: number[]): void {
       this.selectedGrades = grades
       for (const grade of grades) {
@@ -84,24 +78,24 @@ export const useSportWizardStore = defineStore('sportWizard', {
       }
       this.persist()
     },
-
     setClassesForGrade(grade: number, count: number): void {
       this.classesPerGrade = { ...this.classesPerGrade, [grade]: Math.max(1, count) }
       this.persist()
     },
-
     setShiftId(shiftId: ShiftId): void {
       this.shiftId = shiftId
       this.persist()
     },
-
     setSelectedTeacherIds(ids: string[]): void {
       this.selectedTeacherIds = ids
       this.persist()
     },
-
     setSelectedFacilityIds(ids: string[]): void {
       this.selectedFacilityIds = ids
+      this.persist()
+    },
+    setNoConsecutiveSportPeriods(value: boolean): void {
+      this.noConsecutiveSportPeriods = value
       this.persist()
     },
   },

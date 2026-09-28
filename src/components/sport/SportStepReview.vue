@@ -28,7 +28,7 @@ const classes = computed<SportClassDefinition[]>(() => {
   for (const grade of wizard.selectedGrades) {
     const count = wizard.classesPerGrade[grade] ?? 1
     for (let i = 0; i < count; i += 1) {
-      list.push({ id: `${grade}-${i}`, grade, label: `${gradeLabel(grade)} - کلاس ${i + 1}` })
+      list.push({ id: `${grade}-${i}`, grade, label: `${gradeLabel(grade)} - ${i + 1}` })
     }
   }
   return list
@@ -44,16 +44,18 @@ function defaultPeriodsFor(grade: number): number {
 
 onMounted(() => {
   const initial: Record<string, number> = {}
-  for (const klass of classes.value) initial[klass.id] = defaultPeriodsFor(klass.grade)
+  for (const klass of classes.value) {
+    initial[klass.id] = defaultPeriodsFor(klass.grade)
+  }
   periodsPerWeekByClass.value = initial
 })
 
-const selectedTeachers = computed(() =>
-  teachersStore.items.filter((t) => wizard.selectedTeacherIds.includes(t.id)),
-)
-const selectedFacilities = computed(() =>
-  facilitiesStore.items.filter((f) => wizard.selectedFacilityIds.includes(f.id)),
-)
+const selectedTeachers = computed(() => teachersStore.items.filter((t) => wizard.selectedTeacherIds.includes(t.id)))
+const selectedFacilities = computed(() => facilitiesStore.items.filter((f) => wizard.selectedFacilityIds.includes(f.id)))
+
+function toggleNoConsecutive(): void {
+  wizard.setNoConsecutiveSportPeriods(!wizard.noConsecutiveSportPeriods)
+}
 
 const isGenerating = ref(false)
 const warnings = ref<string[]>([])
@@ -64,7 +66,6 @@ async function handleGenerate(): Promise<void> {
   isGenerating.value = true
   errorMessage.value = ''
   warnings.value = []
-
   try {
     const engine = new SportSchedulerEngine()
     const result = engine.run({
@@ -74,14 +75,13 @@ async function handleGenerate(): Promise<void> {
       shiftConfig: activeShiftConfig.value,
       teachers: selectedTeachers.value,
       facilities: selectedFacilities.value,
+      noConsecutiveSportPeriods: wizard.noConsecutiveSportPeriods,
     })
-
     warnings.value = result.warnings
-
     const now = Date.now()
     const plan: SportPlan = {
       id: crypto.randomUUID(),
-      title: `برنامه ورزش ${level.value?.name ?? ''} - ${wizard.selectedGrades.map((g) => gradeLabel(g)).join('، ')}`,
+      title: `${level.value?.name ?? ''} - ${wizard.selectedGrades.map((g) => gradeLabel(g)).join('،')}`,
       levelId: wizard.levelId,
       grades: wizard.selectedGrades,
       classes: classes.value,
@@ -94,12 +94,11 @@ async function handleGenerate(): Promise<void> {
       createdAt: now,
       updatedAt: now,
     }
-
     await sportPlansStore.save(plan)
     wizard.reset()
     router.push(`/sport/${plan.id}`)
   } catch (error) {
-    errorMessage.value = 'خطایی در ساخت برنامه رخ داد. دوباره تلاش کن.'
+    errorMessage.value = 'خطایی در ساخت برنامه ورزش رخ داد. دوباره تلاش کن.'
     console.error(error)
   } finally {
     isGenerating.value = false
@@ -110,18 +109,18 @@ async function handleGenerate(): Promise<void> {
 <template>
   <div class="space-y-6">
     <div class="rounded-2xl border border-ink-100 bg-white p-5 dark:border-ink-800 dark:bg-ink-900">
-      <p class="text-sm font-semibold text-ink-800 dark:text-ink-200">خلاصه</p>
+      <p class="mb-3 text-sm font-semibold text-ink-800 dark:text-ink-200">خلاصه</p>
       <dl class="mt-3 grid gap-2 text-sm text-ink-600 sm:grid-cols-2 dark:text-ink-300">
-        <div><dt class="inline text-ink-400 dark:text-ink-500">مقطع: </dt><dd class="inline">{{ level?.name }}</dd></div>
-        <div><dt class="inline text-ink-400 dark:text-ink-500">پایه‌ها: </dt><dd class="inline">{{ wizard.selectedGrades.map((g) => gradeLabel(g)).join('، ') }}</dd></div>
+        <div><dt class="inline text-ink-400 dark:text-ink-500">پایه: </dt><dd class="inline">{{ level?.name }}</dd></div>
+        <div><dt class="inline text-ink-400 dark:text-ink-500">پایه‌ها: </dt><dd class="inline">{{ wizard.selectedGrades.map((g) => gradeLabel(g)).join('،') }}</dd></div>
         <div><dt class="inline text-ink-400 dark:text-ink-500">تعداد کلاس‌ها: </dt><dd class="inline">{{ classes.length }}</dd></div>
-        <div><dt class="inline text-ink-400 dark:text-ink-500">معلمان ورزش: </dt><dd class="inline">{{ selectedTeachers.length }}</dd></div>
+        <div><dt class="inline text-ink-400 dark:text-ink-500">معلم‌های انتخاب‌شده: </dt><dd class="inline">{{ selectedTeachers.length }}</dd></div>
       </dl>
     </div>
 
     <div class="rounded-2xl border border-ink-100 bg-white p-5 dark:border-ink-800 dark:bg-ink-900">
       <p class="mb-1 text-sm font-semibold text-ink-800 dark:text-ink-200">تعداد زنگ ورزش هفتگی هر کلاس</p>
-      <p class="mb-4 text-xs text-ink-500 dark:text-ink-400">مقدار پیش‌فرض از برنامه‌ی درسی مصوب گرفته شده؛ در صورت نیاز تغییرش بده.</p>
+      <p class="mb-4 text-xs text-ink-500 dark:text-ink-400">در صورت نیاز می‌توانی این عدد را برای هر کلاس تغییر بدهی.</p>
       <div class="grid gap-2 sm:grid-cols-2">
         <div
           v-for="klass in classes"
@@ -141,11 +140,43 @@ async function handleGenerate(): Promise<void> {
       </div>
     </div>
 
-    <div v-if="!selectedTeachers.length" class="rounded-2xl border border-red-200 bg-red-50 p-4 text-xs leading-6 text-red-700 dark:border-red-900/30 dark:bg-red-900/10 dark:text-red-300">
-      هیچ معلم ورزشی انتخاب نشده. به مرحله‌ی «معلمان» برگرد و حداقل یک معلم را انتخاب کن.
+    <!-- عدم تکرار زنگ ورزش یک کلاس در یک روز -->
+    <div class="rounded-2xl border border-ink-100 bg-white p-5 dark:border-ink-800 dark:bg-ink-900">
+      <label class="flex items-center justify-between gap-3">
+        <div>
+          <p class="text-sm font-semibold text-ink-800 dark:text-ink-200">عدم تکرار زنگ ورزش یک کلاس در یک روز</p>
+          <p class="mt-1 text-11px leading-5 text-ink-400 dark:text-ink-500">
+            با فعال‌بودن این گزینه، زنگ‌های ورزش هر کلاس در روزهای متفاوت پخش می‌شوند (نه پشت‌سرهم و نه در یک روز).
+            در حالت خاموش، ممکن است چند زنگ ورزش یک کلاس در یک روز (حتی پشت‌سرهم) قرار بگیرد.
+          </p>
+        </div>
+        <button
+          type="button"
+          class="relative h-6 w-11 shrink-0 rounded-full transition"
+          :class="wizard.noConsecutiveSportPeriods ? 'bg-brand-600' : 'bg-ink-200 dark:bg-ink-700'"
+          role="switch"
+          :aria-checked="wizard.noConsecutiveSportPeriods"
+          @click="toggleNoConsecutive"
+        >
+          <span
+            class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all"
+            :style="{ right: wizard.noConsecutiveSportPeriods ? '2px' : '22px' }"
+          ></span>
+        </button>
+      </label>
     </div>
 
-    <div v-if="warnings.length" class="space-y-1 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800 dark:border-amber-900/30 dark:bg-amber-900/10 dark:text-amber-300">
+    <div
+      v-if="!selectedTeachers.length"
+      class="rounded-2xl border border-red-200 bg-red-50 p-4 text-xs leading-6 text-red-700 dark:border-red-900/30 dark:bg-red-900/10 dark:text-red-300"
+    >
+      حداقل یک معلم ورزش باید انتخاب شده باشد تا برنامه ساخته شود.
+    </div>
+
+    <div
+      v-if="warnings.length"
+      class="space-y-1 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800 dark:border-amber-900/30 dark:bg-amber-900/10 dark:text-amber-300"
+    >
       <p v-for="(w, i) in warnings" :key="i">{{ w }}</p>
     </div>
     <p v-if="errorMessage" class="text-xs text-red-600 dark:text-red-400">{{ errorMessage }}</p>
@@ -156,7 +187,7 @@ async function handleGenerate(): Promise<void> {
       :disabled="isGenerating || !selectedTeachers.length"
       @click="handleGenerate"
     >
-      {{ isGenerating ? 'در حال ساخت...' : 'ساخت برنامه ورزش' }}
+      {{ isGenerating ? 'در حال ساخت برنامه...' : 'ساخت برنامه ورزش' }}
     </button>
   </div>
 </template>

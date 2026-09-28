@@ -6,7 +6,13 @@ import { useSportFacilitiesStore } from '@/stores/sport-facilities'
 const wizard = useSportWizardStore()
 const facilitiesStore = useSportFacilitiesStore()
 
-onMounted(() => facilitiesStore.loadFromDb())
+onMounted(async () => {
+  await facilitiesStore.loadFromDb()
+  if (yardFacility.value && wizard.selectedFacilityIds.includes(yardFacility.value.id)) {
+    hasNoFacility.value = true
+    yardCapacity.value = yardFacility.value.concurrentCapacity
+  }
+})
 
 const newName = ref('')
 const newCapacity = ref(1)
@@ -37,22 +43,80 @@ async function removeFacility(id: string): Promise<void> {
 }
 
 const hasFacilities = computed(() => facilitiesStore.items.length > 0)
+
+const YARD_FACILITY_NAME = 'حیاط مدرسه'
+const hasNoFacility = ref(false)
+const yardCapacity = ref(1)
+
+const yardFacility = computed(() => facilitiesStore.items.find((f) => f.name === YARD_FACILITY_NAME))
+
+async function applyYardFacility(): Promise<void> {
+  if (yardFacility.value) {
+    await facilitiesStore.updateFacility({ ...yardFacility.value, concurrentCapacity: yardCapacity.value })
+    if (!wizard.selectedFacilityIds.includes(yardFacility.value.id)) {
+      wizard.setSelectedFacilityIds([...wizard.selectedFacilityIds, yardFacility.value.id])
+    }
+  } else {
+    const facility = await facilitiesStore.addFacility(YARD_FACILITY_NAME, yardCapacity.value)
+    wizard.setSelectedFacilityIds([...wizard.selectedFacilityIds, facility.id])
+  }
+}
+
+async function toggleNoFacility(): Promise<void> {
+  hasNoFacility.value = !hasNoFacility.value
+  if (hasNoFacility.value) {
+    await applyYardFacility()
+  } else if (yardFacility.value) {
+    const facilityId = yardFacility.value.id
+    wizard.setSelectedFacilityIds(wizard.selectedFacilityIds.filter((id) => id !== facilityId))
+  }
+}
+
+async function onYardCapacityChange(): Promise<void> {
+  if (hasNoFacility.value) await applyYardFacility()
+}
 </script>
 
 <template>
   <div class="space-y-6">
     <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-6 text-amber-800 dark:border-amber-900/30 dark:bg-amber-900/10 dark:text-amber-300">
-      این مرحله اختیاری است. اگر سالن/زمین ورزشی جداگانه نداری یا محدودیت هم‌زمانی برایت مهم نیست،
-      می‌توانی بدون افزودن هیچ فضایی به مرحله بعد بروی.
+      برای هر کلاس در هر زنگ ورزش، در صورت وجود، یک فضای ورزشی (سالن/زمین) هم می‌توان اختصاص داد.
     </div>
 
     <div class="rounded-2xl border border-ink-100 bg-white p-5 dark:border-ink-800 dark:bg-ink-900">
-      <p class="mb-3 text-sm font-semibold text-ink-800 dark:text-ink-200">افزودن سالن/زمین ورزشی</p>
+      <label class="flex items-center gap-2">
+        <input
+          type="checkbox"
+          :checked="hasNoFacility"
+          class="h-4 w-4 rounded border-ink-300"
+          @change="toggleNoFacility"
+        />
+        <span class="text-sm font-semibold text-ink-800 dark:text-ink-200">زمین ندارم (فقط از حیاط خود مدرسه استفاده می‌کنم)</span>
+      </label>
+
+      <div v-if="hasNoFacility" class="mt-3 flex items-center gap-3">
+        <label class="text-xs font-medium text-ink-600 dark:text-ink-300">ظرفیت همزمان حیاط (چند کلاس همزمان می‌توانند ورزش کنند)</label>
+        <input
+          v-model.number="yardCapacity"
+          type="number"
+          min="1"
+          max="10"
+          class="w-20 rounded-lg border border-ink-200 bg-white px-2 py-1.5 text-center text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200"
+          @change="onYardCapacityChange"
+        />
+      </div>
+      <p v-if="hasNoFacility" class="mt-2 text-11px text-ink-400 dark:text-ink-500">
+        با این گزینه، یک فضای ورزشی به نام «حیاط مدرسه» به‌صورت خودکار ساخته و انتخاب می‌شود.
+      </p>
+    </div>
+
+    <div v-if="!hasNoFacility" class="rounded-2xl border border-ink-100 bg-white p-5 dark:border-ink-800 dark:bg-ink-900">
+      <p class="mb-3 text-sm font-semibold text-ink-800 dark:text-ink-200">افزودن سالن/فضای ورزشی جدید</p>
       <div class="flex gap-2">
         <input
           v-model="newName"
           type="text"
-          placeholder="مثال: سالن ورزشی، زمین چمن"
+          placeholder="مثلاً: سالن ورزشی"
           class="w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200"
         />
         <input
@@ -71,7 +135,7 @@ const hasFacilities = computed(() => facilitiesStore.items.length > 0)
         </button>
       </div>
       <p class="mt-2 text-11px text-ink-400 dark:text-ink-500">
-        عدد کنار نام یعنی «چند کلاس هم‌زمان می‌توانند از این فضا استفاده کنند».
+        عدد کنار نام، تعداد کلاس‌هایی است که می‌توانند هم‌زمان از این فضا استفاده کنند.
       </p>
     </div>
 
@@ -80,7 +144,7 @@ const hasFacilities = computed(() => facilitiesStore.items.length > 0)
         v-for="facility in facilitiesStore.items"
         :key="facility.id"
         class="flex items-center justify-between rounded-xl border px-4 py-2.5"
-        :class="isSelected(facility.id) ? 'border-brand-300 bg-brand-50 dark:bg-brand-500/10' : 'border-ink-200 dark:border-ink-700'"
+        :class="isSelected(facility.id) ? 'border-brand-300 bg-brand-50 dark:bg-brand-900/10' : 'border-ink-200 dark:border-ink-700'"
       >
         <label class="flex items-center gap-2">
           <input
@@ -89,9 +153,8 @@ const hasFacilities = computed(() => facilitiesStore.items.length > 0)
             class="h-4 w-4 rounded border-ink-300"
             @change="toggleSelected(facility.id)"
           />
-          <span class="text-sm text-ink-700 dark:text-ink-200">
-            {{ facility.name }} <span class="text-11px text-ink-400 dark:text-ink-500">(ظرفیت هم‌زمان: {{ facility.concurrentCapacity }})</span>
-          </span>
+          <span class="text-sm text-ink-700 dark:text-ink-200">{{ facility.name }}</span>
+          <span class="text-11px text-ink-400 dark:text-ink-500">{{ facility.concurrentCapacity }}</span>
         </label>
         <button type="button" class="text-xs text-red-600 dark:text-red-400" @click="removeFacility(facility.id)">
           حذف

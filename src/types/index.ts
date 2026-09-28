@@ -272,6 +272,7 @@ export interface SportWizardState {
   selectedTeacherIds: string[];
   selectedFacilityIds: string[];
   updatedAt: number;
+  noConsecutiveSportPeriods: boolean;
 }
 
 export type CelebrationStatus = "planned" | "in-progress" | "held";
