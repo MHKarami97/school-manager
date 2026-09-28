@@ -105,7 +105,7 @@ async function onYardCapacityChange(): Promise<void> {
           @change="onYardCapacityChange"
         />
       </div>
-      <p v-if="hasNoFacility" class="mt-2 text-11px text-ink-400 dark:text-ink-500">
+      <p v-if="hasNoFacility" class="mt-2 text-sm text-ink-400 dark:text-ink-500">
         با این گزینه، یک فضای ورزشی به نام «حیاط مدرسه» به‌صورت خودکار ساخته و انتخاب می‌شود.
       </p>
     </div>
@@ -134,7 +134,7 @@ async function onYardCapacityChange(): Promise<void> {
           افزودن
         </button>
       </div>
-      <p class="mt-2 text-11px text-ink-400 dark:text-ink-500">
+      <p class="mt-2 text-sm text-ink-400 dark:text-ink-500">
         عدد کنار نام، تعداد کلاس‌هایی است که می‌توانند هم‌زمان از این فضا استفاده کنند.
       </p>
     </div>
@@ -154,7 +154,7 @@ async function onYardCapacityChange(): Promise<void> {
             @change="toggleSelected(facility.id)"
           />
           <span class="text-sm text-ink-700 dark:text-ink-200">{{ facility.name }}</span>
-          <span class="text-11px text-ink-400 dark:text-ink-500">{{ facility.concurrentCapacity }}</span>
+          <span class="text-sm text-ink-400 dark:text-ink-500">{{ facility.concurrentCapacity }}</span>
         </label>
         <button type="button" class="text-xs text-red-600 dark:text-red-400" @click="removeFacility(facility.id)">
           حذف

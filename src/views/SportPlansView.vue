@@ -51,16 +51,16 @@ async function handleDelete(id: string): Promise<void> {
           <div class="p-5">
             <div class="flex items-start justify-between gap-2">
               <p class="text-base font-semibold text-ink-800 dark:text-ink-200">{{ item.title }}</p>
-              <span class="shrink-0 rounded-full bg-brand-50 px-2.5 py-1 text-11px font-medium text-brand-700 dark:bg-brand-500/10 dark:text-brand-300">
+              <span class="shrink-0 rounded-full bg-brand-50 px-2.5 py-1 text-sm font-medium text-brand-700 dark:bg-brand-500/10 dark:text-brand-300">
                 {{ levelName(item.levelId) }}
               </span>
             </div>
             <div class="mt-3 flex flex-wrap gap-1.5">
-              <span v-for="g in item.grades" :key="g" class="rounded-lg bg-ink-50 px-2 py-1 text-11px font-medium text-ink-600 dark:bg-ink-800 dark:text-ink-300">
+              <span v-for="g in item.grades" :key="g" class="rounded-lg bg-ink-50 px-2 py-1 text-sm font-medium text-ink-600 dark:bg-ink-800 dark:text-ink-300">
                 {{ gradeLabel(g) }}
               </span>
             </div>
-            <div class="mt-3 flex flex-wrap items-center gap-3 text-11px text-ink-400 dark:text-ink-500">
+            <div class="mt-3 flex flex-wrap items-center gap-3 text-sm text-ink-400 dark:text-ink-500">
               <span>{{ item.classes.length }} کلاس</span>
               <span>{{ item.teachers.length }} معلم</span>
               <span>{{ formattedDate(item.updatedAt) }}</span>

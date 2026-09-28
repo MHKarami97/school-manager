@@ -145,7 +145,7 @@ async function handleGenerate(): Promise<void> {
       <label class="flex items-center justify-between gap-3">
         <div>
           <p class="text-sm font-semibold text-ink-800 dark:text-ink-200">عدم تکرار زنگ ورزش یک کلاس در یک روز</p>
-          <p class="mt-1 text-11px leading-5 text-ink-400 dark:text-ink-500">
+          <p class="mt-1 text-sm leading-5 text-ink-400 dark:text-ink-500">
             با فعال‌بودن این گزینه، زنگ‌های ورزش هر کلاس در روزهای متفاوت پخش می‌شوند (نه پشت‌سرهم و نه در یک روز).
             در حالت خاموش، ممکن است چند زنگ ورزش یک کلاس در یک روز (حتی پشت‌سرهم) قرار بگیرد.
           </p>

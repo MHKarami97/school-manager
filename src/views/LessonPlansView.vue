@@ -172,7 +172,7 @@ async function duplicatePlan(id: string): Promise<void> {
                 {{ plan.title || 'بدون عنوان' }}
               </p>
               <span
-                class="shrink-0 rounded-full px-2.5 py-1 text-11px font-medium"
+                class="shrink-0 rounded-full px-2.5 py-1 text-sm font-medium"
                 :class="LESSON_PLAN_STATUS_BADGE_CLASSES[plan.status]"
               >
                 {{ LESSON_PLAN_STATUS_LABELS[plan.status] }}
@@ -182,7 +182,7 @@ async function duplicatePlan(id: string): Promise<void> {
               {{ courseNameOf(plan.courseId) }} · {{ gradeLabel(plan.grade) }} ·
               {{ teacherNameOf(plan.teacherId) }}
             </p>
-            <p class="mb-3 text-11px text-ink-400 dark:text-ink-500">
+            <p class="mb-3 text-sm text-ink-400 dark:text-ink-500">
               هفته {{ plan.weekNumber }} · {{ plan.sessionDate || 'بدون تاریخ' }}
             </p>
             <div class="flex items-center justify-between border-t border-ink-50 pt-3 dark:border-ink-800">

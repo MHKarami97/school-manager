@@ -110,7 +110,7 @@ async function updateMaxWeeklyHours(teacher: Teacher, value: number): Promise<vo
           افزودن
         </button>
       </div>
-      <p v-if="!sportTeachers.length" class="mt-2 text-11px text-ink-400 dark:text-ink-500">
+      <p v-if="!sportTeachers.length" class="mt-2 text-sm text-ink-400 dark:text-ink-500">
         هنوز معلم ورزشی ثبت نشده است.
       </p>
     </div>
@@ -143,7 +143,7 @@ async function updateMaxWeeklyHours(teacher: Teacher, value: number): Promise<vo
           />
         </div>
       </div>
-      <p class="mb-2 text-11px font-medium text-ink-500 dark:text-ink-400">
+      <p class="mb-2 text-sm font-medium text-ink-500 dark:text-ink-400">
         روزهای حضور و بازه‌ی زمانی (سقف ساعت هفتگی بالا به‌صورت خودکار از مجموع همین روزها محاسبه می‌شود)
       </p>
       <div class="flex flex-wrap gap-2">
@@ -169,20 +169,20 @@ async function updateMaxWeeklyHours(teacher: Teacher, value: number): Promise<vo
             <input
               type="time"
               :value="availabilityOf(teacher, dayIndex)?.startTime"
-              class="w-24 rounded border border-ink-200 bg-white px-1 text-11px dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200"
+              class="w-24 rounded border border-ink-200 bg-white px-1 text-sm dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200"
               @change="updateDayTime(teacher, dayIndex, { startTime: ($event.target as HTMLInputElement).value })"
             />
             <span class="text-ink-400">-</span>
             <input
               type="time"
               :value="availabilityOf(teacher, dayIndex)?.endTime"
-              class="w-24 rounded border border-ink-200 bg-white px-1 text-11px dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200"
+              class="w-24 rounded border border-ink-200 bg-white px-1 text-sm dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200"
               @change="updateDayTime(teacher, dayIndex, { endTime: ($event.target as HTMLInputElement).value })"
             />
           </template>
         </div>
       </div>
-      <p class="mt-2 text-11px text-ink-400 dark:text-ink-500">
+      <p class="mt-2 text-sm text-ink-400 dark:text-ink-500">
         زنگ اول هر روزی که فعال می‌کنی، پیش‌فرض بازه‌ی شیفت {{ activeShiftConfig.name }} ({{ activeShiftConfig.startTime }}
         تا {{ activeShiftConfig.endTime }}) پر می‌شود؛ در صورت نیاز می‌توانی همان روز را دستی اصلاح کنی.
       </p>

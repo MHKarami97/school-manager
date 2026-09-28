@@ -126,6 +126,22 @@ const routes = [
     component: () => import("../views/ElectionEditorView.vue"),
     props: true,
   },
+  {
+    path: "/extra-classes",
+    name: "extra-classes",
+    component: () => import("../views/ExtraClassesView.vue"),
+  },
+  {
+    path: "/extra-classes/new",
+    name: "extra-class-new",
+    component: () => import("../views/ExtraClassEditorView.vue"),
+  },
+  {
+    path: "/extra-classes/:id",
+    name: "extra-class-editor",
+    component: () => import("../views/ExtraClassEditorView.vue"),
+    props: true,
+  },
 ];
 
 const router = createRouter({

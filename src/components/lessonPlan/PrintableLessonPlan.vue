@@ -95,7 +95,7 @@ const printDate = new Date().toLocaleDateString('fa-IR', {
     </div>
 
     <div class="mt-3 flex items-center justify-between border-t border-ink-300 pt-3">
-      <p class="text-11px text-ink-500">school.mhkarami97.ir</p>
+      <p class="text-sm text-ink-500">school.mhkarami97.ir</p>
     </div>
   </div>
 </template>

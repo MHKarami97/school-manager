@@ -21,7 +21,7 @@ function cellOf(month: CelebrationYearMonth, row: number, col: number) {
   <div class="celebration-calendar-print p-4 text-ink-900" dir="rtl">
     <div class="mb-3 flex items-center justify-between border-b-2 border-ink-800 pb-2">
       <h1 class="text-base font-bold">تقویم سالانه جشن‌های مدرسه - سال {{ jy }}</h1>
-      <p class="text-11px text-ink-500">{{ printDate }}</p>
+      <p class="text-sm text-ink-500">{{ printDate }}</p>
     </div>
 
     <div class="grid grid-cols-3 gap-3">

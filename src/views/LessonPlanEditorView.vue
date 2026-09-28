@@ -182,7 +182,7 @@ async function handlePrint(): Promise<void> {
                 <label class="block text-xs font-medium text-ink-600 dark:text-ink-300">معلم</label>
                 <button
                   type="button"
-                  class="text-11px font-medium text-brand-600 hover:underline dark:text-brand-400"
+                  class="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
                   @click="isAddingTeacher = !isAddingTeacher"
                 >
                   {{ isAddingTeacher ? 'انصراف' : '+ معلم جدید' }}

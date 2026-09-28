@@ -9,11 +9,12 @@ import type {
   SportPlan,
   Celebration,
   Election,
+  Enrollment,
 } from "@/types";
 
 const DB_NAME = "school-manager-db";
 
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 
 export const STORE_TEACHERS = "teachers";
 export const STORE_SCHEDULES = "schedules";
@@ -24,6 +25,8 @@ export const STORE_SPORT_FACILITIES = "sportFacilities";
 export const STORE_SPORT_PLANS = "sportPlans";
 export const STORE_CELEBRATIONS = "celebrations";
 export const STORE_ELECTIONS = "elections";
+export const STORE_EXTRA_CLASSES = "extraClasses";
+export const STORE_ENROLLMENTS = "enrollments";
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
@@ -82,6 +85,20 @@ export function getDb(): Promise<IDBPDatabase> {
           });
           store.createIndex("by-status", "status");
           store.createIndex("by-updatedAt", "updatedAt");
+        }
+        if (!db.objectStoreNames.contains(STORE_EXTRA_CLASSES)) {
+          const store = db.createObjectStore(STORE_EXTRA_CLASSES, {
+            keyPath: "id",
+          });
+          store.createIndex("by-teacher", "teacherId");
+          store.createIndex("by-day", "dayIndex");
+        }
+        if (!db.objectStoreNames.contains(STORE_ENROLLMENTS)) {
+          const store = db.createObjectStore(STORE_ENROLLMENTS, {
+            keyPath: "id",
+          });
+          store.createIndex("by-class", "extraClassId");
+          store.createIndex("by-student", "studentId");
         }
       },
     });
@@ -260,4 +277,32 @@ export async function putElection(election: Election): Promise<void> {
 export async function deleteElection(id: string): Promise<void> {
   const db = await getDb();
   await db.delete(STORE_ELECTIONS, id);
+}
+
+//extra class
+export async function getAllExtraClasses(): Promise<ExtraClass[]> {
+  const db = await getDb();
+  const all = await db.getAll(STORE_EXTRA_CLASSES);
+  return (all as ExtraClass[]).sort((a, b) => b.updatedAt - a.updatedAt);
+}
+export async function putExtraClass(extraClass: ExtraClass): Promise<void> {
+  const db = await getDb();
+  await db.put(STORE_EXTRA_CLASSES, toPlain(extraClass));
+}
+export async function deleteExtraClass(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete(STORE_EXTRA_CLASSES, id);
+}
+
+export async function getAllEnrollments(): Promise<Enrollment[]> {
+  const db = await getDb();
+  return db.getAll(STORE_ENROLLMENTS);
+}
+export async function putEnrollment(enrollment: Enrollment): Promise<void> {
+  const db = await getDb();
+  await db.put(STORE_ENROLLMENTS, toPlain(enrollment));
+}
+export async function deleteEnrollment(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete(STORE_ENROLLMENTS, id);
 }

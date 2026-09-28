@@ -85,7 +85,7 @@ onMounted(() => wizard.restore())
         <li v-for="(step, index) in steps" :key="step.title" class="relative z-10 flex flex-1 flex-col items-center">
           <button
             type="button"
-            class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-11px font-bold transition sm:h-8 sm:w-8 sm:text-xs"
+            class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-bold transition sm:h-8 sm:w-8 sm:text-xs"
             :class="[
               index <= currentStepIndex ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-400 dark:bg-ink-800 dark:text-ink-500',
               index <= currentStepIndex ? 'cursor-pointer hover:opacity-90' : 'cursor-not-allowed',
@@ -98,7 +98,7 @@ onMounted(() => wizard.restore())
             {{ index + 1 }}
           </button>
           <span
-            class="mt-1.5 w-full text-center text-9px font-medium leading-tight text-ink-500 dark:text-ink-400 sm:text-11px"
+            class="mt-1.5 w-full text-center text-9px font-medium leading-tight text-ink-500 dark:text-ink-400 sm:text-sm"
             style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden"
           >
             {{ step.title }}

@@ -89,11 +89,11 @@ function removeCandidate(): void {
             بدون عکس
           </div>
           <div class="flex flex-col gap-1">
-            <label class="cursor-pointer rounded-lg border border-ink-200 px-3 py-1.5 text-11px font-medium text-ink-600 dark:border-ink-700 dark:text-ink-300">
+            <label class="cursor-pointer rounded-lg border border-ink-200 px-3 py-1.5 text-sm font-medium text-ink-600 dark:border-ink-700 dark:text-ink-300">
               {{ isUploadingPhoto ? 'در حال بارگذاری...' : 'انتخاب عکس' }}
               <input type="file" accept="image/*" class="hidden" @change="onPhotoSelected" />
             </label>
-            <button v-if="photoDataUrl" type="button" class="text-11px text-red-600 dark:text-red-400" @click="removePhoto">
+            <button v-if="photoDataUrl" type="button" class="text-sm text-red-600 dark:text-red-400" @click="removePhoto">
               حذف عکس
             </button>
           </div>

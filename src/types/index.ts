@@ -334,3 +334,37 @@ export interface Election {
   createdAt: number;
   updatedAt: number;
 }
+
+// extra class
+
+export type ExtraClassType = "reinforcement" | "extracurricular";
+export type EnrollmentStatus = "active" | "cancelled";
+
+export interface ExtraClass {
+  id: string;
+  title: string;
+  type: ExtraClassType;
+  relatedCourseId: string | null;
+  teacherId: string | null;
+  capacity: number;
+  dayIndexes: number[];
+  startTime: string;
+  endTime: string;
+  startDate: string;
+  endDate: string;
+  allowedGrades: number[];
+  cost: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface Enrollment {
+  id: string;
+  extraClassId: string;
+  studentId: string;
+  enrollmentDate: string;
+  status: EnrollmentStatus;
+  waitlisted: boolean;
+  createdAt: number;
+  updatedAt: number;
+}

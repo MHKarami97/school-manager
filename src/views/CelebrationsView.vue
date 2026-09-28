@@ -172,7 +172,7 @@ async function handlePrintCalendar(): Promise<void> {
             <div class="mb-2 flex items-start justify-between gap-2">
               <p class="text-sm font-semibold text-ink-800 dark:text-ink-200">{{ celebration.title }}</p>
               <span
-                class="shrink-0 rounded-full px-2.5 py-1 text-11px font-medium"
+                class="shrink-0 rounded-full px-2.5 py-1 text-sm font-medium"
                 :class="CELEBRATION_STATUS_BADGE_CLASSES[celebration.status]"
               >
                 {{ CELEBRATION_STATUS_LABELS[celebration.status] }}
@@ -181,8 +181,8 @@ async function handlePrintCalendar(): Promise<void> {
             <p class="mb-1 text-xs text-ink-500 dark:text-ink-400">
               {{ jalaaliDateLabel(celebration.date) }} - {{ celebration.location || '—' }}
             </p>
-            <p class="mb-3 text-11px text-ink-400 dark:text-ink-500">مسئول: {{ celebration.organizer || '—' }}</p>
-            <div class="mb-3 flex items-center gap-2 text-11px text-ink-500 dark:text-ink-400">
+            <p class="mb-3 text-sm text-ink-400 dark:text-ink-500">مسئول: {{ celebration.organizer || '—' }}</p>
+            <div class="mb-3 flex items-center gap-2 text-sm text-ink-500 dark:text-ink-400">
               <span class="rounded-lg bg-ink-50 px-2 py-1 dark:bg-ink-800">{{ openTasksCountOf(celebration) }} کار باز</span>
               <span
                 v-if="overdueTasksOf(celebration).length"

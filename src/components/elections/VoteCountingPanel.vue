@@ -34,7 +34,7 @@ function onManualInput(candidateId: string, event: Event): void {
 
       <div class="min-w-0 flex-1">
         <p class="truncate text-sm font-semibold text-ink-800 dark:text-ink-200">{{ candidate.name || 'بدون نام' }}</p>
-        <p v-if="candidate.gradeOrClass" class="text-11px text-ink-400 dark:text-ink-500">{{ candidate.gradeOrClass }}</p>
+        <p v-if="candidate.gradeOrClass" class="text-sm text-ink-400 dark:text-ink-500">{{ candidate.gradeOrClass }}</p>
       </div>
 
       <div class="flex items-center gap-2">

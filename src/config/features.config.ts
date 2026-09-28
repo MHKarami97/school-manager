@@ -83,4 +83,16 @@ export const SITE_FEATURES: SiteFeature[] = [
     historyPath: "/elections",
     historyLabel: "مشاهده انتخابات‌ها",
   },
+  {
+    id: "extra-classes",
+    title: "کلاس تقویتی و فوق‌برنامه",
+    shortTitle: "کلاس‌های فوق‌برنامه",
+    description:
+      "مدیریت کلاس‌های تقویتی/فوق‌برنامه، ثبت‌نام دانش‌آموز، لیست انتظار و تقویم هفتگی.",
+    icon: "M12 8v4l3 2m6-2a9 9 0 11-18 0 9 9 0 0118 0z",
+    startPath: "/extra-classes/new",
+    startLabel: "ثبت کلاس جدید",
+    historyPath: "/extra-classes",
+    historyLabel: "مشاهده کلاس‌ها",
+  },
 ];

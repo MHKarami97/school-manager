@@ -82,10 +82,10 @@ function clear(): void {
           <option v-for="f in facilities" :key="f.id" :value="f.id">{{ f.name }}</option>
         </select>
 
-        <div v-if="conflict" class="mb-3 rounded-lg border border-red-200 bg-red-50 p-2.5 text-11px leading-5 text-red-700 dark:border-red-900/30 dark:bg-red-900/10 dark:text-red-300">
+        <div v-if="conflict" class="mb-3 rounded-lg border border-red-200 bg-red-50 p-2.5 text-sm leading-5 text-red-700 dark:border-red-900/30 dark:bg-red-900/10 dark:text-red-300">
           تداخل: این معلم در همین روز/زنگ، در یک کلاس دیگر هم تخصیص دارد.
         </div>
-        <div v-else-if="isOverCapacity" class="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-11px leading-5 text-amber-700 dark:border-amber-900/30 dark:bg-amber-900/10 dark:text-amber-300">
+        <div v-else-if="isOverCapacity" class="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-sm leading-5 text-amber-700 dark:border-amber-900/30 dark:bg-amber-900/10 dark:text-amber-300">
           این معلم از سقف ساعت هفتگی‌اش ({{ selectedTeacher?.maxWeeklyHours }} ساعت) عبور کرده است.
         </div>
 

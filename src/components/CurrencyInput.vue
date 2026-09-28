@@ -26,7 +26,7 @@ function onInput(event: Event): void {
       class="w-full rounded-lg border border-ink-200 bg-white px-3 py-2 pl-14 text-left text-sm text-ink-800 focus:border-brand-400 focus:outline-none dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200"
       @input="onInput"
     />
-    <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-11px text-ink-400 dark:text-ink-500">
+    <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-ink-400 dark:text-ink-500">
       تومان
     </span>
   </div>

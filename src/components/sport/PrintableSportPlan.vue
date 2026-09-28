@@ -59,9 +59,9 @@ const printDate = new Date().toLocaleDateString('fa-IR', { year: 'numeric', mont
           <template v-if="mode === 'school'"> — نمای کل مدرسه</template>
           <template v-if="mode === 'school-by-period'"> — نمای کل مدرسه (به تفکیک هر زنگ)</template>
         </h1>
-        <p class="text-11px text-ink-600">{{ plan.shiftConfig.name }} · {{ plan.shiftConfig.startTime }}-{{ plan.shiftConfig.endTime }}</p>
+        <p class="text-sm text-ink-600">{{ plan.shiftConfig.name }} · {{ plan.shiftConfig.startTime }}-{{ plan.shiftConfig.endTime }}</p>
       </div>
-      <p class="text-11px text-ink-500">{{ printDate }}</p>
+      <p class="text-sm text-ink-500">{{ printDate }}</p>
     </div>
 
     <!-- نمای «کلاس»: یک برنامه هفتگی برای همان کلاس -->

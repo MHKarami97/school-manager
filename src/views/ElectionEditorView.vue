@@ -183,7 +183,7 @@ async function handlePrint(): Promise<void> {
           <span
             v-for="status in ELECTION_STATUS_ORDER"
             :key="status"
-            class="rounded-full px-3 py-1.5 text-11px font-medium"
+            class="rounded-full px-3 py-1.5 text-sm font-medium"
             :class="
               status === election.status
                 ? 'bg-brand-600 text-white'
@@ -197,7 +197,7 @@ async function handlePrint(): Promise<void> {
             <button
               v-if="statusIndex > 0"
               type="button"
-              class="rounded-lg border border-ink-200 px-3 py-1.5 text-11px font-medium text-ink-600 dark:border-ink-700 dark:text-ink-300"
+              class="rounded-lg border border-ink-200 px-3 py-1.5 text-sm font-medium text-ink-600 dark:border-ink-700 dark:text-ink-300"
               @click="goToPreviousStatus"
             >
               بازگشت به مرحله قبل
@@ -205,7 +205,7 @@ async function handlePrint(): Promise<void> {
             <button
               v-if="statusIndex < ELECTION_STATUS_ORDER.length - 1"
               type="button"
-              class="rounded-lg bg-brand-600 px-3 py-1.5 text-11px font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
+              class="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
               :disabled="!canGoToNextStatus"
               @click="goToNextStatus"
             >
@@ -215,7 +215,7 @@ async function handlePrint(): Promise<void> {
         </div>
         <p
           v-if="election.status === 'candidacy' && election.candidates.length < 2"
-          class="mb-4 text-11px text-amber-600 dark:text-amber-400"
+          class="mb-4 text-sm text-amber-600 dark:text-amber-400"
         >
           برای شروع رأی‌گیری حداقل به ۲ نامزد نیاز است.
         </p>
@@ -283,7 +283,7 @@ async function handlePrint(): Promise<void> {
             <button
               v-if="election.status === 'candidacy'"
               type="button"
-              class="rounded-lg bg-ink-800 px-3 py-1.5 text-11px font-medium text-white dark:bg-ink-700"
+              class="rounded-lg bg-ink-800 px-3 py-1.5 text-sm font-medium text-white dark:bg-ink-700"
               @click="openNewCandidate"
             >
               + افزودن نامزد
@@ -321,7 +321,7 @@ async function handlePrint(): Promise<void> {
 
           <!-- مرحله رأی‌گیری: لیست فقط‌خواندنی -->
           <div v-else-if="election.status === 'voting'" class="space-y-2">
-            <p class="mb-2 text-11px text-ink-400 dark:text-ink-500">
+            <p class="mb-2 text-sm text-ink-400 dark:text-ink-500">
               رأی‌گیری به‌صورت کاغذی در جریان است؛ بعد از پایان آن، وضعیت را به «شمارش آرا» تغییر بده.
             </p>
             <div

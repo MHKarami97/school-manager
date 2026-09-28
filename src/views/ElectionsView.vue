@@ -60,7 +60,7 @@ async function deleteElection(id: string): Promise<void> {
                 {{ election.title || ELECTION_TYPE_LABELS[election.type] }}
               </p>
               <span
-                class="shrink-0 rounded-full px-2.5 py-1 text-11px font-medium"
+                class="shrink-0 rounded-full px-2.5 py-1 text-sm font-medium"
                 :class="ELECTION_STATUS_BADGE_CLASSES[election.status]"
               >
                 {{ ELECTION_STATUS_LABELS[election.status] }}
@@ -69,10 +69,10 @@ async function deleteElection(id: string): Promise<void> {
             <p class="mb-1 text-xs text-ink-500 dark:text-ink-400">
               {{ ELECTION_TYPE_LABELS[election.type] }} - سال تحصیلی {{ election.academicYear || '—' }}
             </p>
-            <p class="mb-3 text-11px text-ink-400 dark:text-ink-500">
+            <p class="mb-3 text-sm text-ink-400 dark:text-ink-500">
               رأی‌گیری: {{ jalaaliDateLabel(election.votingStartDate) }} تا {{ jalaaliDateLabel(election.votingEndDate) }}
             </p>
-            <div class="mb-3 flex items-center gap-2 text-11px text-ink-500 dark:text-ink-400">
+            <div class="mb-3 flex items-center gap-2 text-sm text-ink-500 dark:text-ink-400">
               <span class="rounded-lg bg-ink-50 px-2 py-1 dark:bg-ink-800">{{ election.candidates.length }} نامزد</span>
               <span class="rounded-lg bg-ink-50 px-2 py-1 dark:bg-ink-800">{{ totalVotesOf(election) }} رأی شمارش‌شده</span>
             </div>

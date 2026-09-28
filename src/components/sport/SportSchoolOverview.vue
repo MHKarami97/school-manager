@@ -68,7 +68,7 @@ const totalAssignedSlots = computed(() => props.plan.slots.filter((s) => s.teach
                   :key="slot.classId"
                   class="rounded-lg border border-ink-100 bg-ink-50 p-1.5 text-center dark:border-ink-700 dark:bg-ink-800"
                 >
-                  <p class="text-11px font-medium text-ink-800 dark:text-ink-200">{{ classLabel(slot.classId) }}</p>
+                  <p class="text-sm font-medium text-ink-800 dark:text-ink-200">{{ classLabel(slot.classId) }}</p>
                   <p class="text-10px text-ink-500 dark:text-ink-400">
                     {{ teacherName(slot.teacherId) }}
                     <template v-if="facilityName(slot.facilityId)"> · {{ facilityName(slot.facilityId) }}</template>
@@ -84,7 +84,7 @@ const totalAssignedSlots = computed(() => props.plan.slots.filter((s) => s.teach
       </table>
     </div>
 
-    <p class="text-11px text-ink-400 dark:text-ink-500">
+    <p class="text-sm text-ink-400 dark:text-ink-500">
       مجموع زنگ‌های تخصیص‌یافته در کل مدرسه: {{ totalAssignedSlots }}
     </p>
   </div>

@@ -44,7 +44,7 @@ function onDrop(event: DragEvent, status: CelebrationTaskStatus): void {
     >
       <div class="mb-3 flex items-center justify-between">
         <p class="text-xs font-semibold text-ink-700 dark:text-ink-200">{{ column.label }}</p>
-        <span class="rounded-full bg-ink-100 px-2 py-0.5 text-11px font-medium text-ink-500 dark:bg-ink-800 dark:text-ink-400">
+        <span class="rounded-full bg-ink-100 px-2 py-0.5 text-sm font-medium text-ink-500 dark:bg-ink-800 dark:text-ink-400">
           {{ column.tasks.length }}
         </span>
       </div>
@@ -75,7 +75,7 @@ function onDrop(event: DragEvent, status: CelebrationTaskStatus): void {
         </div>
         <p
           v-if="!column.tasks.length"
-          class="rounded-xl border border-dashed border-ink-200 p-3 text-center text-11px text-ink-400 dark:border-ink-700 dark:text-ink-500"
+          class="rounded-xl border border-dashed border-ink-200 p-3 text-center text-sm text-ink-400 dark:border-ink-700 dark:text-ink-500"
         >
           کاری در این بخش نیست.
         </p>
@@ -83,7 +83,7 @@ function onDrop(event: DragEvent, status: CelebrationTaskStatus): void {
 
       <button
         type="button"
-        class="mt-3 w-full rounded-lg border border-dashed border-ink-200 py-1.5 text-11px font-medium text-ink-500 transition hover:border-brand-300 hover:text-brand-600 dark:border-ink-700 dark:text-ink-400"
+        class="mt-3 w-full rounded-lg border border-dashed border-ink-200 py-1.5 text-sm font-medium text-ink-500 transition hover:border-brand-300 hover:text-brand-600 dark:border-ink-700 dark:text-ink-400"
         @click="emit('add-task', column.status)"
       >
         + افزودن کار

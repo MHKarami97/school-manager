@@ -127,7 +127,7 @@ const displayText = computed(() =>
           v-for="day in dayCells"
           :key="day"
           type="button"
-          class="rounded-lg py-1.5 text-11px transition"
+          class="rounded-lg py-1.5 text-sm transition"
           :class="[
             isSelectedDay(day)
               ? 'bg-brand-600 font-semibold text-white'
@@ -143,7 +143,7 @@ const displayText = computed(() =>
 
       <button
         type="button"
-        class="mt-2 w-full rounded-lg border border-ink-200 py-1.5 text-11px font-medium text-ink-600 dark:border-ink-700 dark:text-ink-300"
+        class="mt-2 w-full rounded-lg border border-ink-200 py-1.5 text-sm font-medium text-ink-600 dark:border-ink-700 dark:text-ink-300"
         @click="selectToday"
       >
         امروز

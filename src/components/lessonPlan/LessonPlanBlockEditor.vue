@@ -24,7 +24,7 @@ function updateBlock(id: string, patch: Partial<LessonPlanBlock>): void {
   <div class="space-y-3">
     <div class="flex items-center justify-between">
       <p class="text-xs font-semibold text-ink-700 dark:text-ink-200">بخش‌های زمان‌بندی‌شده جلسه</p>
-      <span class="text-11px text-ink-400 dark:text-ink-500">مجموع: {{ total }} دقیقه</span>
+      <span class="text-sm text-ink-400 dark:text-ink-500">مجموع: {{ total }} دقیقه</span>
     </div>
 
     <div
