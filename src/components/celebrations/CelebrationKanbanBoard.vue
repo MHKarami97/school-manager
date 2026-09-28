@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { CelebrationTask, CelebrationTaskStatus } from '../../types/celebration'
+import type { CelebrationTask, CelebrationTaskStatus } from '../../types'
 import { CELEBRATION_TASK_STATUSES, CELEBRATION_TASK_STATUS_LABELS } from '../../config/celebration.config'
 import { isTaskOverdue, jalaaliDateLabel } from '../../utils/celebration-helpers'
 

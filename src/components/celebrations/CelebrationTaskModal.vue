@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import type { CelebrationTask, CelebrationTaskStatus } from '../../types/celebration'
+import type { CelebrationTask, CelebrationTaskStatus } from '../../types'
 import { CELEBRATION_TASK_STATUSES, CELEBRATION_TASK_STATUS_LABELS } from '../../config/celebration.config'
 import JalaliDatePicker from '../lessonPlan/JalaliDatePicker.vue'
 

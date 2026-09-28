@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Candidate } from '../../types'
 
-const props = defineProps<{
+defineProps<{
   candidates: Candidate[]
 }>()
 

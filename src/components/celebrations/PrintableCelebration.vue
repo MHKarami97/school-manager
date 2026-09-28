@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import type { Celebration } from '../../types/celebration'
+import type { Celebration } from '../../types'
 import { CELEBRATION_STATUS_LABELS, CELEBRATION_TASK_STATUS_LABELS } from '../../config/celebration.config'
 import { jalaaliDateLabel } from '../../utils/celebration-helpers'
 
-const props = defineProps<{
+defineProps<{
   celebration: Celebration
 }>()
 

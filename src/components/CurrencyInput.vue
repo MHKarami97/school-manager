@@ -3,7 +3,7 @@ import { computed } from 'vue'
 
 const value = defineModel<number>({ required: true })
 
-const props = defineProps<{
+defineProps<{
   placeholder?: string
 }>()
 

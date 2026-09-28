@@ -3,7 +3,7 @@ import { computed, nextTick, onMounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { useCelebrationsStore } from '../stores/celebrations'
 import { CELEBRATION_STATUSES, CELEBRATION_STATUS_LABELS, createEmptyCelebration, createEmptyCelebrationTask } from '../config/celebration.config'
-import { overdueTasksOf, upcomingTasksOf, jalaaliDateLabel } from '../utils/celebration-helpers'
+import { overdueTasksOf, upcomingTasksOf } from '../utils/celebration-helpers'
 import { printPage } from '../utils/export'
 import AppHeader from '../components/layout/AppHeader.vue'
 import JalaliDatePicker from '../components/lessonPlan/JalaliDatePicker.vue'
@@ -11,7 +11,7 @@ import CelebrationKanbanBoard from '../components/celebrations/CelebrationKanban
 import CelebrationTaskModal from '../components/celebrations/CelebrationTaskModal.vue'
 import CelebrationBudgetPanel from '../components/celebrations/CelebrationBudgetPanel.vue'
 import PrintableCelebration from '../components/celebrations/PrintableCelebration.vue'
-import type { Celebration, CelebrationTask, CelebrationTaskStatus } from '../types/celebration'
+import type { Celebration, CelebrationTask, CelebrationTaskStatus } from '../types'
 
 const props = defineProps<{ id?: string }>()
 const router = useRouter()

@@ -34,7 +34,7 @@ import TransactionFormModal from '../components/budget/TransactionFormModal.vue'
 import PrintableBudgetReport from '../components/budget/PrintableBudgetReport.vue'
 import CurrencyInput from '../components/CurrencyInput.vue'
 import JalaliDatePicker from '../components/lessonPlan/JalaliDatePicker.vue'
-import type { BudgetCategory, Transaction, TransactionType } from '../types'
+import type { Transaction, TransactionType } from '../types'
 
 const annualPlansStore = useAnnualPlansStore()
 const categoriesStore = useBudgetCategoriesStore()

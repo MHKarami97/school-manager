@@ -8,3 +8,8 @@ dist-ssr
 *.tsbuildinfo
 .env
 .env.*
+*.vue.d.ts
+*.vue.ts
+*.vue.js
+*.d.ts
+.idea

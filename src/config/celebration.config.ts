@@ -1,4 +1,4 @@
-import type { Celebration, CelebrationStatus, CelebrationTask, CelebrationTaskStatus } from '../types/celebration'
+import type { Celebration, CelebrationStatus, CelebrationTask, CelebrationTaskStatus } from '../types'
 
 export const CELEBRATION_STATUS_LABELS: Record<CelebrationStatus, string> = {
   planned: 'برنامه‌ریزی‌شده',
