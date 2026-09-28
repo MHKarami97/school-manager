@@ -107,4 +107,16 @@ export const SITE_FEATURES: SiteFeature[] = [
     historyPath: "/budget",
     historyLabel: "مشاهده بودجه",
   },
+  {
+    id: "question-bank",
+    title: "بانک سوال و آزمون‌ساز",
+    shortTitle: "بانک سوال",
+    description:
+      "ذخیره سوالات دسته‌بندی‌شده، تولید نیمه‌خودکار آزمون از قالب و خروجی PDF با/بدون کلید پاسخ.",
+    icon: "M9 12h6m-6 4h6M5 5h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z",
+    startPath: "/exams/new",
+    startLabel: "ساخت آزمون جدید",
+    historyPath: "/question-bank",
+    historyLabel: "مشاهده بانک سوال",
+  },
 ];

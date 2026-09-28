@@ -14,11 +14,15 @@ import type {
   Transaction,
   AnnualPlan,
   BudgetCategory,
+  Question,
+  Exam,
+  ExamTemplate,
+  ExamVersion,
 } from "@/types";
 
 const DB_NAME = "school-manager-db";
 
-const DB_VERSION = 8;
+const DB_VERSION = 9;
 
 export const STORE_TEACHERS = "teachers";
 export const STORE_SCHEDULES = "schedules";
@@ -34,6 +38,10 @@ export const STORE_ENROLLMENTS = "enrollments";
 export const STORE_ANNUAL_PLANS = "annualPlans";
 export const STORE_BUDGET_CATEGORIES = "budgetCategories";
 export const STORE_TRANSACTIONS = "transactions";
+export const STORE_QUESTIONS = "questions";
+export const STORE_EXAMS = "exams";
+export const STORE_EXAM_TEMPLATES = "examTemplates";
+export const STORE_EXAM_VERSIONS = "examVersions";
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
@@ -123,6 +131,27 @@ export function getDb(): Promise<IDBPDatabase> {
           store.createIndex("by-plan", "planId");
           store.createIndex("by-category", "categoryId");
           store.createIndex("by-date", "date");
+        }
+        if (!db.objectStoreNames.contains(STORE_QUESTIONS)) {
+          const store = db.createObjectStore(STORE_QUESTIONS, {
+            keyPath: "id",
+          });
+          store.createIndex("by-course", "courseId");
+          store.createIndex("by-grade", "grade");
+          store.createIndex("by-difficulty", "difficulty");
+        }
+        if (!db.objectStoreNames.contains(STORE_EXAMS)) {
+          const store = db.createObjectStore(STORE_EXAMS, { keyPath: "id" });
+          store.createIndex("by-updatedAt", "updatedAt");
+        }
+        if (!db.objectStoreNames.contains(STORE_EXAM_TEMPLATES)) {
+          db.createObjectStore(STORE_EXAM_TEMPLATES, { keyPath: "id" });
+        }
+        if (!db.objectStoreNames.contains(STORE_EXAM_VERSIONS)) {
+          const store = db.createObjectStore(STORE_EXAM_VERSIONS, {
+            keyPath: "id",
+          });
+          store.createIndex("by-exam", "examId");
         }
       },
     });
@@ -372,4 +401,64 @@ export async function putTransaction(transaction: Transaction): Promise<void> {
 export async function deleteTransaction(id: string): Promise<void> {
   const db = await getDb();
   await db.delete(STORE_TRANSACTIONS, id);
+}
+
+// question
+export async function getAllQuestions(): Promise<Question[]> {
+  const db = await getDb();
+  return db.getAll(STORE_QUESTIONS);
+}
+export async function putQuestion(question: Question): Promise<void> {
+  const db = await getDb();
+  await db.put(STORE_QUESTIONS, toPlain(question));
+}
+export async function putQuestions(questions: Question[]): Promise<void> {
+  const db = await getDb();
+  const tx = db.transaction(STORE_QUESTIONS, "readwrite");
+  for (const question of questions) await tx.store.put(toPlain(question));
+  await tx.done;
+}
+export async function deleteQuestion(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete(STORE_QUESTIONS, id);
+}
+
+export async function getAllExams(): Promise<Exam[]> {
+  const db = await getDb();
+  const all = await db.getAll(STORE_EXAMS);
+  return (all as Exam[]).sort((a, b) => b.updatedAt - a.updatedAt);
+}
+export async function putExam(exam: Exam): Promise<void> {
+  const db = await getDb();
+  await db.put(STORE_EXAMS, toPlain(exam));
+}
+export async function deleteExam(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete(STORE_EXAMS, id);
+}
+
+export async function getAllExamTemplates(): Promise<ExamTemplate[]> {
+  const db = await getDb();
+  return db.getAll(STORE_EXAM_TEMPLATES);
+}
+export async function putExamTemplate(template: ExamTemplate): Promise<void> {
+  const db = await getDb();
+  await db.put(STORE_EXAM_TEMPLATES, toPlain(template));
+}
+export async function deleteExamTemplate(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete(STORE_EXAM_TEMPLATES, id);
+}
+
+export async function getAllExamVersions(): Promise<ExamVersion[]> {
+  const db = await getDb();
+  return db.getAll(STORE_EXAM_VERSIONS);
+}
+export async function putExamVersion(version: ExamVersion): Promise<void> {
+  const db = await getDb();
+  await db.put(STORE_EXAM_VERSIONS, toPlain(version));
+}
+export async function deleteExamVersion(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete(STORE_EXAM_VERSIONS, id);
 }

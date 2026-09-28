@@ -147,6 +147,38 @@ const routes = [
     name: "budget",
     component: () => import("../views/BudgetView.vue"),
   },
+  {
+    path: "/question-bank",
+    name: "question-bank",
+    component: () => import("../views/QuestionBankView.vue"),
+  },
+  {
+    path: "/question-bank/new",
+    name: "question-new",
+    component: () => import("../views/QuestionEditorView.vue"),
+  },
+  {
+    path: "/question-bank/:id",
+    name: "question-editor",
+    component: () => import("../views/QuestionEditorView.vue"),
+    props: true,
+  },
+  {
+    path: "/exams",
+    name: "exams",
+    component: () => import("../views/ExamsListView.vue"),
+  },
+  {
+    path: "/exams/new",
+    name: "exam-new",
+    component: () => import("../views/ExamBuilderView.vue"),
+  },
+  {
+    path: "/exams/:id",
+    name: "exam-builder",
+    component: () => import("../views/ExamBuilderView.vue"),
+    props: true,
+  },
 ];
 
 const router = createRouter({

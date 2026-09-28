@@ -404,3 +404,70 @@ export interface Transaction {
   createdAt: number;
   updatedAt: number;
 }
+
+// question
+export type QuestionType =
+  | "multiple-choice"
+  | "essay"
+  | "fill-blank"
+  | "true-false";
+export type DifficultyLevel = "easy" | "medium" | "hard";
+
+export interface Question {
+  id: string;
+  text: string;
+  type: QuestionType;
+  options: string[];
+  correctAnswer: string;
+  courseId: string;
+  grade: number;
+  difficulty: DifficultyLevel;
+  tags: string[];
+  suggestedScore: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ExamQuestionRef {
+  questionId: string;
+  score: number;
+  order: number;
+}
+
+export interface Exam {
+  id: string;
+  title: string;
+  courseId: string;
+  grade: number;
+  date: string;
+  durationMinutes: number;
+  questionRefs: ExamQuestionRef[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ExamTemplateRule {
+  id: string;
+  difficulty: DifficultyLevel;
+  count: number;
+  tag: string | null;
+}
+
+export interface ExamTemplate {
+  id: string;
+  title: string;
+  courseId: string;
+  grade: number;
+  rules: ExamTemplateRule[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ExamVersion {
+  id: string;
+  examId: string;
+  label: string;
+  questionOrder: string[];
+  optionOrders: Record<string, number[]>;
+  createdAt: number;
+}
