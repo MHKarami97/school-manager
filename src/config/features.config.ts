@@ -71,4 +71,16 @@ export const SITE_FEATURES: SiteFeature[] = [
     historyPath: "/celebrations",
     historyLabel: "مشاهده جشن‌ها",
   },
+  {
+    id: "elections",
+    title: "برگزاری انتخابات شورا و انجمن اولیا",
+    shortTitle: "انتخابات",
+    description:
+      "ثبت‌نام نامزدها، شمارش دستی آرا توسط مدیر/معاون و اعلام نتایج با نمودار ستونی.",
+    icon: "M9 17V9m3 8V5m3 12v-6M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z",
+    startPath: "/elections/new",
+    startLabel: "ثبت انتخابات جدید",
+    historyPath: "/elections",
+    historyLabel: "مشاهده انتخابات‌ها",
+  },
 ];

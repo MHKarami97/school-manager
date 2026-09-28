@@ -8,11 +8,12 @@ import type {
   SportFacility,
   SportPlan,
   Celebration,
+  Election,
 } from "@/types";
 
 const DB_NAME = "school-manager-db";
 
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 
 export const STORE_TEACHERS = "teachers";
 export const STORE_SCHEDULES = "schedules";
@@ -22,6 +23,7 @@ export const STORE_LESSON_PLANS = "lessonPlans";
 export const STORE_SPORT_FACILITIES = "sportFacilities";
 export const STORE_SPORT_PLANS = "sportPlans";
 export const STORE_CELEBRATIONS = "celebrations";
+export const STORE_ELECTIONS = "elections";
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
@@ -72,6 +74,13 @@ export function getDb(): Promise<IDBPDatabase> {
             keyPath: "id",
           });
           store.createIndex("by-date", "date");
+          store.createIndex("by-updatedAt", "updatedAt");
+        }
+        if (!db.objectStoreNames.contains(STORE_ELECTIONS)) {
+          const store = db.createObjectStore(STORE_ELECTIONS, {
+            keyPath: "id",
+          });
+          store.createIndex("by-status", "status");
           store.createIndex("by-updatedAt", "updatedAt");
         }
       },
@@ -230,4 +239,25 @@ export async function putCelebration(celebration: Celebration): Promise<void> {
 export async function deleteCelebration(id: string): Promise<void> {
   const db = await getDb();
   await db.delete(STORE_CELEBRATIONS, id);
+}
+
+export async function getAllElections(): Promise<Election[]> {
+  const db = await getDb();
+  const all = await db.getAll(STORE_ELECTIONS);
+  return (all as Election[]).sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+export async function getElection(id: string): Promise<Election | undefined> {
+  const db = await getDb();
+  return db.get(STORE_ELECTIONS, id);
+}
+
+export async function putElection(election: Election): Promise<void> {
+  const db = await getDb();
+  await db.put(STORE_ELECTIONS, toPlain(election));
+}
+
+export async function deleteElection(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete(STORE_ELECTIONS, id);
 }

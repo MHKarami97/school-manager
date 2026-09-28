@@ -110,6 +110,22 @@ const routes = [
     component: () => import("../views/CelebrationEditorView.vue"),
     props: true,
   },
+  {
+    path: "/elections",
+    name: "elections",
+    component: () => import("../views/ElectionsView.vue"),
+  },
+  {
+    path: "/elections/new",
+    name: "election-new",
+    component: () => import("../views/ElectionEditorView.vue"),
+  },
+  {
+    path: "/elections/:id",
+    name: "election-editor",
+    component: () => import("../views/ElectionEditorView.vue"),
+    props: true,
+  },
 ];
 
 const router = createRouter({
