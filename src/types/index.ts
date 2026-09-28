@@ -368,3 +368,39 @@ export interface Enrollment {
   createdAt: number;
   updatedAt: number;
 }
+
+// transaction
+
+export type AnnualPlanStatus = "active" | "closed";
+export type TransactionType = "expense" | "income";
+
+export interface AnnualPlan {
+  id: string;
+  academicYear: string;
+  totalBudget: number;
+  status: AnnualPlanStatus;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface BudgetCategory {
+  id: string;
+  planId: string;
+  title: string;
+  annualBudget: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface Transaction {
+  id: string;
+  planId: string;
+  categoryId: string;
+  type: TransactionType;
+  amount: number;
+  date: string;
+  description: string;
+  attachmentDataUrl: string | null;
+  createdAt: number;
+  updatedAt: number;
+}

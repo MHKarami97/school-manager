@@ -142,6 +142,11 @@ const routes = [
     component: () => import("../views/ExtraClassEditorView.vue"),
     props: true,
   },
+  {
+    path: "/budget",
+    name: "budget",
+    component: () => import("../views/BudgetView.vue"),
+  },
 ];
 
 const router = createRouter({

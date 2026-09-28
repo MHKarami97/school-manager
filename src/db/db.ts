@@ -10,11 +10,15 @@ import type {
   Celebration,
   Election,
   Enrollment,
+  ExtraClass,
+  Transaction,
+  AnnualPlan,
+  BudgetCategory,
 } from "@/types";
 
 const DB_NAME = "school-manager-db";
 
-const DB_VERSION = 7;
+const DB_VERSION = 8;
 
 export const STORE_TEACHERS = "teachers";
 export const STORE_SCHEDULES = "schedules";
@@ -27,6 +31,9 @@ export const STORE_CELEBRATIONS = "celebrations";
 export const STORE_ELECTIONS = "elections";
 export const STORE_EXTRA_CLASSES = "extraClasses";
 export const STORE_ENROLLMENTS = "enrollments";
+export const STORE_ANNUAL_PLANS = "annualPlans";
+export const STORE_BUDGET_CATEGORIES = "budgetCategories";
+export const STORE_TRANSACTIONS = "transactions";
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
@@ -99,6 +106,23 @@ export function getDb(): Promise<IDBPDatabase> {
           });
           store.createIndex("by-class", "extraClassId");
           store.createIndex("by-student", "studentId");
+        }
+        if (!db.objectStoreNames.contains(STORE_ANNUAL_PLANS)) {
+          db.createObjectStore(STORE_ANNUAL_PLANS, { keyPath: "id" });
+        }
+        if (!db.objectStoreNames.contains(STORE_BUDGET_CATEGORIES)) {
+          const store = db.createObjectStore(STORE_BUDGET_CATEGORIES, {
+            keyPath: "id",
+          });
+          store.createIndex("by-plan", "planId");
+        }
+        if (!db.objectStoreNames.contains(STORE_TRANSACTIONS)) {
+          const store = db.createObjectStore(STORE_TRANSACTIONS, {
+            keyPath: "id",
+          });
+          store.createIndex("by-plan", "planId");
+          store.createIndex("by-category", "categoryId");
+          store.createIndex("by-date", "date");
         }
       },
     });
@@ -305,4 +329,47 @@ export async function putEnrollment(enrollment: Enrollment): Promise<void> {
 export async function deleteEnrollment(id: string): Promise<void> {
   const db = await getDb();
   await db.delete(STORE_ENROLLMENTS, id);
+}
+
+// transaction
+export async function getAllAnnualPlans(): Promise<AnnualPlan[]> {
+  const db = await getDb();
+  const all = await db.getAll(STORE_ANNUAL_PLANS);
+  return (all as AnnualPlan[]).sort((a, b) => b.updatedAt - a.updatedAt);
+}
+export async function putAnnualPlan(plan: AnnualPlan): Promise<void> {
+  const db = await getDb();
+  await db.put(STORE_ANNUAL_PLANS, toPlain(plan));
+}
+export async function deleteAnnualPlan(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete(STORE_ANNUAL_PLANS, id);
+}
+
+export async function getAllBudgetCategories(): Promise<BudgetCategory[]> {
+  const db = await getDb();
+  return db.getAll(STORE_BUDGET_CATEGORIES);
+}
+export async function putBudgetCategory(
+  category: BudgetCategory,
+): Promise<void> {
+  const db = await getDb();
+  await db.put(STORE_BUDGET_CATEGORIES, toPlain(category));
+}
+export async function deleteBudgetCategory(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete(STORE_BUDGET_CATEGORIES, id);
+}
+
+export async function getAllTransactions(): Promise<Transaction[]> {
+  const db = await getDb();
+  return db.getAll(STORE_TRANSACTIONS);
+}
+export async function putTransaction(transaction: Transaction): Promise<void> {
+  const db = await getDb();
+  await db.put(STORE_TRANSACTIONS, toPlain(transaction));
+}
+export async function deleteTransaction(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete(STORE_TRANSACTIONS, id);
 }

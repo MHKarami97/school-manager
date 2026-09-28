@@ -95,4 +95,16 @@ export const SITE_FEATURES: SiteFeature[] = [
     historyPath: "/extra-classes",
     historyLabel: "مشاهده کلاس‌ها",
   },
+  {
+    id: "budget",
+    title: "بودجه و برنامه مالی سالیانه",
+    shortTitle: "بودجه مدرسه",
+    description:
+      "برنامه‌ریزی بودجه سالانه، ثبت تراکنش‌ها، نمودار توزیع هزینه و گزارش مالی PDF.",
+    icon: "M12 8c-1.66 0-3 .9-3 2s1.34 2 3 2 3 .9 3 2-1.34 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V6m0 2v8m0 0v2m0-2c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
+    startPath: "/budget",
+    startLabel: "مدیریت بودجه",
+    historyPath: "/budget",
+    historyLabel: "مشاهده بودجه",
+  },
 ];
