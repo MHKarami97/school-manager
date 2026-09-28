@@ -1,4 +1,7 @@
-import type { DifficultyLevel, Question } from '../types'
+import type { CourseDefinition, DifficultyLevel, Question } from '../types'
+import { BASE_COURSES } from '../config/courses.config'
+import { LEVELS } from '../config/levels.config'
+import { getCurriculumForGrade } from '../config/curriculum.config'
 
 export interface QuestionFilters {
   courseId?: string
@@ -42,9 +45,29 @@ export function pickRandom<T>(pool: T[], count: number): T[] {
   return shuffle(pool).slice(0, Math.max(0, count))
 }
 
+/**
+ * تگ‌ها را جدا می‌کند؛ هم با ویرگول انگلیسی «,» و هم ویرگول فارسی «،»
+ * (همانی که با کیبورد فارسی تایپ می‌شود) کار می‌کند.
+ */
 export function parseTagsInput(value: string): string[] {
   return value
-    .split(',')
+    .split(/[,،]/)
     .map((tag) => tag.trim())
     .filter(Boolean)
+}
+
+/**
+ * فقط درس‌هایی را برمی‌گرداند که طبق سرفصل موجود پروژه (curriculum.config.ts)
+ * برای آن پایه/مقطع تعریف شده‌اند. اگر پایه به هیچ مقطعی تعلق نداشت یا
+ * سرفصلی برایش ثبت نشده بود، برای اینکه فرم بن‌بست نشود، همه‌ی درس‌ها را
+ * برمی‌گرداند.
+ */
+export function coursesAllowedForGrade(grade: number): CourseDefinition[] {
+  const levelId = LEVELS.find((level) => level.grades.includes(grade))?.id
+  if (!levelId) return BASE_COURSES
+
+  const curriculum = getCurriculumForGrade(levelId, grade)
+  const allowedIds = new Set(Object.keys(curriculum))
+  const filtered = BASE_COURSES.filter((course) => allowedIds.has(course.id))
+  return filtered.length ? filtered : BASE_COURSES
 }

@@ -1,11 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { useQuestionsStore } from '../stores/questions'
 import { QUESTION_TYPES, QUESTION_TYPE_LABELS, DIFFICULTIES, DIFFICULTY_LABELS, createEmptyQuestion } from '../config/question-bank.config'
-import { BASE_COURSES } from '../config/courses.config'
 import { LEVELS, gradeLabel } from '../config/levels.config'
-import { parseTagsInput } from '../utils/question-bank-helpers'
+import { coursesAllowedForGrade, parseTagsInput } from '../utils/question-bank-helpers'
 import AppHeader from '../components/layout/AppHeader.vue'
 import type { Question } from '../types'
 
@@ -31,6 +30,20 @@ onMounted(async () => {
 })
 
 const allGrades = computed(() => Array.from(new Set(LEVELS.flatMap((l) => l.grades))).sort((a, b) => a - b))
+
+/** فقط درس‌های مربوط به پایه/مقطع انتخاب‌شده. */
+const availableCourses = computed(() => coursesAllowedForGrade(question.value?.grade ?? 1))
+
+// وقتی پایه عوض می‌شود، اگر درس فعلی جزو درس‌های همان پایه نبود، پاکش کن.
+watch(
+  () => question.value?.grade,
+  () => {
+    if (!question.value) return
+    if (!availableCourses.value.some((course) => course.id === question.value!.courseId)) {
+      question.value.courseId = ''
+    }
+  },
+)
 
 function addOption(): void {
   if (!question.value) return
@@ -157,18 +170,19 @@ async function handleDelete(): Promise<void> {
           ></textarea>
         </div>
 
+        <!-- پایه/مقطع (راست) و درس (چپ) -->
         <div class="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label class="mb-1 block text-xs font-medium text-ink-600 dark:text-ink-300">درس</label>
-            <select v-model="question.courseId" class="w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200">
-              <option value="" disabled>یک درس را انتخاب کن</option>
-              <option v-for="course in BASE_COURSES" :key="course.id" :value="course.id">{{ course.name }}</option>
-            </select>
-          </div>
           <div>
             <label class="mb-1 block text-xs font-medium text-ink-600 dark:text-ink-300">پایه/مقطع</label>
             <select v-model.number="question.grade" class="w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200">
               <option v-for="grade in allGrades" :key="grade" :value="grade">{{ gradeLabel(grade) }}</option>
+            </select>
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-medium text-ink-600 dark:text-ink-300">درس</label>
+            <select v-model="question.courseId" class="w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200">
+              <option value="" disabled>یک درس را انتخاب کن</option>
+              <option v-for="course in availableCourses" :key="course.id" :value="course.id">{{ course.name }}</option>
             </select>
           </div>
           <div>
@@ -182,7 +196,7 @@ async function handleDelete(): Promise<void> {
             <input v-model.number="question.suggestedScore" type="number" min="0" step="0.25" class="w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200" />
           </div>
           <div class="sm:col-span-2">
-            <label class="mb-1 block text-xs font-medium text-ink-600 dark:text-ink-300">تگ‌های موضوعی (با «،» جدا کن)</label>
+            <label class="mb-1 block text-xs font-medium text-ink-600 dark:text-ink-300">تگ‌های موضوعی (با «,» یا «،» جدا کن)</label>
             <input v-model="tagsInput" type="text" placeholder="مثلاً: جبر، معادله" class="w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200" />
           </div>
         </div>

@@ -1,14 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { useExamsStore } from '../stores/exams'
 import { useQuestionsStore } from '../stores/questions'
 import { useExamTemplatesStore } from '../stores/exam-templates'
 import { useExamVersionsStore } from '../stores/exam-versions'
 import { createEmptyExam, createEmptyExamTemplate } from '../config/question-bank.config'
-import { BASE_COURSES } from '../config/courses.config'
 import { LEVELS, gradeLabel } from '../config/levels.config'
-import { filterQuestions } from '../utils/question-bank-helpers'
+import { coursesAllowedForGrade, filterQuestions } from '../utils/question-bank-helpers'
 import { generateExamFromTemplate, generateExamVersions, totalScoreOfExam } from '../utils/exam-generator'
 import { printPage } from '../utils/export'
 import AppHeader from '../components/layout/AppHeader.vue'
@@ -45,6 +44,19 @@ onMounted(async () => {
 })
 
 const allGrades = computed(() => Array.from(new Set(LEVELS.flatMap((l) => l.grades))).sort((a, b) => a - b))
+
+/** فقط درس‌های مربوط به پایه‌ی انتخاب‌شده‌ی آزمون. */
+const availableCourses = computed(() => coursesAllowedForGrade(exam.value?.grade ?? 1))
+
+watch(
+  () => exam.value?.grade,
+  () => {
+    if (!exam.value) return
+    if (!availableCourses.value.some((course) => course.id === exam.value!.courseId)) {
+      exam.value.courseId = ''
+    }
+  },
+)
 
 // --- افزودن دستی از بانک سوال --------------------------------------------------
 const bankSearch = ref('')
@@ -97,10 +109,6 @@ function openNewTemplate(): void {
   template.grade = exam.value.grade
   activeTemplate.value = template
   isTemplateModalOpen.value = true
-}
-
-function openNewQuestion(): void {
-  router.push('/question-bank/new');
 }
 
 function openTemplate(template: ExamTemplate): void {
@@ -195,19 +203,22 @@ function handlePrint(mode: 'with-answers' | 'without-answers'): void {
               <label class="mb-1 block text-xs font-medium text-ink-600 dark:text-ink-300">عنوان آزمون</label>
               <input v-model="exam.title" type="text" placeholder="مثلاً: آزمون میان‌ترم ریاضی هفتم" class="w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200" />
             </div>
-            <div>
-              <label class="mb-1 block text-xs font-medium text-ink-600 dark:text-ink-300">درس</label>
-              <select v-model="exam.courseId" class="w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200">
-                <option value="" disabled>یک درس را انتخاب کن</option>
-                <option v-for="course in BASE_COURSES" :key="course.id" :value="course.id">{{ course.name }}</option>
-              </select>
-            </div>
+
+            <!-- پایه (راست) و درس (چپ) -->
             <div>
               <label class="mb-1 block text-xs font-medium text-ink-600 dark:text-ink-300">پایه</label>
               <select v-model.number="exam.grade" class="w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200">
                 <option v-for="grade in allGrades" :key="grade" :value="grade">{{ gradeLabel(grade) }}</option>
               </select>
             </div>
+            <div>
+              <label class="mb-1 block text-xs font-medium text-ink-600 dark:text-ink-300">درس</label>
+              <select v-model="exam.courseId" class="w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200">
+                <option value="" disabled>یک درس را انتخاب کن</option>
+                <option v-for="course in availableCourses" :key="course.id" :value="course.id">{{ course.name }}</option>
+              </select>
+            </div>
+
             <div>
               <label class="mb-1 block text-xs font-medium text-ink-600 dark:text-ink-300">تاریخ آزمون (شمسی)</label>
               <JalaliDatePicker v-model="exam.date" />
@@ -241,12 +252,7 @@ function handlePrint(mode: 'with-answers' | 'without-answers'): void {
 
         <!-- افزودن دستی از بانک سوال -->
         <div class="mb-4 rounded-2xl border border-ink-100 bg-white p-5 dark:border-ink-800 dark:bg-ink-900">
-          <div class="mb-3 flex items-center justify-between">
-            <p class="text-sm font-semibold text-ink-800 dark:text-ink-200">افزودن دستی از بانک سوال</p>
-            <button type="button" class="text-11px font-medium text-brand-600 hover:underline dark:text-brand-400" @click="openNewQuestion">
-              + سوال جدید
-            </button>
-          </div>
+          <p class="mb-3 text-sm font-semibold text-ink-800 dark:text-ink-200">افزودن دستی از بانک سوال</p>
           <input v-model="bankSearch" type="text" placeholder="جست‌وجو در بانک سوال..." class="mb-3 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200" />
           <div class="grid max-h-72 gap-2 overflow-y-auto sm:grid-cols-2">
             <div v-for="question in bankMatches.slice(0, 20)" :key="question.id" class="flex items-center justify-between rounded-lg bg-ink-50 px-3 py-2 text-xs dark:bg-ink-800">
