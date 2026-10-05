@@ -471,3 +471,59 @@ export interface ExamVersion {
   optionOrders: Record<string, number[]>;
   createdAt: number;
 }
+
+//Invitation
+export type InvitationType =
+  | "parent-meeting"
+  | "ceremony"
+  | "election"
+  | "report-card"
+  | "field-trip"
+  | "general";
+export type InvitationAudience =
+  | "parents"
+  | "teachers"
+  | "students"
+  | "general";
+export type InvitationTheme = "classic" | "modern" | "festive";
+export type InvitationStatus = "draft" | "sent" | "closed";
+export type InvitationPageLayout = "full" | "half";
+export type RsvpStatus = "pending" | "attending" | "declined";
+
+export interface InvitationRecipient {
+  id: string;
+  kind: "student" | "teacher" | "custom";
+  refId: string | null;
+  name: string;
+  grade: number | null;
+  rsvp: RsvpStatus;
+  guestsCount: number;
+  note: string;
+}
+
+export interface Invitation {
+  id: string;
+  title: string;
+  schoolName: string;
+  type: InvitationType;
+  audience: InvitationAudience;
+  theme: InvitationTheme;
+  status: InvitationStatus;
+  body: string;
+  agenda: string[];
+  requirements: string[];
+  eventDate: string;
+  eventTime: string;
+  location: string;
+  rsvpDeadline: string;
+  contactPhone: string;
+  senderName: string;
+  senderTitle: string;
+  targetGrades: number[];
+  requireRsvp: boolean;
+  showRsvpSlip: boolean;
+  recipients: InvitationRecipient[];
+  sentDate: string;
+  createdAt: number;
+  updatedAt: number;
+}

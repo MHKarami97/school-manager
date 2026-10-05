@@ -18,11 +18,12 @@ import type {
   Exam,
   ExamTemplate,
   ExamVersion,
+  Invitation,
 } from "@/types";
 
 const DB_NAME = "school-manager-db";
 
-const DB_VERSION = 9;
+const DB_VERSION = 10;
 
 export const STORE_TEACHERS = "teachers";
 export const STORE_SCHEDULES = "schedules";
@@ -42,6 +43,7 @@ export const STORE_QUESTIONS = "questions";
 export const STORE_EXAMS = "exams";
 export const STORE_EXAM_TEMPLATES = "examTemplates";
 export const STORE_EXAM_VERSIONS = "examVersions";
+export const STORE_INVITATIONS = "invitations";
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
@@ -152,6 +154,13 @@ export function getDb(): Promise<IDBPDatabase> {
             keyPath: "id",
           });
           store.createIndex("by-exam", "examId");
+        }
+        if (!db.objectStoreNames.contains(STORE_INVITATIONS)) {
+          const store = db.createObjectStore(STORE_INVITATIONS, {
+            keyPath: "id",
+          });
+          store.createIndex("by-status", "status");
+          store.createIndex("by-updatedAt", "updatedAt");
         }
       },
     });
@@ -461,4 +470,19 @@ export async function putExamVersion(version: ExamVersion): Promise<void> {
 export async function deleteExamVersion(id: string): Promise<void> {
   const db = await getDb();
   await db.delete(STORE_EXAM_VERSIONS, id);
+}
+
+//Invitation
+export async function getAllInvitations(): Promise<Invitation[]> {
+  const db = await getDb();
+  const all = await db.getAll(STORE_INVITATIONS);
+  return (all as Invitation[]).sort((a, b) => b.updatedAt - a.updatedAt);
+}
+export async function putInvitation(invitation: Invitation): Promise<void> {
+  const db = await getDb();
+  await db.put(STORE_INVITATIONS, toPlain(invitation));
+}
+export async function deleteInvitation(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete(STORE_INVITATIONS, id);
 }

@@ -179,6 +179,22 @@ const routes = [
     component: () => import("../views/ExamBuilderView.vue"),
     props: true,
   },
+  {
+    path: "/invitations",
+    name: "invitations",
+    component: () => import("../views/InvitationsView.vue"),
+  },
+  {
+    path: "/invitations/new",
+    name: "invitation-new",
+    component: () => import("../views/InvitationEditorView.vue"),
+  },
+  {
+    path: "/invitations/:id",
+    name: "invitation-editor",
+    component: () => import("../views/InvitationEditorView.vue"),
+    props: true,
+  },
 ];
 
 const router = createRouter({
