@@ -122,7 +122,7 @@ function clearAll(): void {
           class="cursor-pointer px-3 py-2 text-sm text-ink-700 hover:bg-brand-50 dark:text-ink-200 dark:hover:bg-ink-700"
           @mousedown.prevent="addStudent(student.id)"
         >
-          {{ student.firstName }} {{ student.lastName }} — {{ gradeLabel(student.grade) }}
+          {{ student.firstName }} {{ student.lastName }} - {{ gradeLabel(student.grade) }}
         </li>
       </ul>
     </div>

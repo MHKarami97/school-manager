@@ -114,9 +114,9 @@ const pages = computed(() => {
       <template v-if="mode === 'map' && page.room">
         <header class="es-header">
           <div>
-            <h1 class="es-title">{{ page.room.name }} — {{ session.title }}</h1>
+            <h1 class="es-title">{{ page.room.name }} - {{ session.title }}</h1>
             <p class="es-sub">
-              <template v-if="courseName">{{ courseName }} — </template>{{ jalaaliDateLabel(session.date) }}<template v-if="session.time"> — ساعت {{ session.time }}</template>
+              <template v-if="courseName">{{ courseName }} - </template>{{ jalaaliDateLabel(session.date) }}<template v-if="session.time"> - ساعت {{ session.time }}</template>
             </p>
           </div>
           <p class="es-muted">{{ printDate }}</p>
@@ -152,7 +152,7 @@ const pages = computed(() => {
             <p class="es-card-pos">{{ seatLabel(assignment.row, assignment.col) }}</p>
           </div>
           <p class="es-card-meta">
-            {{ session.title }}<template v-if="courseName"> — {{ courseName }}</template> — {{ jalaaliDateLabel(session.date) }}<template v-if="session.time"> — {{ session.time }}</template>
+            {{ session.title }}<template v-if="courseName"> - {{ courseName }}</template> - {{ jalaaliDateLabel(session.date) }}<template v-if="session.time"> - {{ session.time }}</template>
           </p>
         </article>
       </div>
@@ -161,12 +161,12 @@ const pages = computed(() => {
       <template v-else-if="page.room">
         <header class="es-header">
           <div>
-            <h1 class="es-title">لیست حضور و غیاب — {{ page.room.name }}</h1>
+            <h1 class="es-title">لیست حضور و غیاب - {{ page.room.name }}</h1>
             <p class="es-sub">
-              {{ session.title }}<template v-if="courseName"> — {{ courseName }}</template> — {{ jalaaliDateLabel(session.date) }}<template v-if="session.time"> — ساعت {{ session.time }}</template>
+              {{ session.title }}<template v-if="courseName"> - {{ courseName }}</template> - {{ jalaaliDateLabel(session.date) }}<template v-if="session.time"> - ساعت {{ session.time }}</template>
             </p>
           </div>
-          <p class="es-muted">{{ printDate }}<template v-if="page.pageCount > 1"> — صفحه {{ page.pageNumber }} از {{ page.pageCount }}</template></p>
+          <p class="es-muted">{{ printDate }}<template v-if="page.pageCount > 1"> - صفحه {{ page.pageNumber }} از {{ page.pageCount }}</template></p>
         </header>
         <table class="es-table">
           <thead>

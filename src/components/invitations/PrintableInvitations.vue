@@ -37,15 +37,15 @@ const printDate = new Date().toLocaleDateString('fa-IR', { year: 'numeric', mont
     <div v-if="mode === 'attendance'" class="p-4 text-ink-900">
       <div class="mb-3 flex items-center justify-between border-b-2 border-ink-800 pb-2">
         <div>
-          <h1 class="text-base font-bold">لیست حضور و امضا — {{ invitation.title }}</h1>
+          <h1 class="text-base font-bold">لیست حضور و امضا - {{ invitation.title }}</h1>
           <p class="text-11px text-ink-600">
-            {{ eventDateLabel(invitation.eventDate) }} {{ invitation.eventTime }} — {{ invitation.location || '—' }}
+            {{ eventDateLabel(invitation.eventDate) }} {{ invitation.eventTime }} - {{ invitation.location || '—' }}
           </p>
         </div>
         <p class="text-11px text-ink-500">{{ printDate }}</p>
       </div>
       <p class="mb-2 text-11px text-ink-600">
-        مدعوین: {{ summary.total }} — تأییدشده: {{ summary.attending }} — همراهان: {{ summary.guests }} — در انتظار پاسخ: {{ summary.pending }}
+        مدعوین: {{ summary.total }} - تأییدشده: {{ summary.attending }} - همراهان: {{ summary.guests }} - در انتظار پاسخ: {{ summary.pending }}
       </p>
       <table class="w-full border-collapse text-11px">
         <thead>

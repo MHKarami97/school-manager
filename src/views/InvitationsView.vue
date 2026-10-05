@@ -101,7 +101,7 @@ async function deleteInvitation(id: string): Promise<void> {
               </span>
             </div>
             <p class="mb-1 text-xs text-ink-500 dark:text-ink-400">
-              {{ INVITATION_TYPE_LABELS[invitation.type] }} — {{ INVITATION_AUDIENCE_LABELS[invitation.audience] }}
+              {{ INVITATION_TYPE_LABELS[invitation.type] }} - {{ INVITATION_AUDIENCE_LABELS[invitation.audience] }}
             </p>
             <p class="mb-3 text-11px text-ink-400 dark:text-ink-500">
               {{ eventDateLabel(invitation.eventDate) || 'تاریخ مشخص نشده' }} {{ invitation.eventTime }}

@@ -313,7 +313,7 @@ async function handlePrint(mode: 'map' | 'cards' | 'attendance'): Promise<void> 
             </div>
             <p v-else class="text-11px text-ink-400 dark:text-ink-500">هنوز سالنی تعریف نشده است.</p>
             <p class="mt-2 text-11px" :class="validParticipantIds.length > totalCapacity ? 'font-medium text-red-600 dark:text-red-400' : 'text-ink-400 dark:text-ink-500'">
-              ظرفیت کل: {{ totalCapacity }} — شرکت‌کنندگان: {{ validParticipantIds.length }}
+              ظرفیت کل: {{ totalCapacity }} - شرکت‌کنندگان: {{ validParticipantIds.length }}
             </p>
           </div>
 

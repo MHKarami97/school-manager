@@ -143,4 +143,16 @@ export const SITE_FEATURES: SiteFeature[] = [
     historyPath: "/exam-seating",
     historyLabel: "مشاهده جلسه‌ها",
   },
+  {
+    id: "teaching-plans",
+    title: "تخصیص معلم به کلاس",
+    shortTitle: "چارت تدریس",
+    description:
+      "ساخت چارت هفتگی تدریس بر اساس سرفصل، درس‌ها و محدودیت‌های هر معلم، با ویرایش drag & drop و خروجی PDF.",
+    icon: "M8 7V3m8 4V3M4 11h16M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z",
+    startPath: "/teaching-plans/new",
+    startLabel: "ساخت چارت تدریس",
+    historyPath: "/teaching-plans",
+    historyLabel: "مشاهده چارت‌ها",
+  },
 ];

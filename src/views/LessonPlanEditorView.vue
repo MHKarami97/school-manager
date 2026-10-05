@@ -195,7 +195,7 @@ async function handlePrint(): Promise<void> {
                 class="w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200"
               >
                 <option value="" disabled>
-                  {{ teachersStore.items.length ? '-- انتخاب معلم --' : 'معلمی ثبت نشده — از دکمه «+ معلم جدید» استفاده کن' }}
+                  {{ teachersStore.items.length ? '-- انتخاب معلم --' : 'معلمی ثبت نشده - از دکمه «+ معلم جدید» استفاده کن' }}
                 </option>
                 <option v-for="t in teachersStore.sortedByName" :key="t.id" :value="t.id">
                   {{ formatTeacherName(t) }}

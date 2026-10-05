@@ -55,6 +55,9 @@ export interface Teacher {
   maxWeeklyHours?: number;
   levelIds?: LevelId[];
   createdAt: number;
+  allowedGrades?: number[];
+  maxDailyHours?: number;
+  blockedSlots?: TeacherBlockedSlot[];
 }
 
 export type Audience = "self" | "school";
@@ -577,6 +580,51 @@ export interface ExamSession {
   settings: SeatingSettings;
   assignments: SeatAssignment[];
   unseatedIds: string[];
+  generatedAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+//Teacher
+export interface TeacherBlockedSlot {
+  id: string;
+  dayIndex: number;
+  startTime: string;
+  endTime: string;
+  reason: string;
+  fromDate: string;
+  toDate: string;
+}
+
+export interface TeachingClass {
+  id: string;
+  grade: number;
+  label: string;
+}
+
+export interface TeachingSlot {
+  classId: string;
+  dayIndex: number;
+  periodIndex: number;
+  courseId: string;
+  teacherId: string | null;
+  isLocked?: boolean;
+}
+
+export interface TeachingPlan {
+  id: string;
+  title: string;
+  levelId: LevelId;
+  grades: number[];
+  classCounts: Record<number, number>;
+  classes: TeachingClass[];
+  shiftId: ShiftId;
+  shiftConfig: ShiftTimeConfig;
+  effectiveFrom: string;
+  effectiveTo: string;
+  curriculum: Record<number, Record<string, number>>;
+  teacherIds: string[];
+  slots: TeachingSlot[];
   generatedAt: number | null;
   createdAt: number;
   updatedAt: number;

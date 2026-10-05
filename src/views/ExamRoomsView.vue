@@ -129,7 +129,7 @@ async function deleteRoom(id: string): Promise<void> {
           <div class="h-1.5 bg-gradient-to-l from-brand-600 to-brand-400"></div>
           <div class="p-4">
             <p class="mb-1 text-sm font-semibold text-ink-800 dark:text-ink-200">{{ room.name }}</p>
-            <p class="mb-3 text-xs text-ink-500 dark:text-ink-400">{{ room.rows }} ردیف × {{ room.cols }} ستون — ظرفیت {{ roomCapacity(room) }} نفر</p>
+            <p class="mb-3 text-xs text-ink-500 dark:text-ink-400">{{ room.rows }} ردیف × {{ room.cols }} ستون - ظرفیت {{ roomCapacity(room) }} نفر</p>
             <div class="flex items-center justify-between border-t border-ink-50 pt-3 dark:border-ink-800">
               <button type="button" class="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400" @click="startEdit(room)">ویرایش</button>
               <button type="button" class="text-xs text-red-600 dark:text-red-400" @click="deleteRoom(room.id)">حذف</button>

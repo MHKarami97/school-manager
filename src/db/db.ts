@@ -21,11 +21,12 @@ import type {
   Invitation,
   ExamRoom,
   ExamSession,
+  TeachingPlan,
 } from "@/types";
 
 const DB_NAME = "school-manager-db";
 
-const DB_VERSION = 11;
+const DB_VERSION = 12;
 
 export const STORE_TEACHERS = "teachers";
 export const STORE_SCHEDULES = "schedules";
@@ -48,6 +49,7 @@ export const STORE_EXAM_VERSIONS = "examVersions";
 export const STORE_INVITATIONS = "invitations";
 export const STORE_EXAM_ROOMS = "examRooms";
 export const STORE_EXAM_SESSIONS = "examSessions";
+export const STORE_TEACHING_PLANS = "teachingPlans";
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
@@ -174,6 +176,12 @@ export function getDb(): Promise<IDBPDatabase> {
             keyPath: "id",
           });
           store.createIndex("by-date", "date");
+        }
+        if (!db.objectStoreNames.contains(STORE_TEACHING_PLANS)) {
+          const store = db.createObjectStore(STORE_TEACHING_PLANS, {
+            keyPath: "id",
+          });
+          store.createIndex("by-updatedAt", "updatedAt");
         }
       },
     });
@@ -525,4 +533,19 @@ export async function putExamSession(session: ExamSession): Promise<void> {
 export async function deleteExamSession(id: string): Promise<void> {
   const db = await getDb();
   await db.delete(STORE_EXAM_SESSIONS, id);
+}
+
+//Teacher
+export async function getAllTeachingPlans(): Promise<TeachingPlan[]> {
+  const db = await getDb();
+  const all = await db.getAll(STORE_TEACHING_PLANS);
+  return (all as TeachingPlan[]).sort((a, b) => b.updatedAt - a.updatedAt);
+}
+export async function putTeachingPlan(plan: TeachingPlan): Promise<void> {
+  const db = await getDb();
+  await db.put(STORE_TEACHING_PLANS, toPlain(plan));
+}
+export async function deleteTeachingPlan(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete(STORE_TEACHING_PLANS, id);
 }

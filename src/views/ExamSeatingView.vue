@@ -31,7 +31,7 @@ async function deleteSession(id: string): Promise<void> {
       <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 class="text-xl font-bold text-ink-900 dark:text-ink-200">چیدمان صندلی امتحان</h1>
-          <p class="mt-1 text-sm text-ink-500 dark:text-ink-400">{{ sessionsStore.items.length }} جلسه — {{ roomsStore.items.length }} سالن تعریف‌شده</p>
+          <p class="mt-1 text-sm text-ink-500 dark:text-ink-400">{{ sessionsStore.items.length }} جلسه - {{ roomsStore.items.length }} سالن تعریف‌شده</p>
         </div>
         <div class="flex flex-wrap gap-2">
           <RouterLink to="/exam-seating/rooms" class="rounded-xl border border-ink-200 bg-white px-4 py-2 text-sm font-medium text-ink-700 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200">
@@ -67,12 +67,12 @@ async function deleteSession(id: string): Promise<void> {
               </span>
             </div>
             <p class="mb-1 text-xs text-ink-500 dark:text-ink-400">
-              <template v-if="findCourse(BASE_COURSES, session.courseId)">{{ findCourse(BASE_COURSES, session.courseId)!.name }} — </template>{{ jalaaliDateLabel(session.date) }}
-              <template v-if="session.time"> — {{ session.time }}</template>
+              <template v-if="findCourse(BASE_COURSES, session.courseId)">{{ findCourse(BASE_COURSES, session.courseId)!.name }} - </template>{{ jalaaliDateLabel(session.date) }}
+              <template v-if="session.time"> - {{ session.time }}</template>
             </p>
             <p class="mb-3 text-11px text-ink-400 dark:text-ink-500">
-              {{ session.participantIds.length }} شرکت‌کننده — {{ session.roomIds.length }} سالن
-              <template v-if="session.unseatedIds.length"> — <span class="text-red-600 dark:text-red-400">{{ session.unseatedIds.length }} نفر بدون صندلی</span></template>
+              {{ session.participantIds.length }} شرکت‌کننده - {{ session.roomIds.length }} سالن
+              <template v-if="session.unseatedIds.length"> - <span class="text-red-600 dark:text-red-400">{{ session.unseatedIds.length }} نفر بدون صندلی</span></template>
             </p>
             <div class="flex items-center justify-between border-t border-ink-50 pt-3 dark:border-ink-800">
               <RouterLink :to="`/exam-seating/${session.id}`" class="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400">مدیریت و چاپ</RouterLink>

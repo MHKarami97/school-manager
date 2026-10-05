@@ -38,7 +38,7 @@ export function jalaaliDateLabel(iso: string): string {
   return jalaali ? formatJalaaliDate(jalaali) : iso
 }
 
-/** مثلاً «شنبه ۱۴۰۵/۰۷/۲۰» — روز هفته از تاریخ میلادی ISO محاسبه می‌شود. */
+/** مثلاً «شنبه ۱۴۰۵/۰۷/۲۰» - روز هفته از تاریخ میلادی ISO محاسبه می‌شود. */
 export function eventDateLabel(iso: string): string {
   if (!iso) return ''
   const [year, month, day] = iso.split('-').map(Number)

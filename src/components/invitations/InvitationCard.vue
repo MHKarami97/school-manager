@@ -102,7 +102,7 @@ const showSlip = computed(() => props.invitation.requireRsvp && props.invitation
 
     <div v-if="showSlip" class="mt-5 border-t-2 border-dashed border-ink-300 pt-3">
       <p :class="['mb-1 font-bold text-ink-700', compact ? 'text-10px' : 'text-xs']">
-        ✂ برگه‌ی پاسخ — {{ recipient ? recipient.name : 'نام و نام‌خانوادگی: ....................' }}
+        ✂ برگه‌ی پاسخ - {{ recipient ? recipient.name : 'نام و نام‌خانوادگی: ....................' }}
       </p>
       <p :class="['text-ink-700', compact ? 'text-10px' : 'text-xs']">
         ⬜ حضور دارم &nbsp;&nbsp; ⬜ حضور ندارم &nbsp;&nbsp; تعداد همراه: ........ &nbsp;&nbsp; امضا: ............

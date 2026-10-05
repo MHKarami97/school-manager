@@ -54,10 +54,10 @@ const printDate = new Date().toLocaleDateString('fa-IR', { year: 'numeric', mont
       <div>
         <h1 class="text-base font-bold">
           {{ plan.title }}
-          <template v-if="mode === 'class' && classId"> — {{ classLabel(classId) }}</template>
-          <template v-if="mode === 'teacher' && teacherId"> — {{ teacherName(teacherId) }}</template>
-          <template v-if="mode === 'school'"> — نمای کل مدرسه</template>
-          <template v-if="mode === 'school-by-period'"> — نمای کل مدرسه (به تفکیک هر زنگ)</template>
+          <template v-if="mode === 'class' && classId"> - {{ classLabel(classId) }}</template>
+          <template v-if="mode === 'teacher' && teacherId"> - {{ teacherName(teacherId) }}</template>
+          <template v-if="mode === 'school'"> - نمای کل مدرسه</template>
+          <template v-if="mode === 'school-by-period'"> - نمای کل مدرسه (به تفکیک هر زنگ)</template>
         </h1>
         <p class="text-sm text-ink-600">{{ plan.shiftConfig.name }} · {{ plan.shiftConfig.startTime }}-{{ plan.shiftConfig.endTime }}</p>
       </div>

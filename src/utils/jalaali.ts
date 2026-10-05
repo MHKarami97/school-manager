@@ -53,7 +53,7 @@ function jalCal(jy: number): { leap: number; gy: number; march: number } {
   return { leap, gy, march }
 }
 
-// Fliegel & Van Flandern — تبدیل میلادی به شماره‌ی روز ژولیَنی (JDN)
+// Fliegel & Van Flandern - تبدیل میلادی به شماره‌ی روز ژولیَنی (JDN)
 function g2d(gy: number, gm: number, gd: number): number {
   const a = div(gm - 14, 12)
   return (
@@ -123,7 +123,7 @@ function pad2(n: number): string {
   return String(n).padStart(2, '0')
 }
 
-/** رشته‌ی ISO میلادی (yyyy-mm-dd) از روی تاریخ شمسی — برای ذخیره‌سازی سازگار با فرمت فعلی */
+/** رشته‌ی ISO میلادی (yyyy-mm-dd) از روی تاریخ شمسی - برای ذخیره‌سازی سازگار با فرمت فعلی */
 export function jalaaliToIsoString(jy: number, jm: number, jd: number): string {
   const { gy, gm, gd } = toGregorian(jy, jm, jd)
   return `${gy}-${pad2(gm)}-${pad2(gd)}`

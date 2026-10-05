@@ -216,6 +216,27 @@ const routes = [
     component: () => import("../views/ExamSeatingEditorView.vue"),
     props: true,
   },
+  {
+    path: "/teaching-plans",
+    name: "teaching-plans",
+    component: () => import("../views/TeachingPlansView.vue"),
+  },
+  {
+    path: "/teaching-plans/teachers",
+    name: "teacher-constraints",
+    component: () => import("../views/TeacherConstraintsView.vue"),
+  },
+  {
+    path: "/teaching-plans/new",
+    name: "teaching-plan-new",
+    component: () => import("../views/TeachingPlanEditorView.vue"),
+  },
+  {
+    path: "/teaching-plans/:id",
+    name: "teaching-plan-editor",
+    component: () => import("../views/TeachingPlanEditorView.vue"),
+    props: true,
+  },
 ];
 
 const router = createRouter({

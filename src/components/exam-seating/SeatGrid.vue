@@ -102,7 +102,7 @@ const bannerStyle = computed<Record<string, string>>(() =>
       class="mb-2 flex-none rounded-lg bg-ink-200 py-1 text-center text-11px font-medium text-ink-600 dark:bg-ink-700 dark:text-ink-200"
       :style="bannerStyle"
     >
-      جلوی سالن (تخته) — ردیف ۱
+      جلوی سالن (تخته) - ردیف ۱
     </div>
     <div :class="fill ? 'min-h-0 flex-1' : 'overflow-x-auto'">
       <div class="grid gap-1" :class="fill ? 'h-full' : ''" :style="gridStyle">
