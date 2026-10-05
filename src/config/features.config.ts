@@ -131,4 +131,16 @@ export const SITE_FEATURES: SiteFeature[] = [
     historyPath: "/invitations",
     historyLabel: "مشاهده دعوت‌نامه‌ها",
   },
+  {
+    id: "exam-seating",
+    title: "چیدمان صندلی و سالن امتحان",
+    shortTitle: "چیدمان امتحان",
+    description:
+      "نقشه‌ی نشستن ضد تقلب با پخش هم‌کلاسی‌ها، کارت صندلی، نقشه‌ی سالن و لیست حضور.",
+    icon: "M4 6h16M4 12h16M4 18h16",
+    startPath: "/exam-seating/new",
+    startLabel: "ساخت جلسه‌ی امتحان",
+    historyPath: "/exam-seating",
+    historyLabel: "مشاهده جلسه‌ها",
+  },
 ];

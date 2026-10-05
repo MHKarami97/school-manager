@@ -195,6 +195,27 @@ const routes = [
     component: () => import("../views/InvitationEditorView.vue"),
     props: true,
   },
+  {
+    path: "/exam-seating",
+    name: "exam-seating",
+    component: () => import("../views/ExamSeatingView.vue"),
+  },
+  {
+    path: "/exam-seating/rooms",
+    name: "exam-rooms",
+    component: () => import("../views/ExamRoomsView.vue"),
+  },
+  {
+    path: "/exam-seating/new",
+    name: "exam-seating-new",
+    component: () => import("../views/ExamSeatingEditorView.vue"),
+  },
+  {
+    path: "/exam-seating/:id",
+    name: "exam-seating-editor",
+    component: () => import("../views/ExamSeatingEditorView.vue"),
+    props: true,
+  },
 ];
 
 const router = createRouter({

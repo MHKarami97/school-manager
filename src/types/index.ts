@@ -527,3 +527,57 @@ export interface Invitation {
   createdAt: number;
   updatedAt: number;
 }
+
+//Seating
+export type SeatingStrategy = "spread" | "random" | "alphabetical";
+export type SeatSpacing = "none" | "checkerboard" | "skip-columns";
+export type SeatAdjacency = "side" | "cross" | "all";
+
+export interface ExamRoom {
+  id: string;
+  name: string;
+  rows: number;
+  cols: number;
+  blockedSeats: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface SeparationPair {
+  id: string;
+  studentAId: string;
+  studentBId: string;
+}
+
+export interface SeatAssignment {
+  examSessionId: string;
+  studentId: string;
+  roomId: string;
+  row: number;
+  col: number;
+}
+
+export interface SeatingSettings {
+  strategy: SeatingStrategy;
+  spacing: SeatSpacing;
+  adjacency: SeatAdjacency;
+  avoidSameClass: boolean;
+  seed: number;
+}
+
+export interface ExamSession {
+  id: string;
+  title: string;
+  courseId: string;
+  date: string;
+  time: string;
+  roomIds: string[];
+  participantIds: string[];
+  separationPairs: SeparationPair[];
+  settings: SeatingSettings;
+  assignments: SeatAssignment[];
+  unseatedIds: string[];
+  generatedAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+}

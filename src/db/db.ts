@@ -19,11 +19,13 @@ import type {
   ExamTemplate,
   ExamVersion,
   Invitation,
+  ExamRoom,
+  ExamSession,
 } from "@/types";
 
 const DB_NAME = "school-manager-db";
 
-const DB_VERSION = 10;
+const DB_VERSION = 11;
 
 export const STORE_TEACHERS = "teachers";
 export const STORE_SCHEDULES = "schedules";
@@ -44,6 +46,8 @@ export const STORE_EXAMS = "exams";
 export const STORE_EXAM_TEMPLATES = "examTemplates";
 export const STORE_EXAM_VERSIONS = "examVersions";
 export const STORE_INVITATIONS = "invitations";
+export const STORE_EXAM_ROOMS = "examRooms";
+export const STORE_EXAM_SESSIONS = "examSessions";
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
@@ -161,6 +165,15 @@ export function getDb(): Promise<IDBPDatabase> {
           });
           store.createIndex("by-status", "status");
           store.createIndex("by-updatedAt", "updatedAt");
+        }
+        if (!db.objectStoreNames.contains(STORE_EXAM_ROOMS)) {
+          db.createObjectStore(STORE_EXAM_ROOMS, { keyPath: "id" });
+        }
+        if (!db.objectStoreNames.contains(STORE_EXAM_SESSIONS)) {
+          const store = db.createObjectStore(STORE_EXAM_SESSIONS, {
+            keyPath: "id",
+          });
+          store.createIndex("by-date", "date");
         }
       },
     });
@@ -485,4 +498,31 @@ export async function putInvitation(invitation: Invitation): Promise<void> {
 export async function deleteInvitation(id: string): Promise<void> {
   const db = await getDb();
   await db.delete(STORE_INVITATIONS, id);
+}
+
+//Seating
+export async function getAllExamRooms(): Promise<ExamRoom[]> {
+  const db = await getDb();
+  return db.getAll(STORE_EXAM_ROOMS);
+}
+export async function putExamRoom(room: ExamRoom): Promise<void> {
+  const db = await getDb();
+  await db.put(STORE_EXAM_ROOMS, toPlain(room));
+}
+export async function deleteExamRoom(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete(STORE_EXAM_ROOMS, id);
+}
+
+export async function getAllExamSessions(): Promise<ExamSession[]> {
+  const db = await getDb();
+  return db.getAll(STORE_EXAM_SESSIONS);
+}
+export async function putExamSession(session: ExamSession): Promise<void> {
+  const db = await getDb();
+  await db.put(STORE_EXAM_SESSIONS, toPlain(session));
+}
+export async function deleteExamSession(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete(STORE_EXAM_SESSIONS, id);
 }

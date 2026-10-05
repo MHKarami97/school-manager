@@ -271,6 +271,33 @@ const invitationSteps = [
     body: "سه خروجی داری: دعوت‌نامه‌ی عمومی (یک برگ)، دعوت‌نامه‌ی شخصی برای همه مدعوین (یکی یا دو تا در هر A4) و لیست حضور و امضا برای روز برگزاری.",
   },
 ];
+
+const examSeatingSteps = [
+  {
+    title: "۱. تعریف سالن‌ها",
+    body: "از «مدیریت سالن‌ها» تعداد ردیف و ستون هر سالن را بده. برای نقشه‌ی نامنظم (ستون، میز معلم، فضای خالی) روی خانه‌ها کلیک کن تا مسدود شوند.",
+  },
+  {
+    title: "۲. ساخت جلسه و انتخاب شرکت‌کنندگان",
+    body: "عنوان، درس، تاریخ شمسی و ساعت را بده، سالن‌ها را تیک بزن و شرکت‌کنندگان را با پایه، کلاس ذخیره‌شده یا جست‌وجوی نام اضافه کن.",
+  },
+  {
+    title: "۳. لیست دوستی",
+    body: "جفت دانش‌آموزانی را که نباید کنار هم بنشینند ثبت کن؛ در چیدمان همیشه از هم جدا می‌شوند.",
+  },
+  {
+    title: "۴. تنظیمات و تولید چیدمان",
+    body: "روش (پخش‌شده، تصادفی یا الفبایی)، الگوی شطرنجی یا یک ستون در میان، سخت‌گیری همسایگی و Seed را انتخاب کن. با همان Seed هر بار همان چیدمان تکرار می‌شود.",
+  },
+  {
+    title: "۵. بررسی و اصلاح",
+    body: "هر کلاس یک رنگ دارد تا پخش‌شدگی را چشمی ببینی. کادر قرمز یعنی مجاورت ممنوع. با کلیک روی دو صندلی می‌توانی جای دو نفر را دستی عوض کنی.",
+  },
+  {
+    title: "۶. چاپ",
+    body: "نقشه‌ی سالن برای نصب روی درب، کارت صندلی هر نفر و لیست حضور بر اساس صندلی را به صورت PDF بگیر.",
+  },
+];
 </script>
 
 <template>
@@ -457,6 +484,24 @@ const invitationSteps = [
       <ol class="space-y-6">
         <li
           v-for="step in invitationSteps"
+          :key="step.title"
+          class="rounded-2xl border border-ink-100 bg-white p-6 dark:border-ink-800 dark:bg-ink-900"
+        >
+          <h3 class="text-base font-semibold text-ink-800 dark:text-ink-200">
+            {{ step.title }}
+          </h3>
+          <p class="mt-2 text-sm leading-7 text-ink-600 dark:text-ink-300">
+            {{ step.body }}
+          </p>
+        </li>
+      </ol>
+
+      <h2 class="mb-4 mt-12 text-lg font-bold text-ink-800 dark:text-ink-200">
+        بخش یازدهم: چیدمان صندلی امتحان
+      </h2>
+      <ol class="space-y-6">
+        <li
+          v-for="step in examSeatingSteps"
           :key="step.title"
           class="rounded-2xl border border-ink-100 bg-white p-6 dark:border-ink-800 dark:bg-ink-900"
         >
