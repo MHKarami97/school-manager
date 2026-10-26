@@ -155,4 +155,16 @@ export const SITE_FEATURES: SiteFeature[] = [
     historyPath: "/teaching-plans",
     historyLabel: "مشاهده چارت‌ها",
   },
+  {
+    id: "attendance",
+    title: "حضور و غیاب دانش‌آموزان",
+    shortTitle: "حضور و غیاب",
+    description:
+      "حضور و غیاب روزانه‌ی کلاس‌ها (حالت کامل یا فقط غایبین)، پنل مدیر مدرسه، ثبت خروج، لیست غایبین با تماس سریع با اولیا، گزارش‌های تحلیلی و خروجی PDF.",
+    icon: "M9 12l2 2 4-4M7 4h10a2 2 0 012 2v12a2 2 0 01-2 2H7a2 2 0 01-2-2V6a2 2 0 012-2z",
+    startPath: "/attendance",
+    startLabel: "شروع حضور و غیاب",
+    historyPath: "/attendance/reports",
+    historyLabel: "گزارش‌های حضور و غیاب",
+  },
 ];

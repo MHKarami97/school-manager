@@ -237,6 +237,37 @@ const routes = [
     component: () => import("../views/TeachingPlanEditorView.vue"),
     props: true,
   },
+  {
+    path: "/attendance",
+    name: "attendance",
+    component: () => import("@/views/AttendanceClassesView.vue"),
+  },
+  {
+    path: "/attendance/principal",
+    name: "attendance-principal",
+    component: () => import("@/views/AttendancePrincipalView.vue"),
+  },
+  {
+    path: "/attendance/absentees",
+    name: "attendance-absentees",
+    component: () => import("@/views/AttendanceAbsenteesView.vue"),
+  },
+  {
+    path: "/attendance/reports",
+    name: "attendance-reports",
+    component: () => import("@/views/AttendanceReportsView.vue"),
+  },
+  {
+    path: "/attendance/guide",
+    name: "attendance-guide",
+    component: () => import("@/views/AttendanceGuideView.vue"),
+  },
+  {
+    path: "/attendance/classes/:id",
+    name: "attendance-sheet",
+    component: () => import("@/views/AttendanceSheetView.vue"),
+    props: true,
+  },
 ];
 
 const router = createRouter({

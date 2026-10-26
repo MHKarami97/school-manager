@@ -23,10 +23,11 @@ import type {
   ExamSession,
   TeachingPlan,
 } from "@/types";
+import { createAttendanceStores } from "./attendance-schema";
 
 const DB_NAME = "school-manager-db";
 
-const DB_VERSION = 12;
+const DB_VERSION = 13;
 
 export const STORE_TEACHERS = "teachers";
 export const STORE_SCHEDULES = "schedules";
@@ -183,6 +184,7 @@ export function getDb(): Promise<IDBPDatabase> {
           });
           store.createIndex("by-updatedAt", "updatedAt");
         }
+        createAttendanceStores(db);
       },
     });
   }

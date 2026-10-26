@@ -629,3 +629,163 @@ export interface TeachingPlan {
   createdAt: number;
   updatedAt: number;
 }
+
+// ───────────── حضور و غیاب ─────────────
+
+export type AttendanceStatus = "present" | "absent" | "late" | "excused";
+export type AttendanceSource = "manual" | "nfc" | "qr";
+export type FollowUpStatus = "none" | "called" | "no-answer";
+export type AuditAction = "create" | "update" | "exit-set" | "exit-remove";
+
+export interface Classroom {
+  id: string;
+  name: string;
+  grade: number;
+  academicYear: string;
+  shift: string;
+  teacherId: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ClassroomMember {
+  id: string;
+  classroomId: string;
+  studentId: string;
+  createdAt: number;
+}
+
+export interface ParentContact {
+  phone: string;
+  relation: string;
+}
+
+export interface StudentAttendanceProfile {
+  studentId: string;
+  guid: string;
+  nfcSerial?: string;
+  primaryParent: ParentContact;
+  secondaryParent?: ParentContact;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ExitInfo {
+  time: string;
+  reason: string;
+  receiver: string;
+}
+
+export interface AttendanceRecord {
+  id: string;
+  classroomId: string;
+  studentId: string;
+  date: string;
+  status: AttendanceStatus;
+  arrivalTime: string;
+  excuseReason: string;
+  source: AttendanceSource;
+  exit: ExitInfo | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface FollowUp {
+  id: string;
+  classroomId: string;
+  studentId: string;
+  date: string;
+  status: FollowUpStatus;
+  note: string;
+  updatedAt: number;
+}
+
+export interface AttendanceSnapshot {
+  status: AttendanceStatus;
+  arrivalTime: string;
+  excuseReason: string;
+  exit: ExitInfo | null;
+}
+
+export interface AuditEntry {
+  id: string;
+  classroomId: string;
+  studentId: string;
+  date: string;
+  at: number;
+  actor: string;
+  action: AuditAction;
+  before: AttendanceSnapshot | null;
+  after: AttendanceSnapshot | null;
+}
+
+export interface DraftEntry {
+  status: AttendanceStatus | null;
+  arrivalTime: string;
+  excuseReason: string;
+}
+
+export type StudentIdentifierKind = "student-id" | "guid" | "nfc-serial";
+
+export interface StudentIdentifier {
+  kind: StudentIdentifierKind;
+  value: string;
+}
+
+export interface MarkResult {
+  ok: boolean;
+  studentId?: string;
+  reason?: "not-found" | "not-in-class" | "no-sheet";
+}
+
+export type TrendGranularity = "day" | "week" | "month";
+
+export interface DateRange {
+  from: string;
+  to: string;
+}
+
+export type PrintMode = "summary" | "absentees" | "student";
+
+export interface PrintSummaryRow {
+  name: string;
+  present: number;
+  absent: number;
+  late: number;
+  excused: number;
+  exits: number;
+  rateText: string;
+}
+
+export interface PrintAbsenteeRow {
+  date: string;
+  className: string;
+  name: string;
+  phones: { phone: string; relation: string }[];
+  followUpText: string;
+  note: string;
+}
+
+export interface PrintStudentRow {
+  date: string;
+  statusText: string;
+  detail: string;
+}
+
+export interface PrintPayload {
+  mode: PrintMode;
+  title: string;
+  subtitle: string;
+  teacherName: string;
+  summaryRows: PrintSummaryRow[];
+  summaryTotals: PrintSummaryRow | null;
+  absenteeRows: PrintAbsenteeRow[];
+  studentRows: PrintStudentRow[];
+  studentTotals: PrintSummaryRow | null;
+}
+
+export interface BarItem {
+  label: string;
+  value: number;
+  display?: string;
+}
