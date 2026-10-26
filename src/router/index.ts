@@ -268,6 +268,45 @@ const routes = [
     component: () => import("@/views/AttendanceSheetView.vue"),
     props: true,
   },
+  {
+    path: "/service",
+    redirect: "/service/assign",
+  },
+  {
+    path: "/service/drivers",
+    name: "service-drivers",
+    component: () => import("@/views/ServiceDriversView.vue"),
+  },
+  {
+    path: "/service/students",
+    name: "service-students",
+    component: () => import("@/views/ServiceStudentsView.vue"),
+  },
+  {
+    path: "/service/assign",
+    name: "service-assign",
+    component: () => import("@/views/ServiceAssignView.vue"),
+  },
+  {
+    path: "/service/absentees",
+    name: "service-absentees",
+    component: () => import("@/views/ServiceAbsenteesView.vue"),
+  },
+  {
+    path: "/service/payments",
+    name: "service-payments",
+    component: () => import("@/views/ServicePaymentsView.vue"),
+  },
+  {
+    path: "/service/guide",
+    name: "service-guide",
+    component: () => import("@/views/ServiceGuideView.vue"),
+  },
+  {
+    path: "/settings",
+    name: "settings",
+    component: () => import("@/views/SettingsView.vue"),
+  },
 ];
 
 const router = createRouter({

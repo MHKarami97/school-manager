@@ -167,4 +167,16 @@ export const SITE_FEATURES: SiteFeature[] = [
     historyPath: "/attendance/reports",
     historyLabel: "گزارش‌های حضور و غیاب",
   },
+  {
+    id: "school-service",
+    title: "مدیریت سرویس مدارس",
+    shortTitle: "سرویس مدارس",
+    description:
+      "ثبت رانندگان و خودرو، آدرس و موقعیت دانش‌آموزان، تخصیص دستی با نمای صندلی یا خودکار بر اساس منطقه و نقشه، تأیید هر راننده، غایبین هر راننده و پیگیری هزینه و پرداخت.",
+    icon: "M8 17h8M5 17H4a1 1 0 01-1-1V8a2 2 0 012-2h14a2 2 0 012 2v8a1 1 0 01-1 1h-1M7 20a1.5 1.5 0 100-3 1.5 1.5 0 000 3zm10 0a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM3 11h18",
+    startPath: "/service/drivers",
+    startLabel: "شروع سرویس مدارس",
+    historyPath: "/service/assign",
+    historyLabel: "تخصیص دانش‌آموزان",
+  },
 ];

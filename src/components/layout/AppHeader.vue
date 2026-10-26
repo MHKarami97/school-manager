@@ -27,6 +27,12 @@ function closeMenu(): void {
       </nav>
 
       <div class="hidden items-center gap-3 md:flex">
+        <RouterLink to="/settings" class="flex items-center gap-1.5 rounded-xl border border-ink-200 px-4 py-2 text-sm font-medium text-ink-700 transition hover:border-brand-300 hover:text-brand-700 dark:border-ink-700 dark:text-ink-200 dark:hover:border-brand-500 dark:hover:text-brand-400">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4" aria-hidden="true">
+            <path d="M4 7h9M17 7h3M4 17h3M11 17h9M15 5v4M9 15v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+          </svg>
+          تنظیمات
+        </RouterLink>
         <RouterLink to="/history" class="rounded-xl border border-ink-200 px-4 py-2 text-sm font-medium text-ink-700 transition hover:border-brand-300 hover:text-brand-700 dark:border-ink-700 dark:text-ink-200 dark:hover:border-brand-500 dark:hover:text-brand-400">
           تاریخچه
         </RouterLink>
@@ -45,9 +51,6 @@ function closeMenu(): void {
     <Transition name="fade">
       <div v-if="isMenuOpen" class="border-t border-ink-100 bg-white px-4 py-4 md:hidden dark:border-ink-800 dark:bg-ink-900">
         <nav class="flex flex-col gap-3">
-          <RouterLink :to="{ path: '/', hash: '#features' }" class="rounded-lg px-2 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-800" @click="closeMenu">
-            امکانات
-          </RouterLink>
           <RouterLink to="/tools" class="rounded-lg px-2 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-800" @click="closeMenu">
             ابزارها
           </RouterLink>
@@ -56,6 +59,9 @@ function closeMenu(): void {
           </RouterLink>
           <RouterLink to="/guide" class="rounded-lg px-2 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-800" @click="closeMenu">
             راهنما
+          </RouterLink>
+          <RouterLink to="/settings" class="rounded-lg px-2 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-800" @click="closeMenu">
+            تنظیمات
           </RouterLink>
           <RouterLink to="/about" class="rounded-lg px-2 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-800" @click="closeMenu">
             درباره ما

@@ -86,6 +86,12 @@ const steps = [
               >
                 تاریخچه
               </RouterLink>
+              <RouterLink
+                to="/settings"
+                class="w-full rounded-xl border border-ink-200 bg-white px-6 py-3 text-center text-sm font-semibold text-ink-700 transition hover:border-brand-300 sm:w-auto dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200"
+              >
+                تنظیمات
+              </RouterLink>
             </div>
           </div>
         </div>

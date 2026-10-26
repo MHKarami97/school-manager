@@ -789,3 +789,110 @@ export interface BarItem {
   value: number;
   display?: string;
 }
+
+// ───────────── سرویس مدارس ─────────────
+
+export type VehicleKind = "sedan" | "van" | "minibus" | "other";
+export type DriverGender = "male" | "female";
+export type ServicePlanStatus = "draft" | "final";
+export type AssignmentStatus = "draft" | "confirmed";
+export type PaymentMethod = "cash" | "card" | "transfer" | "other";
+export type AssignMode = "smart" | "region" | "location";
+
+export interface GeoPoint {
+  lat: number;
+  lng: number;
+}
+
+/** ردیف‌ها از جلو به عقب؛ هر عدد = تعداد صندلی دانش‌آموزی همان ردیف (بدون راننده). ردیف صفر کنار راننده است. */
+export interface SeatLayout {
+  rows: number[];
+}
+
+export interface ServiceDriver {
+  id: string;
+  fullName: string;
+  gender: DriverGender;
+  phone: string;
+  vehicleKind: VehicleKind;
+  vehicleModel: string;
+  vehicleYear: number | null;
+  vehicleColor: string;
+  plate: string;
+  seatLayout: SeatLayout;
+  coverageRegions: string[];
+  baseLocation: GeoPoint | null;
+  note: string;
+  isActive: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ServiceAddress {
+  province: string;
+  city: string;
+  region: string;
+  street: string;
+  alley: string;
+  building: string;
+  plaque: string;
+  unit: string;
+  landmark: string;
+}
+
+export interface ServiceStudentProfile {
+  studentId: string;
+  isEnrolled: boolean;
+  address: ServiceAddress;
+  location: GeoPoint | null;
+  pickupTime: string;
+  returnAddressNote: string;
+  receiverName: string;
+  receiverPhone: string;
+  note: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ServicePlan {
+  id: string;
+  academicYear: string;
+  title: string;
+  status: ServicePlanStatus;
+  months: string[];
+  defaultMonthlyFee: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ServiceAssignment {
+  id: string;
+  planId: string;
+  studentId: string;
+  driverId: string;
+  seatId: string | null;
+  status: AssignmentStatus;
+  monthlyFee: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ServiceDriverState {
+  id: string;
+  planId: string;
+  driverId: string;
+  status: AssignmentStatus;
+  confirmedAt: number | null;
+}
+
+export interface ServicePayment {
+  id: string;
+  planId: string;
+  studentId: string;
+  month: string;
+  amount: number;
+  paidAt: string;
+  method: PaymentMethod;
+  note: string;
+  createdAt: number;
+}

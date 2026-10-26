@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ATTENDANCE_GUIDE_STEPS } from "@/config/attendance-guide.config";
+import { SERVICE_GUIDE_STEPS } from "@/config/service-guide.config";
 import AppHeader from "@/components/layout/AppHeader.vue";
 import AppFooter from "@/components/layout/AppFooter.vue";
 
@@ -490,6 +491,24 @@ const teachingPlanSteps = [
       <ol class="space-y-6">
         <li
           v-for="step in ATTENDANCE_GUIDE_STEPS"
+          :key="step.title"
+          class="rounded-2xl border border-ink-100 bg-white p-6 dark:border-ink-800 dark:bg-ink-900"
+        >
+          <h3 class="text-base font-semibold text-ink-800 dark:text-ink-200">
+            {{ step.title }}
+          </h3>
+          <p class="mt-2 text-sm leading-7 text-ink-600 dark:text-ink-300">
+            {{ step.body }}
+          </p>
+        </li>
+      </ol>
+
+      <h2 class="mb-4 mt-12 text-lg font-bold text-ink-800 dark:text-ink-200">
+        سرویس مدارس
+      </h2>
+      <ol class="space-y-6">
+        <li
+          v-for="step in SERVICE_GUIDE_STEPS"
           :key="step.title"
           class="rounded-2xl border border-ink-100 bg-white p-6 dark:border-ink-800 dark:bg-ink-900"
         >

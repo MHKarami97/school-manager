@@ -21,6 +21,11 @@ const items = [
     label: 'راهنما',
     icon: 'M12 18h.01M9.09 9a3 3 0 115.83 1c0 2-3 2-3 5',
   },
+  {
+    to: '/settings',
+    label: 'تنظیمات',
+    icon: 'M4 7h9M17 7h3M4 17h3M11 17h9M15 5v4M9 15v4',
+  },
 ]
 
 const activePath = computed(() => route.path)
