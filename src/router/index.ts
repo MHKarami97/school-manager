@@ -307,6 +307,11 @@ const routes = [
     name: "settings",
     component: () => import("@/views/SettingsView.vue"),
   },
+  {
+    path: "/settings/data",
+    name: "settings-data",
+    component: () => import("@/views/DataManagerView.vue"),
+  },
 ];
 
 const router = createRouter({

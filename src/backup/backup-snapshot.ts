@@ -8,9 +8,12 @@ export const DEFAULT_MAX_ASSET_MB = 50
 export interface BackupOptions {
   includeLarge: boolean
   maxLargeBytes: number
+  /** اگر خالی باشد، کل برنامه؛ وگرنه فقط همین جدول‌ها. */
+  tables?: string[]
 }
 
 export type SkipReason = 'excluded' | 'over-limit'
+export type BackupScope = 'full' | 'partial'
 
 export interface SkippedAsset {
   store: string
@@ -23,6 +26,7 @@ export interface SkippedAsset {
 export interface BackupPayload {
   app: typeof BACKUP_APP_ID
   formatVersion: number
+  scope: BackupScope
   dbName: string
   dbVersion: number
   createdAt: string
@@ -45,6 +49,7 @@ export interface ScanResult {
   stores: { name: string; count: number }[]
   totalRecords: number
   assetSizes: number[]
+  assetsByStore: Record<string, number[]>
 }
 
 export function isAssetString(value: unknown): value is string {
@@ -66,7 +71,7 @@ export function collectAssets(store: string, id: string, record: Record<string, 
 }
 
 /** ایندکس دارایی‌هایی که در سقف حجم جا می‌شوند؛ کوچک‌ترها اول. */
-export function planAssets(sizes: number[], options: BackupOptions): Set<number> {
+export function planAssets(sizes: number[], options: Pick<BackupOptions, 'includeLarge' | 'maxLargeBytes'>): Set<number> {
   const included = new Set<number>()
   if (!options.includeLarge) return included
   let total = 0
@@ -84,10 +89,18 @@ function recordId(record: Record<string, unknown>, keyPath: string | string[] | 
   return String(record.id ?? '?')
 }
 
-async function readStores(): Promise<{ name: string; keyPath: string | string[] | null; records: Record<string, unknown>[] }[]> {
+interface StoreData {
+  name: string
+  keyPath: string | string[] | null
+  records: Record<string, unknown>[]
+}
+
+async function readStores(only?: string[]): Promise<StoreData[]> {
   const db = await getDb()
-  const result: { name: string; keyPath: string | string[] | null; records: Record<string, unknown>[] }[] = []
+  const wanted = only ? new Set(only) : null
+  const result: StoreData[] = []
   for (const name of Array.from(db.objectStoreNames)) {
+    if (wanted && !wanted.has(name)) continue
     const keyPath = db.transaction(name, 'readonly').store.keyPath as string | string[] | null
     result.push({ name, keyPath, records: (await db.getAll(name)) as Record<string, unknown>[] })
   }
@@ -97,15 +110,20 @@ async function readStores(): Promise<{ name: string; keyPath: string | string[] 
 export async function scanDatabase(): Promise<ScanResult> {
   const stores = await readStores()
   const assetSizes: number[] = []
+  const assetsByStore: Record<string, number[]> = {}
   for (const store of stores) {
+    const sizes: number[] = []
     for (const record of store.records) {
-      for (const asset of collectAssets(store.name, recordId(record, store.keyPath), record)) assetSizes.push(asset.bytes)
+      for (const asset of collectAssets(store.name, recordId(record, store.keyPath), record)) sizes.push(asset.bytes)
     }
+    assetsByStore[store.name] = sizes
+    assetSizes.push(...sizes)
   }
   return {
     stores: stores.map((store) => ({ name: store.name, count: store.records.length })),
     totalRecords: stores.reduce((sum, store) => sum + store.records.length, 0),
     assetSizes,
+    assetsByStore,
   }
 }
 
@@ -120,7 +138,8 @@ export function collectLocalStorage(): Record<string, string> {
 
 export async function createPayload(options: BackupOptions): Promise<BackupPayload> {
   const db = await getDb()
-  const stores = await readStores()
+  const isPartial = !!options.tables && options.tables.length > 0
+  const stores = await readStores(isPartial ? options.tables : undefined)
   const assets: AssetRef[] = []
   for (const store of stores) {
     for (const record of store.records) assets.push(...collectAssets(store.name, recordId(record, store.keyPath), record))
@@ -141,12 +160,13 @@ export async function createPayload(options: BackupOptions): Promise<BackupPaylo
   return {
     app: BACKUP_APP_ID,
     formatVersion: BACKUP_FORMAT_VERSION,
+    scope: isPartial ? 'partial' : 'full',
     dbName: db.name,
     dbVersion: db.version,
     createdAt: new Date().toISOString(),
     options,
     stores: Object.fromEntries(stores.map((store) => [store.name, store.records])),
-    localStorage: collectLocalStorage(),
+    localStorage: isPartial ? {} : collectLocalStorage(),
     skippedAssets,
   }
 }

@@ -1,6 +1,6 @@
 import { getDb } from '@/db/db'
 import { BACKUP_APP_ID, BACKUP_FORMAT_VERSION, BackupError } from './backup-format'
-import { LOCAL_STORAGE_PREFIX, type BackupPayload } from './backup-snapshot'
+import { LOCAL_STORAGE_PREFIX, type BackupPayload, type BackupScope } from './backup-snapshot'
 
 export type RestoreMode = 'replace' | 'merge'
 export type ConflictPolicy = 'keep-existing' | 'use-backup' | 'keep-newer'
@@ -9,6 +9,8 @@ export interface RestoreOptions {
   mode: RestoreMode
   conflictPolicy: ConflictPolicy
   restoreLocalStorage: boolean
+  /** اگر خالی باشد، همه‌ی جدول‌های داخل پشتیبان بازیابی می‌شوند. */
+  tables?: string[]
 }
 
 export interface StorePreview {
@@ -23,6 +25,7 @@ export interface StorePreview {
 export interface RestorePreview {
   createdAt: string
   dbVersion: number
+  scope: BackupScope
   stores: StorePreview[]
   localStorageKeys: number
   skippedAssets: number
@@ -63,6 +66,7 @@ export function parsePayload(text: string): BackupPayload {
   return {
     app: BACKUP_APP_ID,
     formatVersion: parsed.formatVersion,
+    scope: parsed.scope === 'partial' ? 'partial' : 'full',
     dbName: String(parsed.dbName ?? ''),
     dbVersion: Number(parsed.dbVersion ?? 0),
     createdAt: String(parsed.createdAt ?? ''),
@@ -82,6 +86,14 @@ export function shouldOverwrite(policy: ConflictPolicy, existing: Record<string,
   if (typeof next !== 'number') return false
   if (typeof current !== 'number') return true
   return next > current
+}
+
+/** جدول‌هایی که واقعاً باید بازیابی شوند، و آیا بازیابی «کامل» است (پاک‌سازی همه‌ی جدول‌ها و تنظیمات). */
+export function resolveRestoreTargets(payload: BackupPayload, known: Set<string>, selection?: string[]): { targets: string[]; isWhole: boolean } {
+  const inBackup = Object.keys(payload.stores).filter((name) => known.has(name))
+  const chosen = selection && selection.length ? inBackup.filter((name) => selection.includes(name)) : inBackup
+  const isWhole = payload.scope === 'full' && chosen.length === inBackup.length
+  return { targets: chosen, isWhole }
 }
 
 function keyOf(record: Record<string, unknown>, keyPath: unknown): string | null {
@@ -116,9 +128,11 @@ export async function buildPreview(payload: BackupPayload): Promise<RestorePrevi
     warnings.push(`${payload.skippedAssets.length} تصویر/فایل بزرگ هنگام ساخت این پشتیبان کنار گذاشته شده بود؛ فیلد آن‌ها خالی بازیابی می‌شود.`)
   }
   if (payload.dbVersion < db.version) warnings.push('این پشتیبان از نسخه‌ی قدیمی‌تر برنامه است؛ بخش‌های جدیدتر در آن وجود ندارد.')
+  if (payload.scope === 'partial') warnings.push('این پشتیبان فقط بخشی از جدول‌ها را دارد؛ جدول‌های دیگر و تنظیمات برنامه دست نمی‌خورند.')
   return {
     createdAt: payload.createdAt,
     dbVersion: payload.dbVersion,
+    scope: payload.scope,
     stores,
     localStorageKeys: Object.keys(payload.localStorage).length,
     skippedAssets: payload.skippedAssets.length,
@@ -126,8 +140,8 @@ export async function buildPreview(payload: BackupPayload): Promise<RestorePrevi
   }
 }
 
-function applyLocalStorage(payload: BackupPayload, options: RestoreOptions): void {
-  if (!options.restoreLocalStorage) return
+function applyLocalStorage(payload: BackupPayload, options: RestoreOptions, isWhole: boolean): void {
+  if (!options.restoreLocalStorage || !isWhole) return
   if (options.mode === 'replace') {
     const stale: string[] = []
     for (let index = 0; index < localStorage.length; index += 1) {
@@ -149,8 +163,8 @@ export async function applyRestore(payload: BackupPayload, options: RestoreOptio
   }
   const known = new Set(Array.from(db.objectStoreNames))
   const skippedStores = Object.keys(payload.stores).filter((name) => !known.has(name))
-  const targets = Object.keys(payload.stores).filter((name) => known.has(name))
-  const names = options.mode === 'replace' ? Array.from(known) : targets
+  const { targets, isWhole } = resolveRestoreTargets(payload, known, options.tables)
+  const names = options.mode === 'replace' ? (isWhole ? Array.from(known) : targets) : targets
   const restored: Record<string, number> = {}
   if (!names.length) return { restored, skippedStores }
   const tx = db.transaction(names, 'readwrite')
@@ -190,6 +204,6 @@ export async function applyRestore(payload: BackupPayload, options: RestoreOptio
     }
     throw new BackupError('RESTORE_FAILED', `بازیابی انجام نشد و هیچ تغییری اعمال نشد. (${error instanceof Error ? error.message : 'خطای نامشخص'})`)
   }
-  applyLocalStorage(payload, options)
+  applyLocalStorage(payload, options, isWhole)
   return { restored, skippedStores }
 }

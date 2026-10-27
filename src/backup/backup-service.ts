@@ -16,8 +16,10 @@ export interface BackupSummary {
   fileName: string
   bytes: number
   records: number
+  tables: number
   skippedAssets: number
   compressed: boolean
+  scope: 'full' | 'partial'
 }
 
 export interface LoadedBackup {
@@ -50,14 +52,16 @@ export class BackupService {
     const compress = isCompressionSupported()
     const encrypted = await encryptBytes(plain, password, { compress })
     const fileName = backupFileName()
-    triggerDownload(new Blob([encrypted.buffer.slice(encrypted.byteOffset, encrypted.byteOffset + encrypted.byteLength) as ArrayBuffer], { type: 'application/octet-stream' }), fileName)
-    const records = Object.values(payload.stores).reduce((sum, list) => sum + list.length, 0)
+    const buffer = encrypted.buffer.slice(encrypted.byteOffset, encrypted.byteOffset + encrypted.byteLength) as ArrayBuffer
+    triggerDownload(new Blob([buffer], { type: 'application/octet-stream' }), fileName)
     return {
       fileName,
       bytes: encrypted.length,
-      records,
+      records: Object.values(payload.stores).reduce((sum, list) => sum + list.length, 0),
+      tables: Object.keys(payload.stores).length,
       skippedAssets: payload.skippedAssets.length,
       compressed: compress,
+      scope: payload.scope,
     }
   }
 
@@ -79,7 +83,8 @@ export class BackupService {
   ): Promise<RestoreResult> {
     if (options.mode === 'replace' && safety.backupCurrentFirst) {
       if (!safety.password) throw new BackupError('BAD_PASSWORD', 'برای نسخه‌ی ایمنی، رمز لازم است.')
-      await this.createBackup({ includeLarge: true, maxLargeBytes: Number.MAX_SAFE_INTEGER }, safety.password, onProgress)
+      const tables = options.tables && options.tables.length ? options.tables : undefined
+      await this.createBackup({ includeLarge: true, maxLargeBytes: Number.MAX_SAFE_INTEGER, tables }, safety.password, onProgress)
     }
     onProgress('restoring')
     return applyRestore(loaded.payload, options)
