@@ -2,6 +2,7 @@
 import { RouterLink } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import BackupPanel from '@/components/settings/BackupPanel.vue'
+import CloudBackupCard from '@/components/settings/CloudBackupCard.vue'
 </script>
 
 <template>
@@ -18,6 +19,8 @@ import BackupPanel from '@/components/settings/BackupPanel.vue'
         </span>
         <span class="text-brand-600 dark:text-brand-400" aria-hidden="true">←</span>
       </RouterLink>
+
+      <CloudBackupCard class="mb-6" />
 
       <BackupPanel />
     </main>

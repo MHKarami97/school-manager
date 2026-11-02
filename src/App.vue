@@ -1,7 +1,17 @@
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import { RouterView } from 'vue-router'
 import UpdateToast from './components/UpdateToast.vue'
 import MobileBottomNav from './components/MobileBottomNav.vue'
+import SyncFailedBar from './components/common/SyncFailedBar.vue'
+import CloudConflictModal from './components/cloud/CloudConflictModal.vue'
+import { useCloudSyncStore } from './stores/cloudSyncStore'
+
+const cloudSyncStore = useCloudSyncStore()
+
+onMounted(() => {
+  void cloudSyncStore.start()
+})
 </script>
 
 <template>
@@ -10,6 +20,8 @@ import MobileBottomNav from './components/MobileBottomNav.vue'
       <component :is="Component" :key="route.path" />
     </Transition>
   </RouterView>
+  <SyncFailedBar />
+  <CloudConflictModal />
   <UpdateToast />
   <MobileBottomNav />
 </template>

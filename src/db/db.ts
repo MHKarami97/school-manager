@@ -53,6 +53,24 @@ export const STORE_EXAM_ROOMS = "examRooms";
 export const STORE_EXAM_SESSIONS = "examSessions";
 export const STORE_TEACHING_PLANS = "teachingPlans";
 
+type MutationListener = () => void;
+const mutationListeners = new Set<MutationListener>();
+
+export function onDbMutation(listener: MutationListener): () => void {
+  mutationListeners.add(listener);
+  return () => mutationListeners.delete(listener);
+}
+
+export function notifyDbMutation(): void {
+  for (const listener of mutationListeners) {
+    try {
+      listener();
+    } catch (e) {
+      console.error(e);
+    }
+  }
+}
+
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
 export function getDb(): Promise<IDBPDatabase> {
@@ -188,6 +206,20 @@ export function getDb(): Promise<IDBPDatabase> {
         createAttendanceStores(db);
         createServiceStores(db);
       },
+    }).then((db) => {
+      const origTransaction = db.transaction.bind(db);
+      db.transaction = function (storeNames: any, mode: any, ...args: any[]) {
+        const tx = (origTransaction as any)(storeNames, mode, ...args);
+        if (mode === "readwrite" || mode === "versionchange") {
+          tx.done
+            .then(() => {
+              notifyDbMutation();
+            })
+            .catch(() => {});
+        }
+        return tx;
+      };
+      return db;
     });
   }
   return dbPromise;

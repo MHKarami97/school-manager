@@ -8,7 +8,7 @@ import {
   type RestorePreview,
   type RestoreResult,
 } from './backup-restore'
-import { createPayload, scanDatabase, type BackupOptions, type BackupPayload, type ScanResult } from './backup-snapshot'
+import { createPayload, scanDatabase, DEFAULT_MAX_ASSET_MB, type BackupOptions, type BackupPayload, type ScanResult } from './backup-snapshot'
 
 export type BackupPhase = 'reading' | 'serializing' | 'encrypting' | 'decrypting' | 'parsing' | 'restoring'
 
@@ -88,6 +88,20 @@ export class BackupService {
     }
     onProgress('restoring')
     return applyRestore(loaded.payload, options)
+  }
+
+  async buildPayload(options?: BackupOptions): Promise<BackupPayload> {
+    return createPayload(options ?? { includeLarge: true, maxLargeBytes: DEFAULT_MAX_ASSET_MB * 1024 * 1024 })
+  }
+
+  async restoreCloudPayload(payload: BackupPayload, mode: 'replace' | 'merge'): Promise<{ restoredCount: number }> {
+    const result = await applyRestore(payload, {
+      mode,
+      conflictPolicy: 'keep-newer',
+      restoreLocalStorage: true,
+    })
+    const total = Object.values(result.restored).reduce((sum, value) => sum + value, 0)
+    return { restoredCount: total }
   }
 }
 
