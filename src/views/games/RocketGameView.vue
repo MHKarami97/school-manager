@@ -6,6 +6,7 @@ import { useGameHistoryStore } from '@/stores/game-history'
 import { useGameProfilesStore } from '@/stores/game-profiles'
 import { DEFAULT_CURRICULUM_QUESTIONS, type EducationalQuestion } from '@/config/default-questions.config'
 import { sfx } from '@/utils/sound-effects'
+import { useGameChromeInsets } from '@/composables/useGameChromeInsets'
 import { BASE_COURSES, findCourse } from '@/config/courses.config'
 import { GAME_GRADES } from '@/config/game-grades.config'
 import { GAME_GRADE_COURSE_IDS, loadGradeQuestions } from '@/config/game-grades.config'
@@ -149,6 +150,7 @@ const eligibleQuestions = computed(() => {
 
 // استورهای سیستم
 const profilesStore = useGameProfilesStore()
+useGameChromeInsets()
 
 // متغیرهای فصلی و مراحل
 const activeSeasonKey = ref<GameSeasonKey>(getCurrentSeasonKey())

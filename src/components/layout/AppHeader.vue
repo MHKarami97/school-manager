@@ -225,9 +225,6 @@ function isActive(path: string): boolean {
               </svg>
               <span>آزمایشگاه مجازی علوم</span>
             </div>
-            <span class="rounded-full bg-emerald-200 px-2 py-0.5 text-10px font-bold text-emerald-800 dark:bg-emerald-400/20 dark:text-emerald-300">
-              جدید
-            </span>
           </RouterLink>
 
           <RouterLink

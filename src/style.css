@@ -171,3 +171,46 @@ html:not(.dark) :is(.rocket-setup, .rocket-holo) :is(select, option, input) {
   color: #0f172a !important;
   border-color: #cbd5e1 !important;
 }
+
+/* ===== game pages: header/bottom-nav insets + landscape (patch v4) ===== */
+.rocket-setup {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 20 !important;
+  align-items: flex-start !important;
+  padding-top: calc(var(--game-top, 0px) + 0.5rem) !important;
+  padding-bottom: calc(var(--game-bottom, 0px) + 0.5rem) !important;
+  padding-inline: 0.5rem !important;
+  overscroll-behavior: contain;
+}
+.rocket-setup > * {
+  margin-block: auto;
+  max-width: 100%;
+}
+
+@media (max-width: 1023px) {
+  .game-root :is(header, [class~="sticky"]) {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .game-root :is(header, [class~="sticky"])::-webkit-scrollbar { display: none; }
+  .game-root :is(header, [class~="sticky"]) div { flex-wrap: nowrap !important; }
+  .game-root :is(header, [class~="sticky"]) > * { flex-shrink: 0; }
+  .game-root :is(header, [class~="sticky"]) :is(button, a, span, h1, h2, h3) {
+    white-space: nowrap;
+    font-size: 0.75rem;
+    line-height: 1.1rem;
+  }
+}
+
+@media (max-width: 767px) {
+  .game-root { padding-bottom: calc(var(--game-bottom, 0px) + env(safe-area-inset-bottom)); }
+}
+
+@media (max-height: 500px) and (orientation: landscape) {
+  .game-root [class~="sticky"] { position: static !important; }
+}

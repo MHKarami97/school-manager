@@ -6,6 +6,7 @@ import { useGameHistoryStore } from '@/stores/game-history'
 import { useGameProfilesStore } from '@/stores/game-profiles'
 import { DEFAULT_CURRICULUM_QUESTIONS, type EducationalQuestion } from '@/config/default-questions.config'
 import { sfx } from '@/utils/sound-effects'
+import { useGameChromeInsets } from '@/composables/useGameChromeInsets'
 import { BASE_COURSES, findCourse } from '@/config/courses.config'
 import { GAME_GRADES } from '@/config/game-grades.config'
 import { GAME_GRADE_COURSE_IDS, loadGradeQuestions, normalizeCourseIds } from '@/config/game-grades.config'
@@ -131,6 +132,7 @@ type GameState = 'setup' | 'countdown' | 'playing' | 'finished'
 const questionsStore = useQuestionsStore()
 const gameHistoryStore = useGameHistoryStore()
 const profilesStore = useGameProfilesStore()
+useGameChromeInsets()
 
 // --- متغیرهای وضعیت ---
 const gameState = ref<GameState>('setup')
