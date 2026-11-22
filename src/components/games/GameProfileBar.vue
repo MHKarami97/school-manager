@@ -101,6 +101,14 @@ async function handleDeleteStudent(id: string): Promise<void> {
   emit('profile-changed')
 }
 
+async function handleQuickGradeChange(event: Event): Promise<void> {
+  const profile = profilesStore.activeProfile
+  if (!profile) return
+  const grade = Number((event.target as HTMLSelectElement).value)
+  await profilesStore.updateProfile(profile.id, { grade })
+  emit('profile-changed')
+}
+
 function getGradeStageLabel(grade: number): string {
   if (grade <= 6) return 'دبستان'
   if (grade <= 9) return 'متوسطه اول'
@@ -130,9 +138,14 @@ function getGradeStageLabel(grade: number): string {
           <span class="font-black text-sm text-slate-800 dark:text-white">
             {{ profilesStore.activeProfile?.name || 'دانش‌آموز' }}
           </span>
-          <span class="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-            پایه {{ profilesStore.activeProfile?.grade || 4 }}
-          </span>
+          <select
+            :value="profilesStore.activeProfile?.grade || 4"
+            aria-label="پایه تحصیلی"
+            class="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+            @change="handleQuickGradeChange"
+          >
+            <option v-for="g in 12" :key="g" :value="g">پایه {{ g }}</option>
+          </select>
         </div>
         <div class="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 mt-0.5">
           <span class="flex items-center gap-1 font-bold text-amber-500">

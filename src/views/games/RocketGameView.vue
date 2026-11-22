@@ -7,6 +7,7 @@ import { useGameProfilesStore } from '@/stores/game-profiles'
 import { DEFAULT_CURRICULUM_QUESTIONS, type EducationalQuestion } from '@/config/default-questions.config'
 import { sfx } from '@/utils/sound-effects'
 import { BASE_COURSES, findCourse } from '@/config/courses.config'
+import { GAME_GRADE_COURSE_IDS, loadGradeQuestions } from '@/config/game-grades.config'
 import { getCurrentSeasonKey, MOTIVATIONAL_QUOTES } from '@/config/game-seasons.config'
 import type { DifficultyLevel, GameHistorySession, GameSeasonKey, GameStage, QuestionAnswerRecord } from '@/types'
 
@@ -17,14 +18,7 @@ import GameMedalsModal from '@/components/games/GameMedalsModal.vue'
 import GameAnalyticsModal from '@/components/games/GameAnalyticsModal.vue'
 
 // --- نقشه‌ها و اطلاعات درسی پایه‌ها ---
-const GRADE_COURSES_MAP: Record<number, string[]> = {
-  1: ['math', 'science', 'persian-reading', 'quran'],
-  2: ['math', 'science', 'persian-reading', 'quran', 'heaven-gifts'],
-  3: ['math', 'science', 'persian-reading', 'quran', 'heaven-gifts', 'social-studies'],
-  4: ['math', 'science', 'persian-reading', 'quran', 'heaven-gifts', 'social-studies'],
-  5: ['math', 'science', 'persian-reading', 'quran', 'heaven-gifts', 'social-studies'],
-  6: ['math', 'science', 'persian-reading', 'quran', 'heaven-gifts', 'social-studies', 'thinking-research', 'work-tech'],
-}
+const GRADE_COURSES_MAP: Record<number, string[]> = GAME_GRADE_COURSE_IDS
 
 // کاراکترهای قهرمان بازی
 interface HeroCharacter {
@@ -121,15 +115,12 @@ const gameHistoryStore = useGameHistoryStore()
 const extraCurriculumQuestions = ref<EducationalQuestion[]>([])
 
 async function loadGameQuestionBank(): Promise<void> {
-  try {
-    const res = await fetch('/data/questions/elementary-curriculum-questions.json')
-    if (res.ok) {
-      extraCurriculumQuestions.value = await res.json()
-    }
-  } catch (e) {
-    console.warn('Game curriculum questions could not be loaded:', e)
-  }
+  extraCurriculumQuestions.value = await loadGradeQuestions(selectedGrade.value)
 }
+
+watch(selectedGrade, () => {
+  void loadGameQuestionBank()
+})
 
 // تجمیع سوالات بدون موارد تکراری
 const allQuestions = computed<EducationalQuestion[]>(() => {
@@ -1291,9 +1282,9 @@ onBeforeUnmount(() => {
       <!-- ۳. ترمینال هولوگرافیک سوال مأموریت (In-Game Question Holo-Deck) -->
       <div
         v-if="gameState === 'playing' && currentQuestion && showHoloDeck"
-        class="absolute top-3 left-1/2 -translate-x-1/2 z-20 w-[95%] max-w-xl rounded-2xl border border-brand-500/40 bg-ink-900/90 p-4 shadow-2xl backdrop-blur-md"
+        class="absolute top-3 left-1/2 -translate-x-1/2 z-20 w-[95%] max-w-xl rounded-2xl border border-brand-500/40 bg-white/95 p-4 shadow-2xl backdrop-blur-md dark:bg-ink-900/90"
       >
-        <div class="mb-2 flex items-center justify-between border-b border-ink-800 pb-2">
+        <div class="mb-2 flex items-center justify-between border-b border-slate-200 pb-2 dark:border-ink-800">
           <div class="flex items-center gap-2">
             <span class="flex h-6 w-6 items-center justify-center rounded-lg bg-brand-600/30 text-xs">
               {{ activeHero.avatar }}
@@ -1322,7 +1313,7 @@ onBeforeUnmount(() => {
         </div>
 
         <!-- متن سوال -->
-        <p class="text-xs font-semibold leading-relaxed text-white sm:text-sm">
+        <p class="text-xs font-semibold leading-relaxed text-slate-800 dark:text-white sm:text-sm">
           {{ currentQuestion.text }}
         </p>
 

@@ -7,6 +7,7 @@ import { useGameProfilesStore } from '@/stores/game-profiles'
 import { DEFAULT_CURRICULUM_QUESTIONS, type EducationalQuestion } from '@/config/default-questions.config'
 import { sfx } from '@/utils/sound-effects'
 import { BASE_COURSES, findCourse } from '@/config/courses.config'
+import { GAME_GRADE_COURSE_IDS, loadGradeQuestions, normalizeCourseIds } from '@/config/game-grades.config'
 import {
   GAME_SEASONS,
   getCurrentSeasonKey,
@@ -21,14 +22,7 @@ import GameMedalsModal from '@/components/games/GameMedalsModal.vue'
 import GameAnalyticsModal from '@/components/games/GameAnalyticsModal.vue'
 
 // --- دروس مجاز پایه‌ها ---
-const GRADE_COURSE_IDS: Record<number, string[]> = {
-  1: ['math', 'persian', 'science', 'quran'],
-  2: ['math', 'persian', 'science', 'quran', 'gifts'],
-  3: ['math', 'persian', 'science', 'quran', 'gifts', 'social'],
-  4: ['math', 'persian', 'science', 'quran', 'gifts', 'social'],
-  5: ['math', 'persian', 'science', 'quran', 'gifts', 'social'],
-  6: ['math', 'persian', 'science', 'quran', 'gifts', 'social', 'thinking', 'work'],
-}
+const GRADE_COURSE_IDS: Record<number, string[]> = GAME_GRADE_COURSE_IDS
 
 // --- مدل‌های خودروهای مسابقه‌ای دانش ---
 interface VehicleDef {
@@ -151,7 +145,7 @@ const selectedStage = ref<GameStage | null>(null)
 
 // فیلترهای پایه و دروس
 const selectedGrade = ref<number>(profilesStore.activeProfile?.grade || 4)
-const selectedCourseIds = ref<string[]>(['math', 'persian'])
+const selectedCourseIds = ref<string[]>(['math', 'persian-reading'])
 const availableCoursesForGrade = computed(() => {
   const allowed = GRADE_COURSE_IDS[selectedGrade.value] || []
   return BASE_COURSES.filter((c) => allowed.includes(c.id))
@@ -176,15 +170,13 @@ watch(
 const extraCurriculumQuestions = ref<EducationalQuestion[]>([])
 
 async function loadGameQuestionBank(): Promise<void> {
-  try {
-    const res = await fetch('/data/questions/elementary-curriculum-questions.json')
-    if (res.ok) {
-      extraCurriculumQuestions.value = await res.json()
-    }
-  } catch (e) {
-    console.warn('Questions file could not be loaded:', e)
-  }
+  extraCurriculumQuestions.value = await loadGradeQuestions(selectedGrade.value)
 }
+
+watch(selectedGrade, (grade) => {
+  selectedCourseIds.value = normalizeCourseIds(grade, selectedCourseIds.value)
+  void loadGameQuestionBank()
+})
 
 const allQuestions = computed<EducationalQuestion[]>(() => {
   const existingTexts = new Set(questionsStore.items.map((q) => q.text))
