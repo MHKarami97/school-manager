@@ -40,27 +40,37 @@ const studentTotalPages = computed(() =>
   Math.ceil(allStudentGames.value.length / studentGamesPerPage) || 1
 )
 
-// ویژگی‌های غیر بازی برای دانش‌آموز (آزمایشگاه علوم)
-const studentNonGameFeatures = computed(() => {
-  return SITE_FEATURES.filter((f) => f.audiences.includes('student') && !f.id.startsWith('game-'))
-})
-
 // فیلتر امکانات برای نقش‌های معلم، مدیر و اولیا
 const filteredFeatures = computed(() => {
-  if (selectedTab.value === 'all') {
+  if (selectedTab.value === 'all' || selectedTab.value === 'student') {
     return []
   }
-  return SITE_FEATURES.filter((f) => f.audiences.includes(selectedTab.value as FeatureAudience))
+  const list = SITE_FEATURES.filter((f) => f.audiences.includes(selectedTab.value as FeatureAudience))
+
+  // برای معلم: آزمایشگاه، بانک سوالات و طرح درس اول لیست باشند
+  if (selectedTab.value === 'teacher') {
+    const priority = ['virtual-lab', 'question-bank', 'lesson-plan']
+    return [...list].sort((a, b) => {
+      const idxA = priority.indexOf(a.id)
+      const idxB = priority.indexOf(b.id)
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB
+      if (idxA !== -1) return -1
+      if (idxB !== -1) return 1
+      return 0
+    })
+  }
+
+  return list
 })
 
 function countForAudience(audienceId: 'all' | FeatureAudience): number {
   if (audienceId === 'all') return 4
-  if (audienceId === 'student') return CHOGAN_GAMES.length + studentNonGameFeatures.value.length
+  if (audienceId === 'student') return CHOGAN_GAMES.length
   return SITE_FEATURES.filter((f) => f.audiences.includes(audienceId)).length
 }
 
-function isTeacherOnly(feature: SiteFeature): boolean {
-  return feature.audiences.length === 1 && feature.audiences[0] === 'teacher'
+function isTeacherStyled(feature: SiteFeature): boolean {
+  return selectedTab.value === 'teacher' || (feature.audiences.length === 1 && feature.audiences[0] === 'teacher')
 }
 
 const audiencePillMap: Record<FeatureAudience, { label: string; class: string }> = {
@@ -106,31 +116,31 @@ const ROLE_GATEWAY_CARDS: RoleGatewayCard[] = [
     id: 'teacher',
     title: 'امکانات و ابزارهای معلمان',
     shortLabel: 'معلم',
-    subtitle: 'طرح درس، آزمون و کلاس',
+    subtitle: 'آزمایشگاه، آزمون‌ساز، طرح درس و کلاس',
     description:
-      'طراحی و ثبت طرح درس جلسات با استاندارد رسمی، آزمون‌ساز هوشمند و بانک سوالات، ثبت حضور و غیاب کلاسی و تقویم رویدادها.',
+      'آزمایشگاه مجازی علوم برای تدریس تعاملی، آزمون‌ساز هوشمند و بانک سوالات، طراحی و ثبت طرح درس جلسات و حضور و غیاب.',
     icon: '🧑‍🏫',
     badge: 'ویژه معلمان',
     gradient: 'from-purple-500/10 via-violet-500/5 to-transparent dark:from-purple-900/20 dark:via-violet-900/10 dark:to-transparent',
     borderClass: 'border-purple-200 hover:border-purple-400 dark:border-purple-800/80 dark:hover:border-purple-700',
     badgeClass: 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300',
     btnClass: 'bg-purple-600 hover:bg-purple-700 text-white shadow-purple-600/25',
-    highlights: ['طرح درس جلسات با خروجی PDF', 'بانک سوال و آزمون‌ساز هوشمند', 'حضور و غیاب کلاسی', 'ثبت رویدادها و جشن‌ها'],
+    highlights: ['آزمایشگاه مجازی علوم', 'بانک سوال و آزمون‌ساز هوشمند', 'طرح درس جلسات با استاندارد رسمی', 'حضور و غیاب کلاسی'],
   },
   {
     id: 'student',
-    title: 'بازی‌های دانایی و آزمایشگاه مجازی',
+    title: 'باشگاه بازی‌های دانایی و مهارت',
     shortLabel: 'دانش‌آموز',
     subtitle: 'یادگیری، سرگرمی و رقابت',
     description:
-      'مجموعه بازی‌های هوش، تخته‌ای، مهارتی و پازل پیوندخورده با کتب درسی؛ همراه با آزمایشگاه شبیه‌سازی زنده علوم، سکه، مدال و لیگ فصلی.',
+      'مجموعه کامل بازی‌های هوش، تخته‌ای، مهارتی و پازل پیوندخورده با کتب درسی؛ حل سوالات درسی برای کسب سکه، جان و لیگ فصلی.',
     icon: '🎮',
     badge: 'سرگرمی علمی',
     gradient: 'from-emerald-500/10 via-teal-500/5 to-transparent dark:from-emerald-900/20 dark:via-teal-900/10 dark:to-transparent',
     borderClass: 'border-emerald-200 hover:border-emerald-400 dark:border-emerald-800/80 dark:hover:border-emerald-700',
     badgeClass: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
     btnClass: 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/25',
-    highlights: ['باشگاه بازی‌های فکری و مهارتی', 'آزمایشگاه مجازی و زنده علوم', 'چالش سوالات درسی برای کسب سکه', 'مدال‌ها و لیگ فصلی قهرمانان'],
+    highlights: ['باشگاه بازی‌های فکری و مهارتی', 'چالش سوالات درسی برای کسب سکه', 'مدال‌ها و لیگ فصلی قهرمانان', 'رقابت‌های هوش و سرگرمی'],
   },
   {
     id: 'parent',
@@ -138,14 +148,14 @@ const ROLE_GATEWAY_CARDS: RoleGatewayCard[] = [
     shortLabel: 'اولیا',
     subtitle: 'ارتباط مستمر خانه و مدرسه',
     description:
-      'پیگیری وضعیت و ایستگاه‌های سرویس مدرسه، شفافیت مالی و پرداخت شهریه، آگاهی از وضعیت حضور و دعوت‌نامه‌های رسمی جلسات.',
+      'آزمایشگاه مجازی علوم برای انجام آزمایش‌های جذاب همراه با فرزند در منزل، دریافت دعوت‌نامه‌های رسمی جلسات و پیگیری امور آموزشی.',
     icon: '👨‍👩‍👧‍👦',
     badge: 'ارتباط با مدرسه',
     gradient: 'from-amber-500/10 via-orange-500/5 to-transparent dark:from-amber-900/20 dark:via-orange-900/10 dark:to-transparent',
     borderClass: 'border-amber-200 hover:border-amber-400 dark:border-amber-800/80 dark:hover:border-amber-700',
     badgeClass: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
     btnClass: 'bg-amber-600 hover:bg-amber-700 text-white shadow-amber-600/25',
-    highlights: ['رهگیری سرویس و مسیر رانندگان', 'پرداخت‌های مالی و سوابق شهریه', 'ثبت و پیگیری دعوت‌نامه‌های رسمی', 'اطلاعیه‌های جلسات اولیا و مربیان'],
+    highlights: ['آزمایشگاه مجازی علوم در منزل', 'دعوت‌نامه‌های رسمی جلسات', 'پیگیری وضعیت تحصیلی', 'ارتباط مستمر با مدرسه'],
   },
 ]
 
@@ -213,7 +223,6 @@ function scrollToFeatures(): void {
                   <path d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
                 </svg>
                 <span>آزمایشگاه مجازی علوم</span>
-                <span class="rounded bg-emerald-200/80 px-1.5 py-0.5 text-10px font-bold text-emerald-900 dark:bg-emerald-400/20 dark:text-emerald-300">جدید</span>
               </RouterLink>
 
               <RouterLink
@@ -278,11 +287,11 @@ function scrollToFeatures(): void {
             <div class="max-w-2xl space-y-3">
               <div class="inline-flex items-center gap-2 rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-300">
                 <span class="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                بخش جدید دانش‌آموزی و کلاسی
+                بخش ویژه معلمان و اولیا
               </div>
               <h2 class="text-2xl font-black sm:text-3xl">آزمایشگاه مجازی علوم؛ شبیه‌سازی زنده و بدون نیاز به تجهیزات</h2>
               <p class="text-xs leading-6 text-emerald-100/90 sm:text-sm sm:leading-7">
-                دانش‌آموزان و معلمان می‌توانند مفاهیم فیزیک، شیمی و زیست‌شناسی را با شبیه‌سازهای تعاملی و دقیق در محیط مرورگر، به صورت کاملاً زنده و ایمن آزمایش کنند.
+                معلمان در کلاس درس و اولیا در منزل می‌توانند مفاهیم فیزیک، شیمی و زیست‌شناسی را با شبیه‌سازهای تعاملی و دقیق در محیط مرورگر، به صورت کاملاً زنده و ایمن آزمایش کنند.
               </p>
             </div>
 
@@ -431,41 +440,8 @@ function scrollToFeatures(): void {
           </div>
         </div>
 
-        <!-- ۲. حالت تب دانش‌آموز: نمایش کامل تمام بازی‌ها همراه با ابزارهای دانش‌آموزی -->
-        <div v-else-if="selectedTab === 'student'" class="mt-8 space-y-8">
-          <!-- ابزارهای پایه‌ای دانش‌آموز (آزمایشگاه علوم) -->
-          <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            <div
-              v-for="feature in studentNonGameFeatures"
-              :key="feature.id"
-              class="group relative flex flex-col justify-between rounded-2xl border border-emerald-300 bg-white p-6 shadow-xs transition hover:-translate-y-1 hover:shadow-md dark:border-emerald-500/30 dark:bg-ink-900"
-            >
-              <div>
-                <div class="flex items-start justify-between">
-                  <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-6 w-6">
-                      <path :d="feature.icon" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-                    </svg>
-                  </div>
-                  <span v-if="feature.badge" class="rounded-full bg-emerald-100 px-2.5 py-0.5 text-11px font-bold text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300">
-                    {{ feature.badge }}
-                  </span>
-                </div>
-                <h3 class="mt-4 text-base font-bold text-ink-900 dark:text-white">{{ feature.title }}</h3>
-                <p class="mt-2 text-xs leading-6 text-ink-500 dark:text-ink-400">{{ feature.description }}</p>
-              </div>
-              <div class="mt-5">
-                <RouterLink
-                  :to="feature.startPath"
-                  class="flex w-full items-center justify-center rounded-xl bg-emerald-600 py-2.5 text-xs font-bold text-white shadow-emerald-600/20 hover:bg-emerald-700 transition"
-                >
-                  {{ feature.startLabel }}
-                </RouterLink>
-              </div>
-            </div>
-          </div>
-
-          <!-- کلکسیون کامل تمام بازی‌ها برای دانش‌آموز -->
+        <!-- ۲. حالت تب دانش‌آموز: بازی‌ها مستقیماً در بالای صفحه با چینش یکدست و مشابه تب‌های دیگر -->
+        <div v-else-if="selectedTab === 'student'" class="mt-8">
           <div class="rounded-3xl border border-slate-200 bg-white p-6 shadow-xs dark:border-ink-800 dark:bg-ink-900">
             <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between border-b border-slate-100 pb-5 dark:border-ink-800">
               <div>
@@ -474,7 +450,7 @@ function scrollToFeatures(): void {
                   <span>باشگاه و تالار بازی‌های دانایی</span>
                 </h3>
                 <p class="text-xs text-slate-500 dark:text-ink-400 mt-1">
-                  تمام بازی‌های فکری، تخته‌ای و مهارتی؛ با پاسخ به سوالات درسی سکه و جان کسب کنید و بازی را جلو ببرید.
+                  مجموعه کامل بازی‌های فکری، تخته‌ای و مهارتی؛ با پاسخ به سوالات درسی سکه و جان کسب کرده و بازی را به پیش ببرید.
                 </p>
               </div>
 
@@ -580,19 +556,19 @@ function scrollToFeatures(): void {
           </div>
         </div>
 
-        <!-- ۳. حالت سایر نقش‌ها (معلم، مدیر، اولیا) با رنگ متمایز و بنفش/ارغوانی برای معلم (غیر آبی) -->
+        <!-- ۳. حالت سایر نقش‌ها (معلم، مدیر، اولیا) با رنگ متمایز بنفش برای معلمان -->
         <div v-else class="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           <div
             v-for="feature in filteredFeatures"
             :key="feature.id"
             class="group relative flex flex-col rounded-2xl border bg-white p-6 shadow-xs transition hover:-translate-y-1 hover:shadow-md dark:bg-ink-900"
             :class="[
-              feature.isNew
-                ? 'border-emerald-300 ring-1 ring-emerald-500/20 dark:border-emerald-500/30'
-                : feature.status === 'coming-soon'
-                  ? 'border-dashed border-amber-300/80 bg-amber-50/20 dark:border-amber-500/30 dark:bg-amber-950/10'
-                  : isTeacherOnly(feature)
-                    ? 'border-purple-200 hover:border-purple-400 dark:border-purple-900/60 dark:hover:border-purple-700'
+              isTeacherStyled(feature)
+                ? 'border-purple-200 hover:border-purple-400 dark:border-purple-900/60 dark:hover:border-purple-700'
+                : feature.isNew
+                  ? 'border-emerald-300 ring-1 ring-emerald-500/20 dark:border-emerald-500/30'
+                  : feature.status === 'coming-soon'
+                    ? 'border-dashed border-amber-300/80 bg-amber-50/20 dark:border-amber-500/30 dark:bg-amber-950/10'
                     : 'border-ink-100 hover:border-brand-200 dark:border-ink-800 dark:hover:border-ink-700'
             ]"
           >
@@ -601,12 +577,12 @@ function scrollToFeatures(): void {
               <div
                 class="flex h-12 w-12 items-center justify-center rounded-2xl shadow-xs transition group-hover:scale-105"
                 :class="[
-                  feature.isNew
-                    ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400'
-                    : feature.status === 'coming-soon'
-                      ? 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400'
-                      : isTeacherOnly(feature)
-                        ? 'bg-purple-100 text-purple-700 dark:bg-purple-950/70 dark:text-purple-300'
+                  isTeacherStyled(feature)
+                    ? 'bg-purple-100 text-purple-700 dark:bg-purple-950/70 dark:text-purple-300'
+                    : feature.isNew
+                      ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400'
+                      : feature.status === 'coming-soon'
+                        ? 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400'
                         : 'bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400'
                 ]"
               >
@@ -620,10 +596,10 @@ function scrollToFeatures(): void {
                 v-if="feature.badge"
                 class="rounded-full px-2.5 py-0.5 text-11px font-bold"
                 :class="[
-                  feature.status === 'coming-soon'
-                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300'
-                    : isTeacherOnly(feature)
-                      ? 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300'
+                  isTeacherStyled(feature)
+                    ? 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300'
+                    : feature.status === 'coming-soon'
+                      ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300'
                       : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300'
                 ]"
               >
@@ -667,10 +643,10 @@ function scrollToFeatures(): void {
                   :to="feature.startPath"
                   class="flex-1 rounded-xl py-2.5 text-center text-xs font-bold text-white shadow-xs transition"
                   :class="[
-                    feature.isNew
-                      ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20'
-                      : isTeacherOnly(feature)
-                        ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-600/20'
+                    isTeacherStyled(feature)
+                      ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-600/20'
+                      : feature.isNew
+                        ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20'
                         : 'bg-brand-600 hover:bg-brand-700 shadow-brand-600/20'
                   ]"
                 >
