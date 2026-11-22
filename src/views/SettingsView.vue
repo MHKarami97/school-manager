@@ -142,12 +142,6 @@ async function triggerCheckUpdate(): Promise<void> {
               شخصی‌سازی ظاهر، مدیریت داده‌های مدارس، پشتیبان‌گیری ابری و کنترل کامل امنیت اطلاعات
             </p>
           </div>
-
-          <div class="flex items-center gap-2">
-            <span class="rounded-xl border border-ink-200 bg-ink-50 px-3 py-1.5 text-xs font-mono font-bold text-ink-600 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200">
-              نسخه ۲.۴.۰
-            </span>
-          </div>
         </div>
 
         <!-- نوار تب‌های واکنش‌گرا و مدرن -->
