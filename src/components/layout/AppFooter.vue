@@ -21,14 +21,6 @@ const year = new Date().getFullYear()
           <p class="text-xs leading-6 text-ink-500 dark:text-ink-400">
             سامانه جامع و امن برای برنامه‌ریزی امور آموزشی، مدیریت اجرایی مدرسه، و ایجاد محیطی تعاملی برای آزمایش و یادگیری دانش‌آموزان.
           </p>
-          <div class="flex flex-wrap gap-2 pt-1">
-            <span class="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2 py-1 text-10px font-semibold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
-              🔒 حفظ کامل حریم خصوصی
-            </span>
-            <span class="inline-flex items-center gap-1 rounded-lg bg-brand-50 px-2 py-1 text-10px font-semibold text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
-              ⚡ سریع، ساده و کاربردی
-            </span>
-          </div>
         </div>
 
         <!-- ستون ۲: ابزارهای مدیریت مدرسه -->
