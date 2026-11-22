@@ -449,6 +449,40 @@ export interface Exam {
   updatedAt: number;
 }
 
+export interface QuestionAnswerRecord {
+  questionId: string;
+  questionText: string;
+  courseId: string;
+  grade: number;
+  difficulty: DifficultyLevel;
+  selectedOption: string;
+  correctOption: string;
+  isCorrect: boolean;
+  durationSeconds: number; // مدت زمان پاسخگویی به ثانیه با دقت اعشاری
+  timestamp: number;
+}
+
+export interface GameHistorySession {
+  id: string;
+  gameType: "rocket";
+  gameTitle: string;
+  heroId: string;
+  heroName: string;
+  grade: number;
+  selectedCourses: string[];
+  startedAt: number;
+  endedAt: number;
+  totalDurationSeconds: number; // مدت زمان کل بازی به ثانیه
+  score: number;
+  wavesCleared: number;
+  shotsFired: number;
+  shotsHit: number;
+  accuracyPercentage: number;
+  totalQuestionsAnswered: number;
+  correctAnswersCount: number;
+  answers: QuestionAnswerRecord[];
+}
+
 export interface ExamTemplateRule {
   id: string;
   difficulty: DifficultyLevel;

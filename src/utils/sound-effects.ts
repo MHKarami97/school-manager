@@ -131,6 +131,54 @@ class SoundEffectsManager {
     noise.stop(now + 0.5)
   }
 
+  // صدای شارژ و تقویت لیزر
+  playCharge(): void {
+    if (!this.enabled) return
+    const ctx = this.initCtx()
+    if (!ctx) return
+
+    const now = ctx.currentTime
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+
+    osc.type = 'sine'
+    osc.frequency.setValueAtTime(300, now)
+    osc.frequency.exponentialRampToValueAtTime(1200, now + 0.4)
+
+    gain.gain.setValueAtTime(0.01, now)
+    gain.gain.linearRampToValueAtTime(0.2, now + 0.2)
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4)
+
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+
+    osc.start(now)
+    osc.stop(now + 0.4)
+  }
+
+  // صدای شمارش معکوس یا بوق
+  playCountdown(isFinal = false): void {
+    if (!this.enabled) return
+    const ctx = this.initCtx()
+    if (!ctx) return
+
+    const now = ctx.currentTime
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+
+    osc.type = isFinal ? 'triangle' : 'sine'
+    osc.frequency.setValueAtTime(isFinal ? 880 : 440, now)
+
+    gain.gain.setValueAtTime(0.25, now)
+    gain.gain.exponentialRampToValueAtTime(0.001, now + (isFinal ? 0.4 : 0.18))
+
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+
+    osc.start(now)
+    osc.stop(now + (isFinal ? 0.4 : 0.18))
+  }
+
   // صدای پیروزی مرحله
   playVictory(): void {
     if (!this.enabled) return

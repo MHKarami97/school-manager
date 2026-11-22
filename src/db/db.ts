@@ -22,13 +22,14 @@ import type {
   ExamRoom,
   ExamSession,
   TeachingPlan,
+  GameHistorySession,
 } from "@/types";
 import { createAttendanceStores } from "./attendance-schema";
 import { createServiceStores } from "./service-schema";
 
 const DB_NAME = "school-manager-db";
 
-const DB_VERSION = 14;
+const DB_VERSION = 15;
 
 export const STORE_TEACHERS = "teachers";
 export const STORE_SCHEDULES = "schedules";
@@ -52,6 +53,7 @@ export const STORE_INVITATIONS = "invitations";
 export const STORE_EXAM_ROOMS = "examRooms";
 export const STORE_EXAM_SESSIONS = "examSessions";
 export const STORE_TEACHING_PLANS = "teachingPlans";
+export const STORE_GAME_HISTORY = "gameHistory";
 
 type MutationListener = () => void;
 const mutationListeners = new Set<MutationListener>();
@@ -202,6 +204,13 @@ export function getDb(): Promise<IDBPDatabase> {
             keyPath: "id",
           });
           store.createIndex("by-updatedAt", "updatedAt");
+        }
+        if (!db.objectStoreNames.contains(STORE_GAME_HISTORY)) {
+          const store = db.createObjectStore(STORE_GAME_HISTORY, {
+            keyPath: "id",
+          });
+          store.createIndex("by-endedAt", "endedAt");
+          store.createIndex("by-gameType", "gameType");
         }
         createAttendanceStores(db);
         createServiceStores(db);
@@ -584,4 +593,23 @@ export async function putTeachingPlan(plan: TeachingPlan): Promise<void> {
 export async function deleteTeachingPlan(id: string): Promise<void> {
   const db = await getDb();
   await db.delete(STORE_TEACHING_PLANS, id);
+}
+
+// Game History
+export async function getAllGameHistory(): Promise<GameHistorySession[]> {
+  const db = await getDb();
+  const all = await db.getAll(STORE_GAME_HISTORY);
+  return (all as GameHistorySession[]).sort((a, b) => b.endedAt - a.endedAt);
+}
+export async function putGameHistory(session: GameHistorySession): Promise<void> {
+  const db = await getDb();
+  await db.put(STORE_GAME_HISTORY, toPlain(session));
+}
+export async function deleteGameHistory(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete(STORE_GAME_HISTORY, id);
+}
+export async function clearAllGameHistory(): Promise<void> {
+  const db = await getDb();
+  await db.clear(STORE_GAME_HISTORY);
 }
