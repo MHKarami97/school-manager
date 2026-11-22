@@ -338,17 +338,10 @@ async function loadCurriculumPack(pack: QuestionPackInfo): Promise<void> {
           </button>
           <button
             type="button"
-            class="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 dark:border-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300"
-            @click="loadSampleQuestions"
-          >
-            + بارگذاری سوالات نمونه درسی
-          </button>
-          <button
-            type="button"
             class="rounded-lg border border-purple-300 bg-purple-50 px-3 py-2 text-xs font-semibold text-purple-800 hover:bg-purple-100 dark:border-purple-600 dark:bg-purple-950/40 dark:text-purple-300"
             @click="showPacksModal = !showPacksModal"
           >
-            📦 بسته‌های آماده پایه‌های ۱ تا ۶ (۳,۵۰۰ سوال)
+            📦 بسته‌های آماده تمام پایه‌ها
           </button>
           <input ref="fileInputRef" type="file" accept=".xlsx,.xls" class="hidden" @change="handleFileSelected" />
         </div>

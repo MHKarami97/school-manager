@@ -237,11 +237,6 @@ async function triggerCheckUpdate(): Promise<void> {
               </div>
             </button>
           </div>
-
-          <!-- راهنمای رنگ مرورگر -->
-          <div class="mt-6 rounded-2xl border border-ink-100 bg-ink-50/50 p-4 text-xs leading-6 text-ink-500 dark:border-ink-800 dark:bg-ink-800/40 dark:text-ink-400">
-            <strong class="text-ink-800 dark:text-ink-200">هماهنگی نوار مرورگر:</strong> با تغییر تم، نوار آدرس و نوار وضعیت مرورگر شما در گوشی‌های هوشمند و رایانه به طور خودکار با رنگ سقف صفحه (سفید در روز و تیره عمیق در شب) همگام می‌شود.
-          </div>
         </section>
 
         <!-- تب ۲: همگام‌سازی ابری -->

@@ -664,33 +664,6 @@ function scrollToFeatures(): void {
           </div>
         </div>
       </section>
-
-      <!-- بخش پیش‌نمایش بازی‌های یادگیری دانش‌آموزان -->
-      <section class="mx-auto max-w-6xl px-4 py-12 sm:px-6">
-        <div class="rounded-3xl border border-purple-200/80 bg-gradient-to-br from-purple-500/10 via-white to-indigo-500/5 p-6 sm:p-10 dark:border-purple-500/20 dark:bg-ink-900/60">
-          <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-            <div class="space-y-3">
-              <div class="inline-flex items-center gap-1.5 rounded-full bg-purple-100 px-3 py-1 text-xs font-bold text-purple-800 dark:bg-purple-500/20 dark:text-purple-300">
-                🎮 یادگیری تعاملی و پرنشاط
-              </div>
-              <h3 class="text-xl font-black text-ink-900 sm:text-2xl dark:text-white">
-                بازی‌های آموزشی درسی؛ یادگیری شاد، هدفمند و جذاب
-              </h3>
-              <p class="max-w-2xl text-xs leading-6 text-ink-600 sm:text-sm sm:leading-7 dark:text-ink-300">
-                بازی‌های هوش، تخته‌ای و مهارتی مدیریار مستقیماً به بانک سوالات کتاب‌های درسی متصل هستند. پاسخ درست در بازی‌ها سکه و امتیاز و شانس پیشروی اعطا می‌کند و پاسخ نادرست با راهنمایی‌های مفهومی به یادگیری درس کمک می‌نماید.
-              </p>
-            </div>
-
-            <RouterLink
-              to="/games"
-              class="flex shrink-0 items-center gap-2 rounded-2xl bg-purple-600 px-6 py-3.5 text-xs font-bold text-white shadow-lg shadow-purple-600/25 transition hover:bg-purple-700"
-            >
-              <span>ورود به باشگاه بازی‌ها</span>
-              <span>←</span>
-            </RouterLink>
-          </div>
-        </div>
-      </section>
     </main>
 
     <AppFooter />
