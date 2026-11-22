@@ -321,7 +321,7 @@ function goToPage(page: number): void {
           </button>
 
           <!-- فیلتر تعداد بازیکن -->
-          <div class="mr-auto flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white p-1 text-xs font-semibold dark:border-ink-800 dark:bg-ink-900">
+          <div class="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white p-1 text-xs font-semibold sm:mr-auto dark:border-ink-800 dark:bg-ink-900">
             <button
               type="button"
               class="rounded-lg px-2.5 py-1 transition"
@@ -344,7 +344,7 @@ function goToPage(page: number): void {
               :class="selectedPlayers === 'multi' ? 'bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300' : 'text-slate-500 dark:text-ink-400'"
               @click="selectedPlayers = 'multi'"
             >
-              چندنفر / با هوش مصنوعی
+              چندنفر
             </button>
           </div>
         </div>
@@ -385,7 +385,7 @@ function goToPage(page: number): void {
                   </span>
                   <!-- نشان بازیکن -->
                   <span class="text-9px text-slate-400 dark:text-ink-500">
-                    {{ game.people === 1 ? '👤 تک‌نفره' : `👥 ۲ تا ${game.people} نفره` }}
+                    {{ game.people === 1 ? '👤 تک‌نفره' : game.people === 2 ? '👥 ۲ نفره' : `👥 ۲ تا ${game.people} نفره` }}
                   </span>
                 </div>
               </div>
@@ -394,9 +394,6 @@ function goToPage(page: number): void {
               <h3 class="mt-3 text-base font-bold text-ink-900 group-hover:text-brand-600 dark:text-white dark:group-hover:text-brand-400 transition-colors">
                 {{ game.nameFa }}
               </h3>
-              <p class="text-10px font-medium text-slate-400 dark:text-ink-500" dir="ltr">
-                {{ game.nameEn }}
-              </p>
 
               <!-- توضیح کوتاه -->
               <p class="mt-2 text-xs text-slate-600 leading-relaxed dark:text-ink-300 line-clamp-2">
