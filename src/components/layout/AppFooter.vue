@@ -28,18 +28,18 @@ function chooseTheme(mode: ThemeMode): void {
             </span>
             <div class="flex flex-col">
               <span class="text-base font-extrabold text-ink-900 dark:text-white">مدیریار</span>
-              <span class="text-10px font-medium text-ink-400 dark:text-ink-500">سامانه هوشمند و یکپارچه مدارس</span>
+              <span class="text-10px font-medium text-ink-400 dark:text-ink-400">سامانه هوشمند و یکپارچه مدارس</span>
             </div>
           </div>
           <p class="text-xs leading-6 text-ink-500 dark:text-ink-400">
             سامانه جامع و امن برای برنامه‌ریزی امور آموزشی، مدیریت اجرایی مدرسه، و ایجاد محیطی تعاملی برای آزمایش و یادگیری دانش‌آموزان.
           </p>
           <div class="flex flex-wrap gap-2 pt-1">
-            <span class="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2 py-1 text-10px font-semibold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400">
+            <span class="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2 py-1 text-10px font-semibold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
               🔒 حفظ کامل حریم خصوصی
             </span>
-            <span class="inline-flex items-center gap-1 rounded-lg bg-brand-50 px-2 py-1 text-10px font-semibold text-brand-700 dark:bg-brand-500/10 dark:text-brand-300">
-              ⚡ سریع، ساده و رایگان
+            <span class="inline-flex items-center gap-1 rounded-lg bg-brand-50 px-2 py-1 text-10px font-semibold text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
+              ⚡ سریع، ساده و کاربردی
             </span>
           </div>
         </div>
@@ -97,6 +97,12 @@ function chooseTheme(mode: ThemeMode): void {
               </RouterLink>
             </li>
             <li>
+              <RouterLink to="/tools" class="flex items-center gap-1.5 font-semibold text-purple-600 transition hover:text-purple-700 dark:text-purple-400">
+                <span>بازی‌های یادگیری درسی</span>
+                <span class="rounded bg-purple-100 px-1 py-0.2 text-9px dark:bg-purple-500/20 text-purple-700 dark:text-purple-300">۴ بازی فعال</span>
+              </RouterLink>
+            </li>
+            <li>
               <RouterLink to="/lesson-plans/new" class="transition hover:text-brand-600 dark:hover:text-brand-400">
                 طرح درس الکترونیک معلم
               </RouterLink>
@@ -120,9 +126,6 @@ function chooseTheme(mode: ThemeMode): void {
               <RouterLink to="/extra-classes/new" class="transition hover:text-brand-600 dark:hover:text-brand-400">
                 کلاس‌های تقویتی و فوق‌برنامه
               </RouterLink>
-            </li>
-            <li class="pt-1">
-              <span class="text-ink-400 dark:text-ink-600 text-11px">بازی‌های یادگیری درسی (به‌زودی)</span>
             </li>
           </ul>
         </div>
@@ -151,10 +154,10 @@ function chooseTheme(mode: ThemeMode): void {
             </li>
             <li class="pt-2">
               <div class="flex items-center gap-2">
-                <RouterLink to="/guide" class="rounded-lg border border-ink-200 bg-white px-2.5 py-1 text-xs text-ink-600 transition hover:border-brand-300 hover:text-brand-600 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-300">
+                <RouterLink to="/guide" class="rounded-lg border border-ink-200 bg-white px-2.5 py-1 text-xs text-ink-600 transition hover:border-brand-300 hover:text-brand-600 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-300 dark:hover:text-white">
                   راهنمای سامانه
                 </RouterLink>
-                <RouterLink to="/about" class="rounded-lg border border-ink-200 bg-white px-2.5 py-1 text-xs text-ink-600 transition hover:border-brand-300 hover:text-brand-600 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-300">
+                <RouterLink to="/about" class="rounded-lg border border-ink-200 bg-white px-2.5 py-1 text-xs text-ink-600 transition hover:border-brand-300 hover:text-brand-600 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-300 dark:hover:text-white">
                   درباره ما
                 </RouterLink>
               </div>

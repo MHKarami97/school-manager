@@ -57,7 +57,7 @@ const isHomeActive = computed(() => route.path === '/')
 
 <template>
   <nav
-    class="fixed inset-x-0 bottom-0 z-30 flex items-center justify-around border-t border-ink-200/70 bg-white/90 px-2 py-1.5 backdrop-blur-xl sm:hidden print:hidden dark:border-ink-800/80 dark:bg-ink-950/90 shadow-[0_-4px_24px_rgba(0,0,0,0.05)]"
+    class="fixed inset-x-0 bottom-0 z-30 flex items-center justify-around border-t border-ink-200/80 bg-white/95 px-2 py-1.5 backdrop-blur-xl sm:hidden print:hidden dark:border-ink-800 dark:bg-ink-950/95 dark:shadow-[0_-4px_24px_rgba(0,0,0,0.5)] shadow-[0_-4px_24px_rgba(0,0,0,0.06)]"
     style="padding-bottom: max(env(safe-area-inset-bottom), 6px)"
   >
     <template v-for="item in navItems" :key="item.to">
@@ -71,8 +71,8 @@ const isHomeActive = computed(() => route.path === '/')
           class="relative flex h-13 w-13 items-center justify-center rounded-2xl shadow-lg transition duration-200"
           :class="[
             isHomeActive
-              ? 'bg-gradient-to-tr from-brand-700 via-brand-600 to-indigo-600 text-white shadow-brand-500/40 ring-4 ring-brand-500/20'
-              : 'border-2 border-white bg-ink-900 text-white shadow-ink-900/25 dark:border-ink-800 dark:bg-ink-800 hover:scale-105'
+              ? 'bg-gradient-to-tr from-brand-700 via-brand-600 to-indigo-600 text-white shadow-brand-500/40 ring-4 ring-brand-500/25'
+              : 'border-2 border-white bg-ink-900 text-white shadow-ink-900/30 dark:border-ink-700 dark:bg-ink-800 hover:scale-105'
           ]"
         >
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-6 w-6">
@@ -98,8 +98,8 @@ const isHomeActive = computed(() => route.path === '/')
             class="flex h-9 w-9 items-center justify-center rounded-xl transition"
             :class="[
               isItemActive(item.to)
-                ? 'bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400 shadow-xs'
-                : 'text-ink-400 hover:text-ink-600 dark:text-ink-500 dark:hover:text-ink-300'
+                ? 'bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300 shadow-xs'
+                : 'text-ink-400 hover:text-ink-600 dark:text-ink-400 dark:hover:text-ink-200'
             ]"
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-5 w-5">
@@ -119,7 +119,7 @@ const isHomeActive = computed(() => route.path === '/')
           :class="[
             isItemActive(item.to)
               ? 'text-brand-600 dark:text-brand-400'
-              : 'text-ink-400 dark:text-ink-500'
+              : 'text-ink-400 dark:text-ink-400'
           ]"
         >
           {{ item.label }}

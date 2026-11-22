@@ -24,6 +24,7 @@
   --color-ink-700: #3a415a;
   --color-ink-800: #262b3d;
   --color-ink-900: #171a26;
+  --color-ink-950: #0a0d14;
 }
 
 html, body, #app {
@@ -63,6 +64,11 @@ body {
   color-scheme: dark;
   --color-ink-50: #0f1115;
   --color-ink-100: #1a1d24;
+  --color-ink-950: #080a0f;
+}
+
+.dark body {
+  color: var(--color-ink-100);
 }
 
 @media print {
