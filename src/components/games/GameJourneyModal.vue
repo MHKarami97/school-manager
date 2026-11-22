@@ -4,6 +4,15 @@ import { GAME_SEASONS, GAME_STAGES, getCurrentSeasonKey } from '@/config/game-se
 import { useGameProfilesStore } from '@/stores/game-profiles'
 import type { GameSeasonKey, GameStage } from '@/types'
 
+withDefaults(
+  defineProps<{
+    isOpen?: boolean
+  }>(),
+  {
+    isOpen: false,
+  },
+)
+
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'select-stage', stage: GameStage): void
@@ -32,6 +41,7 @@ function handleStartStage(stage: GameStage): void {
 <template>
   <Teleport to="body">
     <div
+      v-if="isOpen"
       class="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-md overflow-y-auto"
       dir="rtl"
       @click.self="emit('close')"

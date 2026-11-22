@@ -1365,6 +1365,13 @@ export function getChoganGameById(id: string): ChoganGame | undefined {
   return CHOGAN_GAMES.find((g) => g.id === id)
 }
 
+export function getGamePlayRoute(game: ChoganGame): string {
+  if (game.playUrl.startsWith('/games/')) {
+    return game.playUrl
+  }
+  return `/games/play/${game.id}`
+}
+
 export function getChoganGamesByCategory(category: 'all' | GameCategory): ChoganGame[] {
   if (category === 'all') return CHOGAN_GAMES
   return CHOGAN_GAMES.filter((g) => g.category === category)

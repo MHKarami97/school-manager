@@ -640,9 +640,9 @@ onMounted(() => {
     </div>
 
     <!-- مودال‌های پیشرفت، مدال‌ها و تحلیل بازی -->
-    <GameJourneyModal :is-open="showJourneyModal" @close="showJourneyModal = false" />
-    <GameMedalsModal :is-open="showMedalsModal" @close="showMedalsModal = false" />
-    <GameAnalyticsModal :is-open="showAnalyticsModal" @close="showAnalyticsModal = false" />
+    <GameJourneyModal v-if="showJourneyModal" :is-open="showJourneyModal" @close="showJourneyModal = false" />
+    <GameMedalsModal v-if="showMedalsModal" :is-open="showMedalsModal" @close="showMedalsModal = false" />
+    <GameAnalyticsModal v-if="showAnalyticsModal" :is-open="showAnalyticsModal" @close="showAnalyticsModal = false" />
 
     <AppFooter />
   </div>

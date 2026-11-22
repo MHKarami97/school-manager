@@ -3,6 +3,15 @@ import { ref } from 'vue'
 import { GAME_MEDALS } from '@/config/game-seasons.config'
 import { useGameProfilesStore } from '@/stores/game-profiles'
 
+withDefaults(
+  defineProps<{
+    isOpen?: boolean
+  }>(),
+  {
+    isOpen: false,
+  },
+)
+
 const emit = defineEmits<{
   (e: 'close'): void
 }>()
@@ -19,6 +28,7 @@ function isMedalUnlocked(medalId: string): boolean {
 <template>
   <Teleport to="body">
     <div
+      v-if="isOpen"
       class="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-md overflow-y-auto"
       dir="rtl"
       @click.self="emit('close')"

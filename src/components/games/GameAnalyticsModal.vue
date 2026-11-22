@@ -4,6 +4,15 @@ import { useGameHistoryStore } from '@/stores/game-history'
 import { useGameProfilesStore } from '@/stores/game-profiles'
 import { BASE_COURSES, findCourse } from '@/config/courses.config'
 
+withDefaults(
+  defineProps<{
+    isOpen?: boolean
+  }>(),
+  {
+    isOpen: false,
+  },
+)
+
 const emit = defineEmits<{
   (e: 'close'): void
 }>()
@@ -130,6 +139,7 @@ const courseStats = computed(() => {
 <template>
   <Teleport to="body">
     <div
+      v-if="isOpen"
       class="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-md overflow-y-auto"
       dir="rtl"
       @click.self="emit('close')"

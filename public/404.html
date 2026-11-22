@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>در حال انتقال...</title>
+  <script>
+    var path = window.location.pathname || '';
+    var search = window.location.search || '';
+    var hash = window.location.hash || '';
+    if (!hash && path && path !== '/') {
+      window.location.replace('/#' + path + search);
+    } else {
+      window.location.replace('/' + search + hash);
+    }
+  </script>
+</head>
+<body>
+</body>
+</html>

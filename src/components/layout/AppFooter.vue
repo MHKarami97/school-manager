@@ -72,13 +72,11 @@ const year = new Date().getFullYear()
             <li>
               <RouterLink to="/experiments" class="flex items-center gap-1.5 font-semibold text-emerald-600 transition hover:text-emerald-700 dark:text-emerald-400">
                 <span>آزمایشگاه مجازی علوم</span>
-                <span class="rounded bg-emerald-100 px-1 py-0.2 text-9px dark:bg-emerald-500/20">زنده</span>
               </RouterLink>
             </li>
             <li>
               <RouterLink to="/tools" class="flex items-center gap-1.5 font-semibold text-purple-600 transition hover:text-purple-700 dark:text-purple-400">
                 <span>بازی‌های یادگیری درسی</span>
-                <span class="rounded bg-purple-100 px-1 py-0.2 text-9px dark:bg-purple-500/20 text-purple-700 dark:text-purple-300">۴ بازی فعال</span>
               </RouterLink>
             </li>
             <li>

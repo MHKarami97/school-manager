@@ -4,7 +4,7 @@ import { RouterLink } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppFooter from '@/components/layout/AppFooter.vue'
 import { SITE_FEATURES, AUDIENCE_TABS, type FeatureAudience, type SiteFeature } from '@/config/features.config'
-import { CHOGAN_GAMES, CHOGAN_CATEGORIES, type GameCategory } from '@/config/chogan-games.config'
+import { CHOGAN_GAMES, CHOGAN_CATEGORIES, getGamePlayRoute, type GameCategory } from '@/config/chogan-games.config'
 
 const selectedTab = ref<'all' | FeatureAudience>('all')
 
@@ -494,7 +494,7 @@ function scrollToFeatures(): void {
               <RouterLink
                 v-for="g in paginatedStudentGames"
                 :key="g.id"
-                :to="g.playUrl"
+                :to="getGamePlayRoute(g)"
                 class="group flex flex-col justify-between rounded-2xl border border-slate-200 bg-slate-50/50 p-4 shadow-2xs transition hover:-translate-y-1 hover:border-brand-500/50 hover:bg-white hover:shadow-md dark:border-ink-800 dark:bg-ink-800/40 dark:hover:bg-ink-800"
               >
                 <div>

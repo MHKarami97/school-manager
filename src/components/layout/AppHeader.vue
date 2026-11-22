@@ -56,6 +56,15 @@ function isActive(path: string): boolean {
           ابزارها و بخش‌ها
         </RouterLink>
 
+        <RouterLink
+          to="/games"
+          class="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition"
+          :class="isActive('/games') ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300' : 'text-indigo-700 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-500/10'"
+        >
+          <span>🎮</span>
+          <span>باشگاه بازی‌ها</span>
+        </RouterLink>
+
         <!-- لینک آزمایشگاه با برچسب جدید -->
         <RouterLink
           to="/experiments"
@@ -185,6 +194,21 @@ function isActive(path: string): boolean {
             @click="closeMenu"
           >
             <span>ابزارها و بخش‌ها</span>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4 opacity-50">
+              <path d="M15 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </RouterLink>
+
+          <RouterLink
+            to="/games"
+            class="flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-semibold transition"
+            :class="isActive('/games') ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300' : 'text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-900'"
+            @click="closeMenu"
+          >
+            <div class="flex items-center gap-2">
+              <span>🎮</span>
+              <span>باشگاه بازی‌های دانایی</span>
+            </div>
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4 opacity-50">
               <path d="M15 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
