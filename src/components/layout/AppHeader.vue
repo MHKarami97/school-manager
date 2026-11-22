@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { useThemeStore } from '@/stores/theme'
+import AppLogo from '@/components/common/AppLogo.vue'
 
 const isMenuOpen = ref(false)
 const theme = useThemeStore()
@@ -30,9 +31,7 @@ function isActive(path: string): boolean {
     <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-2.5 sm:px-6 sm:py-3">
       <!-- لوگو و برندینگ -->
       <RouterLink to="/" class="group flex items-center gap-2.5" @click="closeMenu">
-        <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-brand-700 to-brand-500 text-sm font-black text-white shadow-md shadow-brand-500/20 transition group-hover:scale-105">
-          م
-        </span>
+        <AppLogo size="md" />
         <div class="flex flex-col">
           <span class="text-base font-extrabold text-ink-900 dark:text-ink-100">مدیریار</span>
           <span class="hidden text-10px font-medium text-ink-400 sm:inline dark:text-ink-400">سامانه هوشمند مدارس</span>

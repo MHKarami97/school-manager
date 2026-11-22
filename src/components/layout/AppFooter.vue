@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { RouterLink } from 'vue-router'
 import { useThemeStore, type ThemeMode } from '@/stores/theme'
+import AppLogo from '@/components/common/AppLogo.vue'
 
 const year = new Date().getFullYear()
 const theme = useThemeStore()
@@ -23,9 +24,7 @@ function chooseTheme(mode: ThemeMode): void {
         <!-- ستون ۱: معرفی مدیریار -->
         <div class="space-y-4">
           <div class="flex items-center gap-2.5">
-            <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-brand-700 to-brand-500 text-sm font-black text-white shadow-md shadow-brand-500/20">
-              م
-            </span>
+            <AppLogo size="md" />
             <div class="flex flex-col">
               <span class="text-base font-extrabold text-ink-900 dark:text-white">مدیریار</span>
               <span class="text-10px font-medium text-ink-400 dark:text-ink-400">سامانه هوشمند و یکپارچه مدارس</span>

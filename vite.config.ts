@@ -17,7 +17,7 @@ export default defineConfig({
         short_name: "مدیریار",
         description:
           "ساخت خودکار و ویرایش برنامه هفتگی کلاس‌های ابتدایی، متوسطه اول و دوم",
-        theme_color: "#1c5fe0",
+        theme_color: "#ffffff",
         background_color: "#f6f7f9",
         display: "standalone",
         orientation: "portrait-primary",
