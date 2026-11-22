@@ -8,6 +8,7 @@ const routes = [
   },
   {
     path: "/tools",
+    alias: ["/features", "/capabilities"],
     name: "tools",
     component: () => import("@/views/ToolsView.vue"),
   },
@@ -15,6 +16,12 @@ const routes = [
     path: "/history",
     name: "history",
     component: () => import("@/views/HistoryView.vue"),
+  },
+  {
+    path: "/experiments",
+    alias: "/lab",
+    name: "experiments",
+    component: () => import("@/views/ExperimentsView.vue"),
   },
   {
     path: "/guide",
@@ -311,6 +318,10 @@ const routes = [
     path: "/settings/data",
     name: "settings-data",
     component: () => import("@/views/DataManagerView.vue"),
+  },
+  {
+    path: "/:pathMatch(.*)*",
+    redirect: "/",
   },
 ];
 

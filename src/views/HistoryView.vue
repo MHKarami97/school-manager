@@ -1,8 +1,13 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppFooter from '@/components/layout/AppFooter.vue'
 import { SITE_FEATURES } from '@/config/features.config'
+
+const historyFeatures = computed(() =>
+  SITE_FEATURES.filter((f) => f.historyPath && f.historyPath !== '#' && f.status !== 'coming-soon')
+)
 </script>
 
 <template>
@@ -10,15 +15,15 @@ import { SITE_FEATURES } from '@/config/features.config'
     <AppHeader />
     <main class="mx-auto max-w-5xl px-4 py-12 sm:px-6">
       <div class="mb-10 text-center">
-        <h1 class="text-2xl font-bold text-ink-900 sm:text-3xl dark:text-ink-200">تاریخچه</h1>
+        <h1 class="text-2xl font-bold text-ink-900 sm:text-3xl dark:text-ink-200">تاریخچه ابزارها</h1>
         <p class="mt-3 text-ink-500 dark:text-ink-400">
-          هر چیزی که تا الان با مدیریار ساختی، از همین یک صفحه در دسترس است.
+          هر اطلاعات، طرح و برنامه‌ای که تا الان با مدیریار ساختی، از همین یک صفحه در دسترس است.
         </p>
       </div>
 
       <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
         <RouterLink
-          v-for="feature in SITE_FEATURES"
+          v-for="feature in historyFeatures"
           :key="feature.id"
           :to="feature.historyPath"
           class="group flex flex-col rounded-2xl border border-ink-100 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-md dark:border-ink-800 dark:bg-ink-900"
@@ -30,7 +35,7 @@ import { SITE_FEATURES } from '@/config/features.config'
           </div>
           <h2 class="mt-4 text-base font-semibold text-ink-800 dark:text-ink-200">{{ feature.historyLabel }}</h2>
           <p class="mt-2 text-sm leading-6 text-ink-500 dark:text-ink-400">{{ feature.shortTitle }}</p>
-          <span class="mt-4 text-xs font-medium text-brand-600 group-hover:underline dark:text-brand-400">مشاهده ←</span>
+          <span class="mt-4 text-xs font-medium text-brand-600 group-hover:underline dark:text-brand-400">مشاهده سوابق ←</span>
         </RouterLink>
       </div>
     </main>
