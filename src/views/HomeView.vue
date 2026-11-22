@@ -512,7 +512,6 @@ function scrollToFeatures(): void {
                   <h4 class="mt-3 text-sm font-bold text-ink-900 group-hover:text-brand-600 dark:text-white dark:group-hover:text-brand-400 transition-colors">
                     {{ g.nameFa }}
                   </h4>
-                  <p class="text-9px text-slate-400 dark:text-ink-500" dir="ltr">{{ g.nameEn }}</p>
                   <p class="mt-1.5 text-xs text-slate-600 dark:text-ink-300 line-clamp-2 leading-relaxed">
                     {{ g.summaryFa }}
                   </p>
