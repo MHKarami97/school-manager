@@ -175,6 +175,34 @@ function viewUpcomingGames(): void {
         </div>
       </section>
 
+      <!-- بخش کارت ویژه باشگاه ۹۵ بازی دانایی (Games Hub Banner) -->
+      <section class="mx-auto max-w-6xl px-4 pb-8 sm:px-6">
+        <div class="relative overflow-hidden rounded-3xl bg-gradient-to-r from-brand-900 via-indigo-900 to-purple-950 p-6 sm:p-10 text-white shadow-xl shadow-indigo-950/20">
+          <div class="relative z-10 flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
+            <div class="max-w-2xl space-y-3">
+              <div class="inline-flex items-center gap-2 rounded-full bg-brand-500/20 px-3 py-1 text-xs font-semibold text-brand-300">
+                <span class="h-2 w-2 rounded-full bg-brand-400 animate-pulse"></span>
+                باشگاه ۹۵ بازی دانایی و مهارت
+              </div>
+              <h2 class="text-2xl font-black sm:text-3xl">دنیای ۹۵ بازی هوش، تخته‌ای و مهارتی پیوندخورده با کتب درسی</h2>
+              <p class="text-xs leading-6 text-indigo-100/90 sm:text-sm sm:leading-7">
+                مجموعه‌ای کامل از بازی‌های اصیل (مار و پله، منچ، شطرنج، ماز، سودوکو و...)؛ دانش‌آموزان با حل سوالات درسی سکه، جان و امتیاز کسب می‌کنند و در لیگ فصلی قهرمانان رقابت می‌نمایند.
+              </p>
+            </div>
+
+            <RouterLink
+              to="/games"
+              class="flex shrink-0 items-center gap-2 rounded-2xl bg-white px-6 py-3.5 text-sm font-bold text-brand-950 shadow-lg shadow-black/20 transition hover:bg-brand-50 hover:scale-105"
+            >
+              <span>ورود به باشگاه ۹۵ بازی</span>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4">
+                <path d="M15 19l-7-7 7-7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </RouterLink>
+          </div>
+        </div>
+      </section>
+
       <!-- بخش ویژگی‌ها و نقش‌ها (Role Tabs & Features) -->
       <section id="features" class="mx-auto max-w-6xl px-4 py-10 sm:px-6">
         <div class="mx-auto max-w-2xl text-center">

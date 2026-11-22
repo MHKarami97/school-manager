@@ -1,0 +1,1430 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#FBF6EF">
+<title>اسنوکر — چوگان</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../lib/chogan.css">
+<script src="../../lib/early.js"></script>
+<style>
+  /* The cloth and rails are the table, not the theme: a snooker table is green
+     in both themes, only a little deeper in dark mode so it does not glare. Ball
+     colours carry the points (red 1 … black 7), so they are fixed too. */
+  :root { --sn-cloth: #1F7340; --sn-cloth-2: #1A6338; --sn-rail: #5A2E1A; --sn-rail-2: #3E1F11; --sn-pocket: #120D0A; --sn-line: rgba(255, 255, 255, .26); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --sn-cloth: #185C33; --sn-cloth-2: #144F2C; --sn-rail: #452314; --sn-rail-2: #30180D; } }
+  :root[data-theme="dark"] { --sn-cloth: #185C33; --sn-cloth-2: #144F2C; --sn-rail: #452314; --sn-rail-2: #30180D; }
+  /* Aiming is a drag on the table; with manipulation the browser took the same
+     drag as a scroll or a zoom (#259). */
+  .ch-gamemain { touch-action: none; user-select: none; -webkit-user-select: none; padding-block: var(--s-2); gap: var(--s-2); }
+  .sn-wrap { width: 100%; height: 100%; max-width: 1100px; display: flex; flex-direction: column; gap: var(--s-2); align-items: center; min-height: 0; }
+  .sn-players { width: 100%; max-width: 640px; display: flex; gap: var(--s-2); }
+  .sn-player {
+    flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: var(--s-2);
+    background: var(--c-surface); border-radius: var(--r-md); padding: 6px 10px; min-height: 44px;
+    box-shadow: var(--sh-1); border: 2px solid transparent;
+    transition: border-color var(--t-mid) var(--ease);
+  }
+  .sn-player--on { border-color: var(--game); box-shadow: var(--sh-2); }
+  .sn-player__text { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+  .sn-player__name { font-weight: 700; font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sn-player__sub { font-size: var(--fs-xs); color: var(--c-text-dim); font-variant-numeric: tabular-nums; }
+  /* the level and the best break share this line on a phone; it wraps rather than cut either */
+  .sn-player__score { flex: 0 0 auto; font-size: var(--fs-lg); font-weight: 800; font-variant-numeric: tabular-nums; min-width: 1.6em; text-align: center; }
+  .sn-player canvas { flex: 0 0 auto; }
+  .sn-thinking { animation: sn-blink 900ms infinite; }
+  @keyframes sn-blink { 50% { opacity: .55; } }
+  .sn-msg { min-height: 1.4em; font-size: var(--fs-sm); font-weight: 700; text-align: center; color: var(--c-text-dim); max-width: 640px; }
+  .sn-msg--bad { color: var(--c-bad); }
+  .sn-msg--good { color: var(--c-good); }
+  .sn-tablebox { flex: 1; min-height: 0; width: 100%; display: flex; align-items: center; justify-content: center; }
+  .sn-canvas { display: block; touch-action: none; cursor: crosshair; }
+  .sn-controls { direction: ltr; width: 100%; max-width: 640px; display: flex; gap: var(--s-2); align-items: center; }
+  .sn-fine { flex: 0 0 48px; height: 48px; }
+  .sn-fine__g { font-size: 24px; font-weight: 700; line-height: 1; }
+  .sn-power {
+    position: relative; flex: 1; height: 48px; border-radius: var(--r-pill); background: var(--c-surface-2);
+    box-shadow: var(--sh-inset); overflow: hidden; cursor: grab; touch-action: none;
+  }
+  .sn-power__fill { position: absolute; top: 0; bottom: 0; inset-inline-start: 0; width: 0; background: linear-gradient(90deg, var(--c-good), var(--c-gold) 60%, var(--c-bad)); opacity: .85; }
+  .sn-power__fill--idle { opacity: .3; }
+  .sn-power__label { position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex; align-items: center; justify-content: center; font-size: var(--fs-sm); font-weight: 700; color: var(--c-text); pointer-events: none; }
+  .sn-power[aria-disabled="true"] { opacity: .5; cursor: default; }
+</style>
+</head>
+<body>
+<script src="../../version.js"></script>
+<script src="../../lib/chogan.js"></script>
+<script src="../../lib/cue.js"></script>
+<script>
+/* ==== ENGINE START ==== */
+/* Snooker rules on top of the shared table physics in lib/cue.js (#271). Ball 0
+   is the cue ball, 1–15 the reds, and a colour's id is 20 plus its value:
+   22 yellow, 23 green, 24 brown, 25 blue, 26 pink, 27 black. The frame state is
+   plain data, so it saves as is and the AI can try shots on copies of it.
+
+   Simplified on purpose: the colour after a red is nominated by hitting it
+   first; there is no free ball, no "play again" choice and no miss rule. */
+function SnookerEngineFactory(Cue) {
+  'use strict';
+  Cue = Cue || (typeof self !== 'undefined' && self.ChoganCue) || null;
+  if (!Cue) throw new Error('lib/cue.js is not loaded');
+
+  // A 2:1 table like 8-ball's, with smaller balls and tighter pockets: about
+  // 1.7 ball widths across a corner mouth, against about 2 on the pool table.
+  var R0 = 2;
+  var T = Cue.table({ radius: R0, cornerMouth: R0 * 2.5, sideMouth: R0 * 3.4 });
+  var R = T.r, L = T.L, W = T.W;
+  // The baulk line and the D, in the proportions of a full-size table
+  var BAULK = L * 0.2065, DR = L * 0.0818, MID = W / 2;
+  var SPOT = { 2: { x: BAULK, y: MID + DR }, 3: { x: BAULK, y: MID - DR }, 4: { x: BAULK, y: MID }, 5: { x: L / 2, y: MID }, 6: { x: L * 0.75, y: MID }, 7: { x: L * 0.909, y: MID } };
+  var COLOURS = [22, 23, 24, 25, 26, 27];
+  var REDS_OPTIONS = [6, 10, 15];
+  var DAILY_REDS = 3, DAILY_MAX = 40;
+  var CUE_HOME = { x: BAULK - 5, y: MID + 7 };
+
+  function isRed(id) { return id >= 1 && id <= 15; }
+  function isColour(id) { return id >= 22 && id <= 27; }
+  function value(id) { return isRed(id) ? 1 : (isColour(id) ? id - 20 : 0); }
+  function ball(F, id) { for (var i = 0; i < F.balls.length; i++) if (F.balls[i].id === id) return F.balls[i]; return null; }
+  function reds(F) { return F.balls.filter(function (b) { return b.inPlay && isRed(b.id); }).map(function (b) { return b.id; }); }
+  function colours(F) { return F.balls.filter(function (b) { return b.inPlay && isColour(b.id); }).map(function (b) { return b.id; }); }
+  function lowestColour(F) { var c = colours(F); return c.length ? Math.min.apply(null, c) - 20 : 0; }
+  // Points still on the table: each red with a black after it, then the colours
+  function remaining(F) {
+    var n = reds(F).length, s = n * 8;
+    if (F.phase === 'colour') s += 7;
+    colours(F).forEach(function (id) { if (F.phase !== 'order' || id - 20 >= F.next) s += id - 20; });
+    return s;
+  }
+
+  function shuffle(a, rnd) {
+    for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(rnd() * (i + 1)), t = a[i]; a[i] = a[j]; a[j] = t; }
+    return a;
+  }
+
+  function inD(x, y) { var dx = x - BAULK, dy = y - MID; return x <= BAULK && dx * dx + dy * dy <= DR * DR; }
+
+  // The reds in a triangle, apex just behind the pink, rows filled one by one
+  function rack(n) {
+    var dx = (2 * R + 0.02) * Math.sqrt(3) / 2, dy = 2 * R + 0.02, ax = SPOT[6].x + 2 * R + 0.3, out = [], id = 1;
+    for (var k = 0; id <= n; k++) for (var j = 0; j <= k && id <= n; j++) out.push({ id: id++, x: ax + k * dx, y: MID + (j - k / 2) * dy, vx: 0, vy: 0, inPlay: true });
+    return out;
+  }
+  function colourBalls() { return COLOURS.map(function (id) { return { id: id, x: SPOT[id - 20].x, y: SPOT[id - 20].y, vx: 0, vy: 0, inPlay: true }; }); }
+
+  function newFrame(o) {
+    o = o || {};
+    var n = Math.max(1, Math.min(15, Math.round(o.reds || 6)));
+    return {
+      mode: o.mode || 'ai', level: o.level || 'medium', reds: n,
+      balls: [{ id: 0, x: CUE_HOME.x, y: CUE_HOME.y, vx: 0, vy: 0, inPlay: true }].concat(colourBalls(), rack(n)),
+      turn: o.first || 0, scores: [0, 0], brk: 0, best: [0, 0], phase: 'red', next: 2,
+      inHand: true, isBreak: true, shootout: false, over: false, winner: null,
+      shots: 0, fouls: [0, 0], daily: null, last: null
+    };
+  }
+
+  // The daily table: three reds laid out from the day's seed, the colours on
+  // their spots and the white in hand, the same for everyone. Clear it in as
+  // few shots as you can; a foul counts as an extra shot.
+  function newDaily(rnd, date) {
+    var F = newFrame({ mode: 'daily', reds: DAILY_REDS });
+    var keep = F.balls.filter(function (b) { return !isRed(b.id); }), guard = 0, id = 1;
+    while (id <= DAILY_REDS && guard++ < 5000) {
+      var x = BAULK + 10 + rnd() * (L - BAULK - 10 - R * 5), y = R * 5 + rnd() * (W - R * 10), okp = true;
+      for (var i = 0; i < keep.length && okp; i++) okp = Math.hypot(keep[i].x - x, keep[i].y - y) > R * 5;
+      for (var k = 0; k < T.pockets.length && okp; k++) okp = Math.hypot(T.pockets[k].x - x, T.pockets[k].y - y) > 16;
+      if (okp) keep.push({ id: id++, x: x, y: y, vx: 0, vy: 0, inPlay: true });
+    }
+    F.balls = keep;
+    F.isBreak = false; F.daily = date || null;
+    return F;
+  }
+
+  function copy(F) { return JSON.parse(JSON.stringify(F)); }
+
+  function legalPlace(F, x, y) { return inD(x, y) && Cue.free(T, F.balls, x, y, 0); }
+  // A free spot in the D: where it was asked for, else the nearest free one
+  function freeSpot(F, x, y) {
+    if (legalPlace(F, x, y)) return { x: x, y: y };
+    for (var d = 0.5; d < DR * 2; d += 0.5) {
+      for (var a = 0; a < 24; a++) {
+        var px = x + Math.cos(a * Math.PI / 12) * d, py = y + Math.sin(a * Math.PI / 12) * d;
+        if (legalPlace(F, px, py)) return { x: px, y: py };
+      }
+    }
+    return { x: BAULK - DR + R, y: MID };
+  }
+  function placeCue(F, x, y) {
+    if (!F.inHand || !legalPlace(F, x, y)) return false;
+    var c = ball(F, 0);
+    c.x = x; c.y = y; c.inPlay = true;
+    return true;
+  }
+
+  // A potted colour goes back on its own spot; if that is covered, on the
+  // highest free spot; if none is free, as near its own spot as it can, first
+  // towards the top cushion and then towards baulk.
+  function respot(G, id) {
+    var b = ball(G, id), v = id - 20, sp = SPOT[v], at = null, k;
+    b.inPlay = false;
+    if (Cue.free(T, G.balls, sp.x, sp.y, id)) at = sp;
+    for (k = 7; !at && k >= 2; k--) if (Cue.free(T, G.balls, SPOT[k].x, SPOT[k].y, id)) at = SPOT[k];
+    for (k = 0.25; !at && sp.x + k < L - R; k += 0.25) if (Cue.free(T, G.balls, sp.x + k, sp.y, id)) at = { x: sp.x + k, y: sp.y };
+    for (k = 0.25; !at && sp.x - k > R; k += 0.25) if (Cue.free(T, G.balls, sp.x - k, sp.y, id)) at = { x: sp.x - k, y: sp.y };
+    at = at || sp;
+    b.x = at.x; b.y = at.y; b.vx = 0; b.vy = 0; b.inPlay = true;
+  }
+
+  // The balls this player may hit first
+  function targets(F) {
+    if (F.phase === 'red') return reds(F);
+    if (F.phase === 'colour') return colours(F);
+    var b = ball(F, 20 + F.next);
+    return b && b.inPlay ? [b.id] : [];
+  }
+
+  // Judge a finished shot. F is the frame before it, ev what cue.js saw.
+  function judge(F, ev) {
+    var on = targets(F), first = ev.first, potted = ev.potted;
+    var inOff = potted.indexOf(0) >= 0, objs = potted.filter(function (id) { return id !== 0; });
+    var foul = null, legal;
+    if (first === null) foul = 'noHit';
+    else if (on.indexOf(first) < 0) foul = 'wrongFirst';
+    if (F.phase === 'red') legal = isRed;
+    else if (F.phase === 'colour') legal = function (id) { return id === first && isColour(id); };
+    else legal = function (id) { return id === 20 + F.next; };
+    if (!foul && objs.some(function (id) { return !legal(id); })) foul = 'wrongPot';
+    if (inOff) foul = 'inOff';
+    var res = { foul: foul, penalty: 0, points: 0, first: first, potted: potted.slice(), inOff: inOff, continues: false, ends: false };
+    if (foul) {
+      // Penalty: the value of the ball on or of any ball in the foul, at least four
+      var onVal = F.phase === 'red' ? 1 : (F.phase === 'order' ? F.next : (isColour(first) ? value(first) : 0));
+      var pen = Math.max(4, onVal, first === null ? 0 : value(first));
+      objs.forEach(function (id) { pen = Math.max(pen, value(id)); });
+      res.penalty = pen;
+    } else if (F.phase === 'red') res.points = objs.length;
+    else if (objs.length) res.points = value(objs[0]);
+    res.continues = !foul && res.points > 0;
+    // With only the black left, the first score or foul ends the frame
+    res.ends = F.phase === 'order' && F.next === 7 && (!!foul || res.points > 0);
+    return res;
+  }
+
+  // Apply a judged shot to a copy of the frame
+  function apply(F, sim, res) {
+    var G = copy(F), p = F.turn, solo = F.mode === 'daily';
+    G.balls = Cue.clone(sim.balls);
+    G.shots++;
+    G.isBreak = false;
+    G.last = { foul: res.foul, penalty: res.penalty, points: res.points, potted: res.potted, by: p };
+    if (res.foul) { G.fouls[p]++; if (!solo) G.scores[1 - p] += res.penalty; }
+    else G.scores[p] += res.points;
+    if (res.continues) { G.brk += res.points; G.best[p] = Math.max(G.best[p], G.brk); }
+    else G.brk = 0;
+    // Colours come back after a foul and after the colour that follows a red;
+    // the higher value is spotted first when two compete for a spot
+    var back = res.potted.filter(function (id) { return isColour(id) && (res.foul || F.phase === 'colour'); }).sort(function (a, b) { return b - a; });
+    if (res.ends) {
+      if (solo) {
+        if (!res.foul) { G.over = true; G.winner = 0; G.inHand = false; return G; }
+      } else if (G.scores[0] !== G.scores[1]) {
+        G.over = true; G.winner = G.scores[0] > G.scores[1] ? 0 : 1; G.inHand = false;
+        return G;
+      } else {
+        // Level after the black: it is spotted again and the other player
+        // starts a shoot-out from the D
+        G.shootout = true;
+        if (back.indexOf(27) < 0) back.push(27);
+      }
+    }
+    back.forEach(function (id) { respot(G, id); });
+    var left = reds(G).length;
+    if (res.continues) {
+      if (F.phase === 'red') G.phase = 'colour';
+      else if (F.phase === 'colour') { G.phase = left ? 'red' : 'order'; G.next = 2; }
+      else G.next = lowestColour(G);
+    } else {
+      if (!solo) G.turn = 1 - p;
+      G.phase = left ? 'red' : 'order';
+      G.next = left ? 2 : lowestColour(G);
+    }
+    var outStart = G.shootout && !F.shootout;
+    if (outStart) { G.turn = 1 - p; G.phase = 'order'; G.next = 7; G.brk = 0; }
+    G.inHand = res.inOff || outStart;
+    if (G.inHand) {
+      var c = ball(G, 0), s = freeSpot(Object.assign({}, G, { balls: G.balls.filter(function (b) { return b.id !== 0; }) }), CUE_HOME.x, CUE_HOME.y);
+      c.x = s.x; c.y = s.y; c.vx = 0; c.vy = 0; c.inPlay = true;
+    }
+    if (solo && !G.over && G.shots >= DAILY_MAX) { G.over = true; G.winner = null; }
+    return G;
+  }
+
+  // Play one shot on a copy of the frame: { F, res, sim }
+  function shoot(F, shot) {
+    var sim = Cue.simulate(T, F.balls, shot, 0);
+    var res = judge(F, sim.ev);
+    return { F: apply(F, sim, res), res: res, sim: sim };
+  }
+
+  /* ---------------------------------------------------------------- AI */
+
+  // Distance a ball rolls from speed v, from the friction law in cue.js
+  function rollDist(v) { return v <= 0 ? 0 : v / T.rollB - T.rollA / (T.rollB * T.rollB) * Math.log(1 + T.rollB * v / T.rollA); }
+  function speedFor(d) {
+    var lo = 0, hi = T.maxSpeed * 1.5;
+    for (var i = 0; i < 24; i++) { var mid = (lo + hi) / 2; if (rollDist(mid) < d) lo = mid; else hi = mid; }
+    return hi;
+  }
+  function powerFor(v) { return Math.max(0.05, Math.min(1, (v - 15) / (T.maxSpeed - 15))); }
+
+  // Pots that look possible from (cx, cy): ghost-ball aiming at each pocket
+  function pots(F, cx, cy, ids) {
+    var out = [];
+    ids.forEach(function (id) {
+      var b = ball(F, id);
+      T.pockets.forEach(function (pk, k) {
+        var ux = pk.x - b.x, uy = pk.y - b.y, d2 = Math.sqrt(ux * ux + uy * uy);
+        if (d2 < 1e-6) return;
+        ux /= d2; uy /= d2;
+        // a middle pocket takes a ball only from a fairly straight line
+        if (k >= 4 && Math.abs(uy) < 0.6) return;
+        var gx = b.x - ux * 2 * R, gy = b.y - uy * 2 * R, ax = gx - cx, ay = gy - cy, d1 = Math.sqrt(ax * ax + ay * ay);
+        if (d1 < 1e-6) return;
+        var cos = (ax * ux + ay * uy) / d1;
+        if (cos < 0.3) return;   // cuts thinner than about 72° are left alone
+        var clearA = Cue.clear(T, F.balls, cx, cy, gx, gy, 0, id), clearB = Cue.clear(T, F.balls, b.x, b.y, pk.x, pk.y, id, -1);
+        var vObj = speedFor(d2 + 6), vHit = vObj / (cos * (1 + T.ball) / 2), v0 = speedFor(rollDist(vHit) + d1);
+        out.push({ id: id, pocket: k, angle: Math.atan2(ay, ax), power: powerFor(v0), cos: cos, d1: d1, d2: d2, gx: gx, gy: gy, ux: ux, uy: uy,
+          prio: cos * cos * (clearA ? 1 : 0.1) * (clearB ? 1 : 0.1) / (1 + (d1 + d2) / 220) });
+      });
+    });
+    return out.sort(function (a, b) { return b.prio - a.prio; });
+  }
+
+  // How good the best next shot is for player p, 0 … 1
+  function quality(F) {
+    var c = ball(F, 0);
+    if (!c || !c.inPlay) return 1;
+    var list = pots(F, c.x, c.y, targets(F));
+    return list.length ? Math.min(1, list[0].prio * 1.4) : 0;
+  }
+
+  var LEVELS = {
+    easy:   { cands: 14, rand: 4, noiseA: 0.02, noiseP: 0.2, verify: 0, pick: 4, position: false, safety: false },
+    medium: { cands: 36, rand: 6, noiseA: 0.006, noiseP: 0.07, verify: 3, pick: 1, position: true, safety: false },
+    hard:   { cands: 80, rand: 6, noiseA: 0.0018, noiseP: 0.03, verify: 6, pick: 1, position: true, safety: true, thin: 5 }
+  };
+
+  function gauss(rnd) {
+    var u = Math.max(1e-9, rnd()), v = rnd();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  }
+
+  function score(F, cand, L) {
+    var G = copy(F);
+    if (cand.place) placeCue(G, cand.place.x, cand.place.y);
+    var r = shoot(G, cand), res = r.res, p = F.turn, s = 0;
+    if (r.F.over) return r.F.winner === p ? 1e5 : -1e5;
+    if (res.foul) s -= 250 + 60 * res.penalty;
+    else s += 45 * res.points;
+    if (res.continues) { s += 300; if (L.position) s += 200 * quality(r.F); }
+    else if (!res.foul && L.safety) s -= 180 * quality(r.F);
+    return s;
+  }
+
+  // Spots in the D the white can be placed on when it is in hand
+  function dSpots(F, ids) {
+    var out = [], c = ball(F, 0);
+    var from = pots(F, BAULK, MID, ids);
+    for (var k = 0; k < from.length && out.length < 4; k++) {
+      [18, 34].forEach(function (D) {
+        var x = from[k].gx - from[k].ux * D, y = from[k].gy - from[k].uy * D;
+        if (out.length < 4 && legalPlace(F, x, y) && Cue.clear(T, F.balls, x, y, from[k].gx, from[k].gy, 0, from[k].id)) out.push({ x: x, y: y });
+      });
+    }
+    [[BAULK - 2, MID + DR - 4], [BAULK - 2, MID - DR + 4], [BAULK - 4, MID + 5], [BAULK - 4, MID - 5]].forEach(function (q) {
+      if (out.length < 6 && legalPlace(F, q[0], q[1])) out.push({ x: q[0], y: q[1] });
+    });
+    if (c.inPlay && legalPlace(F, c.x, c.y)) out.push({ x: c.x, y: c.y });
+    if (!out.length) out.push(freeSpot(F, CUE_HOME.x, CUE_HOME.y));
+    return out;
+  }
+
+  // Thinks in small slices: step(n) tries n shots, so the page can spread the
+  // work over animation frames and never freeze. result() is the chosen shot.
+  function planner(F, level, rnd) {
+    var L = LEVELS[level] || LEVELS.medium, list = [], done = false, i = 0, phase = 'eval', top = [], vi = 0, pick = null;
+    var ids = targets(F), c = ball(F, 0), spots = F.inHand ? dSpots(F, ids) : [null];
+    var per = Math.max(4, Math.ceil(L.cands / spots.length));
+    spots.forEach(function (sp) {
+      var cx = sp ? sp.x : c.x, cy = sp ? sp.y : c.y;
+      pots(F, cx, cy, ids).slice(0, per).forEach(function (q) {
+        list.push({ place: sp, angle: q.angle, power: q.power });
+        if (list.length % 2) list.push({ place: sp, angle: q.angle, power: Math.min(1, q.power * 1.35 + 0.05) });
+      });
+    });
+    list = list.slice(0, L.cands);
+    // a soft touch and a firmer one at the nearest few balls on, the safest way not to foul
+    spots.slice(0, 3).forEach(function (sp) {
+      var cx = sp ? sp.x : c.x, cy = sp ? sp.y : c.y;
+      ids.slice().sort(function (a, b) { var A = ball(F, a), B = ball(F, b); return Math.hypot(A.x - cx, A.y - cy) - Math.hypot(B.x - cx, B.y - cy); }).slice(0, 3).forEach(function (id) {
+        var b = ball(F, id), a = Math.atan2(b.y - cy, b.x - cx);
+        list.push({ place: sp, angle: a, power: 0.22 });
+        list.push({ place: sp, angle: a + (rnd() - 0.5) * 0.04, power: 0.4 });
+      });
+    });
+    // Safety play: thin and full contacts on the balls on, soft and medium,
+    // for the level that weighs what it leaves the opponent
+    if (L.thin) {
+      var sp0 = spots[0], tx = sp0 ? sp0.x : c.x, ty = sp0 ? sp0.y : c.y;
+      ids.slice().sort(function (a, b) { var A = ball(F, a), B = ball(F, b); return Math.hypot(A.x - tx, A.y - ty) - Math.hypot(B.x - tx, B.y - ty); }).slice(0, L.thin).forEach(function (id) {
+        var b = ball(F, id), d = Math.hypot(b.x - tx, b.y - ty), a = Math.atan2(b.y - ty, b.x - tx), half = Math.asin(Math.min(1, 2 * R / Math.max(d, 2 * R)));
+        [-0.8, -0.4, 0.4, 0.8].forEach(function (f) { [0.18, 0.32].forEach(function (pw) { list.push({ place: sp0, angle: a + f * half, power: pw }); }); });
+      });
+    }
+    // and a few shots in random directions, so there is always something to play
+    for (var n = 0; n < L.rand; n++) list.push({ place: spots[0], angle: rnd() * Math.PI * 2, power: 0.2 + rnd() * 0.45 });
+
+    function finish() {
+      top.sort(function (a, b) { return b.s - a.s; });
+      var best = top[0];
+      if (L.pick > 1) best = top[Math.floor(rnd() * Math.min(L.pick, top.length))];
+      pick = { place: best.c.place, angle: best.c.angle + gauss(rnd) * L.noiseA, power: Math.max(0.05, Math.min(1, best.c.power * (1 + gauss(rnd) * L.noiseP))) };
+      done = true;
+    }
+    return {
+      total: list.length + L.verify * 2,
+      step: function (k) {
+        while (!done && k-- > 0) {
+          if (phase === 'eval') {
+            if (i < list.length) { var cd = list[i++]; top.push({ c: cd, s: score(F, cd, L), n: 1 }); continue; }
+            top.sort(function (a, b) { return b.s - a.s; });
+            phase = L.verify ? 'verify' : 'end';
+            top = top.slice(0, Math.max(L.verify, L.pick, 1));
+            continue;
+          }
+          if (phase === 'verify') {
+            // A shot that only works when hit perfectly is a poor bet: try each
+            // of the best few again slightly off and keep the average
+            if (vi < top.length * 2) {
+              var e = top[vi >> 1], sgn = vi & 1 ? 1 : -1;
+              var cv = { place: e.c.place, angle: e.c.angle + sgn * L.noiseA * 1.2, power: e.c.power };
+              e.s = (e.s * e.n + score(F, cv, L)) / (e.n + 1); e.n++;
+              vi++;
+              continue;
+            }
+            phase = 'end';
+            continue;
+          }
+          finish();
+        }
+        return done;
+      },
+      result: function () { return pick; }
+    };
+  }
+  function think(F, level, rnd) {
+    var pl = planner(F, level, rnd);
+    while (!pl.step(50)) { /* run to the end */ }
+    return pl.result();
+  }
+
+  // The direction to aim at first: the best pot, else the nearest ball on
+  function aimDefault(F) {
+    var c = ball(F, 0), ids = targets(F), best = null, bd = Infinity;
+    if (!c) return 0;
+    var list = pots(F, c.x, c.y, ids);
+    if (list.length && list[0].prio > 0.05) return list[0].angle;
+    ids.forEach(function (id) { var b = ball(F, id), d = Math.hypot(b.x - c.x, b.y - c.y); if (d < bd) { bd = d; best = b; } });
+    return best ? Math.atan2(best.y - c.y, best.x - c.x) : 0;
+  }
+
+  var api = { T: T, R: R, BAULK: BAULK, DR: DR, SPOT: SPOT, COLOURS: COLOURS, REDS_OPTIONS: REDS_OPTIONS, DAILY_REDS: DAILY_REDS, DAILY_MAX: DAILY_MAX,
+    LEVELS: LEVELS, Cue: Cue, CUE_HOME: CUE_HOME,
+    isRed: isRed, isColour: isColour, value: value, ball: ball, reds: reds, colours: colours, remaining: remaining, inD: inD, rack: rack,
+    newFrame: newFrame, newDaily: newDaily, copy: copy, legalPlace: legalPlace, freeSpot: freeSpot, placeCue: placeCue, respot: respot,
+    targets: targets, judge: judge, apply: apply, shoot: shoot, pots: pots, quality: quality, planner: planner, think: think, aimDefault: aimDefault };
+  if (typeof self !== 'undefined') self.SnookerEngine = api;
+  return api;
+}
+if (typeof module !== 'undefined' && module.exports) module.exports = SnookerEngineFactory;
+/* ==== ENGINE END ==== */
+</script>
+
+<script>
+(function () {
+  'use strict';
+  var C = window.Chogan, el = C.el;
+  var E = SnookerEngineFactory(window.ChoganCue), Cue = E.Cue, T = E.T, R = E.R;
+
+  C.boot({});
+  var ctx = C.game({
+    id: 'snooker',
+    name: { fa: 'اسنوکر', en: 'Snooker', zh: '斯诺克', de: 'Snooker', es: 'Snooker', pl: 'Snooker', fr: 'Snooker', ar: 'سنوكر', hi: 'स्नूकर' },
+    accent: '#A3263A',
+    mood: 'menu',
+    strings: {
+      fa: {
+        vsAi: 'با ربات', twoPlayers: 'دو نفره', mode: 'حالت', level: 'سطح', redsCount: 'تعداد سرخ‌ها', rival: 'حریف', player2: 'بازیکن دو',
+        yourTurn: 'نوبت توست', turnOf: 'نوبت {n}', thinking: 'در حال فکر…',
+        breakHint: 'شروع: توپ سفید را در نیم‌دایره بگذار و به سرخ‌ها بزن', inHand: 'توپ در دست: توپ سفید را در نیم‌دایره بگذار، بعد نشانه بگیر',
+        onRed: 'هدف: یک توپ سرخ', onColour: 'هدف: هر توپ رنگی', onBall: 'هدف: توپ {c}',
+        cRed: 'سرخ', cYellow: 'زرد', cGreen: 'سبز', cBrown: 'قهوه‌ای', cBlue: 'آبی', cPink: 'صورتی', cBlack: 'سیاه', cColour: 'رنگی',
+        redsLeft: '{n} سرخ مانده', leftOnTable: '{n} امتیاز روی میز',
+        subOn: 'هدف: {c}', subBreak: 'بریک {b}', subBest: 'بهترین بریک {b}',
+        foulInOff: 'خطا: توپ سفید افتاد', foulNoHit: 'خطا: به هیچ توپی نخورد', foulWrong: 'خطا: اول به توپ هدف نخورد', foulPot: 'خطا: توپی افتاد که هدف نبود',
+        penaltyTo: '{p} امتیاز برای {n}', scored: '+{p} · بریک {b}', shootout: 'امتیازها مساوی شد: توپ سیاه دوباره سر جایش می‌رود',
+        playerWon: '{n} برد', power: 'قدرت', pull: 'بکش و رها کن', fineLeft: 'چرخش ریز به چپ', fineRight: 'چرخش ریز به راست', turnSpd: 'سرعت چرخاندن', turnSlow: 'آهسته', turnMed: 'متوسط', turnNormal: 'سریع', aimCtl: 'نشانه‌گیری', ctlPoint: 'اشاره', ctlTurn: 'چرخاندن', ctlNote: 'اشاره: نشانه به سمت انگشتت می‌رود و از روی توپ سفید هم می‌شود عقب کشید و زد. چرخاندن: با کشیدن روی میز، چوب از همان جایی که هست دور توپ سفید می‌چرخد و به سمت انگشتت نمی‌پرد؛ هرچه دورتر از توپ بکشی، ریزتر می‌چرخد. فقط نوار قدرت ضربه می‌زند.',
+        shots: 'ضربه', fouls: 'خطا', frameScore: 'امتیاز', highBreak: 'بهترین بریک', newFrame: 'فریم تازه', startFrame: 'شروع',
+        dailySn: 'میز روزانه', dailyGoal: 'سرخ‌ها و بعد رنگی‌ها را به ترتیب با کمترین ضربه بینداز', outOfShots: 'ضربه‌ها تمام شد', cleared: 'میز پاک شد!',
+        tableLabel: 'میز اسنوکر', resetWarn: 'فریم فعلی تمام می‌شود. ادامه؟',
+        rules: 'اول یک توپ سرخ بینداز (۱ امتیاز)، بعد یک توپ رنگی: زرد ۲، سبز ۳، قهوه‌ای ۴، آبی ۵، صورتی ۶ و سیاه ۷. توپ رنگی‌ای که اول به آن بزنی هدف توست؛ اگر بیفتد امتیازش را می‌گیری و سر جایش برمی‌گردد. تا وقتی توپ می‌اندازی نوبت توست و امتیازهای پشت سر هم، بریک توست. وقتی سرخ‌ها تمام شد، رنگی‌ها را به ترتیب از زرد تا سیاه بینداز. خطاست اگر توپ سفید بیفتد، به هیچ توپی نخورد، اول به توپی بخورد که هدف نیست یا توپی بیفتد که هدف نیست. خطا دست‌کم ۴ امتیاز به حریف می‌دهد، یا ارزش توپ هدف یا توپ درگیر اگر بیشتر باشد. بعد از افتادن توپ سفید، حریف آن را در نیم‌دایره می‌گذارد. با افتادن سیاه آخر، امتیاز بیشتر می‌برد؛ اگر مساوی باشد، سیاه دوباره چیده می‌شود و حریف از نیم‌دایره شروع می‌کند.',
+        keyboard: 'صفحه‌کلید', kbAim: 'چرخاندن نشانه', kbFine: 'چرخش ریز', kbPower: 'قدرت ضربه', kbShoot: 'ضربه', kbPlace: 'جابه‌جایی توپ سفید در نیم‌دایره (توپ در دست)',
+        tutTitle1: 'نشانه بگیر و بزن', tutText1: 'روی میز انگشتت را بکش تا خط نشانه بچرخد. بعد نوار قدرت پایین را بکش و رها کن. روش نشانه‌گیری پشت چرخ‌دنده است: «چرخاندن» چوب را آرام دور توپ سفید می‌چرخاند و «اشاره» دنبال انگشتت می‌رود.',
+        tutTitle2: 'سرخ، بعد رنگی', tutText2: 'یک سرخ بینداز، بعد هر رنگی که خواستی. رنگی سر جایش برمی‌گردد و دوباره نوبت سرخ است. هر رنگ ارزش خودش را دارد و سیاه از همه بیشتر: ۷.',
+        tutTitle3: 'خطا و پایان فریم', tutText3: 'خطا دست‌کم ۴ امتیاز به حریف می‌دهد. وقتی سرخ‌ها تمام شد، رنگی‌ها را از زرد تا سیاه به ترتیب بینداز. با سیاه آخر، امتیاز بیشتر برنده است.'
+      },
+      en: {
+        vsAi: 'Versus AI', twoPlayers: 'Two players', mode: 'Mode', level: 'Level', redsCount: 'Reds', rival: 'Rival', player2: 'Player two',
+        yourTurn: 'Your turn', turnOf: 'Turn: {n}', thinking: 'Thinking…',
+        breakHint: 'Break-off: place the white in the D and hit the reds', inHand: 'Ball in hand: place the white in the D, then aim',
+        onRed: 'Ball on: a red', onColour: 'Ball on: any colour', onBall: 'Ball on: {c}',
+        cRed: 'red', cYellow: 'yellow', cGreen: 'green', cBrown: 'brown', cBlue: 'blue', cPink: 'pink', cBlack: 'black', cColour: 'colour',
+        redsLeft: '{n} reds left', leftOnTable: '{n} points on the table',
+        subOn: 'On: {c}', subBreak: 'Break {b}', subBest: 'Best break {b}',
+        foulInOff: 'Foul: in-off, the white went in', foulNoHit: 'Foul: no ball was hit', foulWrong: 'Foul: the first ball hit was not on', foulPot: 'Foul: a ball that was not on went in',
+        penaltyTo: '+{p} to {n}', scored: '+{p} · break {b}', shootout: 'Level on points: the black is re-spotted',
+        playerWon: '{n} wins', power: 'Power', pull: 'Pull and release', fineLeft: 'Fine turn left', fineRight: 'Fine turn right', turnSpd: 'Turn speed', turnSlow: 'Slow', turnMed: 'Medium', turnNormal: 'Fast', aimCtl: 'Aiming', ctlPoint: 'Point', ctlTurn: 'Turn', ctlNote: 'Point: the aim follows your finger, and you can also pull back from the white ball to shoot. Turn: dragging on the table turns the cue round the white ball from where it points, without jumping to your finger; the farther from the ball you drag, the finer it turns. Only the power bar shoots.',
+        shots: 'Shots', fouls: 'Fouls', frameScore: 'Score', highBreak: 'Highest break', newFrame: 'New frame', startFrame: 'Start',
+        dailySn: 'Daily table', dailyGoal: 'Pot the reds, then the colours in order, in as few shots as you can', outOfShots: 'Out of shots', cleared: 'Table cleared!',
+        tableLabel: 'Snooker table', resetWarn: 'This ends the current frame. Continue?',
+        rules: 'Pot a red (1 point), then a colour: yellow 2, green 3, brown 4, blue 5, pink 6, black 7. The colour you hit first is the one you nominate; if it goes in you score it and it is put back on its spot. You keep playing while you pot, and the points in one visit are your break. Once the reds are gone, pot the colours in order from yellow to black. It is a foul if the white goes in, you hit nothing, the first ball hit is not on, or a ball that is not on goes in. A foul gives your opponent at least 4 points, or the value of the ball on or of a ball involved if that is higher. After an in-off your opponent places the white in the D. When the last black goes in the higher score wins; on level scores the black is re-spotted and your opponent plays from the D.',
+        keyboard: 'Keyboard', kbAim: 'Turn the aim', kbFine: 'Fine turn', kbPower: 'Shot power', kbShoot: 'Shoot', kbPlace: 'Move the white in the D (ball in hand)',
+        tutTitle1: 'Aim and shoot', tutText1: 'Drag on the table to turn the aim line. Then pull the power bar below and let go. The aiming method is behind the gear: Turn rotates the cue slowly round the white ball, Point follows your finger.',
+        tutTitle2: 'A red, then a colour', tutText2: 'Pot a red, then any colour you like. The colour goes back on its spot and it is a red again. Each colour has its own value, the black most of all: 7.',
+        tutTitle3: 'Fouls and the end', tutText3: 'A foul gives your opponent at least 4 points. When the reds are gone, pot the colours from yellow to black in order. After the last black, the higher score wins.'
+      },
+      pl: {
+        vsAi: 'Przeciwko SI', twoPlayers: 'Dwóch graczy', mode: 'Tryb', level: 'Poziom', redsCount: 'Czerwone', rival: 'Rywal', player2: 'Gracz drugi',
+        yourTurn: 'Twoja kolej', turnOf: 'Ruch: {n}', thinking: 'Myślenie…',
+        breakHint: 'Rozbicie: umieść białą bilę w polu D i uderz czerwone', inHand: 'Biała bila w ręku: umieść ją w polu D, a następnie celuj',
+        onRed: 'Bila rozgrywana: czerwona', onColour: 'Bila rozgrywana: dowolny kolor', onBall: 'Bila rozgrywana: {c}',
+        cRed: 'czerwona', cYellow: 'żółta', cGreen: 'zielona', cBrown: 'brązowa', cBlue: 'niebieska', cPink: 'różowa', cBlack: 'czarna', cColour: 'kolor',
+        redsLeft: 'Pozostałe czerwone: {n}', leftOnTable: 'Punkty na stole: {n}',
+        subOn: 'Rozgrywana: {c}', subBreak: 'Brejk {b}', subBest: 'Najlepszy brejk {b}',
+        foulInOff: 'Faul: biała wpadła do kieszeni', foulNoHit: 'Faul: żadna bila nie została uderzona', foulWrong: 'Faul: pierwsza uderzona bila nie była rozgrywana', foulPot: 'Faul: bila nierozygrywana wpadła do kieszeni',
+        penaltyTo: '+{p} dla gracza {n}', scored: '+{p} · brejk {b}', shootout: 'Remis w punktach: czarna bila wraca na stół',
+        playerWon: '{n} wygrywa', power: 'Siła', pull: 'Przeciągnij i puść', fineLeft: 'Precyzyjny obrót w lewo', fineRight: 'Precyzyjny obrót w prawo', turnSpd: 'Szybkość obracania', turnSlow: 'Wolno', turnMed: 'Średnio', turnNormal: 'Szybko', aimCtl: 'Celowanie', ctlPoint: 'Wskaż', ctlTurn: 'Obróć', ctlNote: 'Wskaż: linia celowania podąża za Twoim palcem, możesz też pociągnąć do tyłu od białej bili, aby oddać strzał. Obróć: przeciąganie po stole obraca kij wokół białej bili od miejsca, w które jest skierowany, bez przeskakiwania do Twojego palca; im dalej od bili przeciągasz, tym bardziej precyzyjny jest obrót. Tylko pasek siły oddaje strzał.',
+        shots: 'Strzały', fouls: 'Faule', frameScore: 'Wynik', highBreak: 'Najwyższy brejk', newFrame: 'Nowy frejm', startFrame: 'Start',
+        dailySn: 'Codzienny stół', dailyGoal: 'Wbij czerwone, a następnie kolory w odpowiedniej kolejności, wykonując jak najmniej strzałów', outOfShots: 'Koniec strzałów', cleared: 'Stół czysty!',
+        tableLabel: 'Stół snookerowy', resetWarn: 'To zakończy obecny frejm. Kontynuować?',
+        rules: 'Wbij czerwoną bilę (1 punkt), a następnie kolorową: żółtą 2, zieloną 3, brązową 4, niebieską 5, różową 6, czarną 7. Kolor, który uderzysz jako pierwszy, staje się deklarowanym; jeśli wpadnie, zdobywasz punkty, a bila wraca na swoje miejsce. Grasz tak długo, jak długo wbijasz bile, a punkty zdobyte podczas jednego podejścia tworzą Twój brejk. Gdy na stole nie ma już czerwonych bil, wbijaj kolory w kolejności od żółtego do czarnego. Faul następuje, gdy biała wpadnie do kieszeni, nic nie uderzysz, pierwsza uderzona bila nie będzie rozgrywana lub do kieszeni wpadnie bila nierozgrywana. Faul daje przeciwnikowi co najmniej 4 punkty lub wartość bili rozgrywanej bądź biorącej udział w faulu, jeśli jest wyższa. Po wpadnięciu białej do kieszeni przeciwnik umieszcza ją w polu D. Gdy wpadnie ostatnia czarna bila, wygrywa gracz z wyższym wynikiem; przy remisie czarna bila wraca na stół, a przeciwnik gra z pola D.',
+        keyboard: 'Klawiatura', kbAim: 'Obróć celownik', kbFine: 'Precyzyjny obrót', kbPower: 'Siła strzału', kbShoot: 'Strzał', kbPlace: 'Przesuń białą bilę w polu D (bila w ręku)',
+        tutTitle1: 'Celuj i strzelaj', tutText1: 'Przeciągaj po stole, aby obrócić linię celowania. Następnie pociągnij za pasek siły poniżej i puść go. Sposób celowania zmienisz pod kołem zębatym: Obracanie powoli obraca kij wokół białej bili, Wskazywanie podąża za palcem.',
+        tutTitle2: 'Czerwona, potem kolor', tutText2: 'Wbij czerwoną bilę, a potem dowolny kolor. Kolorowa bila wraca na swoje miejsce, a na stole znowu rozgrywana jest czerwona. Każdy kolor ma swoją wartość, a czarna najwyższą: 7 punktów.',
+        tutTitle3: 'Faule i koniec gry', tutText3: 'Faul daje przeciwnikowi co najmniej 4 punkty. Gdy skończą się czerwone bile, wbijaj po kolei kolory od żółtego do czarnego. Po wbiciu ostatniej czarnej bili wygrywa gracz z wyższym wynikiem.'
+      },
+      fr: {
+        vsAi: 'Contre l’IA', twoPlayers: 'Deux joueurs', mode: 'Mode', level: 'Niveau', redsCount: 'Rouges', rival: 'Adversaire', player2: 'Joueur deux',
+        yourTurn: 'À toi de jouer', turnOf: 'Au tour de : {n}', thinking: 'Réflexion…',
+        breakHint: 'Casse : place la blanche dans le D et frappe les rouges', inHand: 'Bille en main : place la blanche dans le D, puis vise',
+        onRed: 'À jouer : une rouge', onColour: 'À jouer : une couleur', onBall: 'À jouer : {c}',
+        cRed: 'rouge', cYellow: 'jaune', cGreen: 'verte', cBrown: 'marron', cBlue: 'bleue', cPink: 'rose', cBlack: 'noire', cColour: 'couleur',
+        redsLeft: 'Encore {n} rouges', leftOnTable: '{n} points sur la table',
+        subOn: 'À jouer : {c}', subBreak: 'Série {b}', subBest: 'Meilleure série {b}',
+        foulInOff: 'Faute : la blanche est tombée', foulNoHit: 'Faute : aucune bille touchée', foulWrong: 'Faute : la première bille touchée n’était pas à jouer', foulPot: 'Faute : une bille non jouable est tombée',
+        penaltyTo: '+{p} pour {n}', scored: '+{p} · série {b}', shootout: 'Égalité : la noire est replacée',
+        playerWon: '{n} gagne', power: 'Puissance', pull: 'Tire et relâche', fineLeft: 'Rotation fine à gauche', fineRight: 'Rotation fine à droite', turnSpd: 'Vitesse de rotation', turnSlow: 'Lente', turnMed: 'Moyenne', turnNormal: 'Rapide', aimCtl: 'Visée', ctlPoint: 'Pointer', ctlTurn: 'Tourner', ctlNote: 'Pointer : la visée suit ton doigt, et tu peux aussi tirer en arrière depuis la blanche pour jouer. Tourner : glisser sur la table fait tourner la queue autour de la blanche depuis sa position, sans sauter sous ton doigt ; plus tu glisses loin de la bille, plus la rotation est fine. Seule la barre de puissance tire.',
+        shots: 'Coups', fouls: 'Fautes', frameScore: 'Score', highBreak: 'Meilleure série', newFrame: 'Nouvelle manche', startFrame: 'Commencer',
+        dailySn: 'Table du jour', dailyGoal: 'Empoche les rouges, puis les couleurs dans l’ordre, en un minimum de coups', outOfShots: 'Plus de coups', cleared: 'Table nettoyée !',
+        tableLabel: 'Table de snooker', resetWarn: 'La manche en cours va se terminer. Continuer ?',
+        rules: 'Empoche une rouge (1 point), puis une couleur : jaune 2, verte 3, marron 4, bleue 5, rose 6, noire 7. La couleur touchée en premier est celle que tu annonces ; si elle tombe, tu marques ses points et elle revient sur sa mouche. Tu continues tant que tu empoches, et les points d’une visite forment ta série. Une fois les rouges parties, empoche les couleurs dans l’ordre, de la jaune à la noire. Il y a faute si la blanche tombe, si tu ne touches rien, si la première bille touchée n’est pas à jouer ou si une bille non jouable tombe. Une faute donne à l’adversaire au moins 4 points, ou la valeur de la bille à jouer ou d’une bille en cause si elle est plus haute. Après une blanche tombée, l’adversaire place la blanche dans le D. Quand la dernière noire tombe, le meilleur score gagne ; en cas d’égalité, la noire est replacée et l’adversaire joue depuis le D.',
+        keyboard: 'Clavier', kbAim: 'Tourner la visée', kbFine: 'Rotation fine', kbPower: 'Puissance du coup', kbShoot: 'Tirer', kbPlace: 'Déplacer la blanche dans le D (bille en main)',
+        tutTitle1: 'Vise et tire', tutText1: 'Glisse sur la table pour tourner la ligne de visée. Puis tire la barre de puissance en bas et relâche. Le mode de visée est derrière l’engrenage : Tourner fait pivoter la queue lentement autour de la blanche, Pointer suit ton doigt.',
+        tutTitle2: 'Une rouge, puis une couleur', tutText2: 'Empoche une rouge, puis la couleur de ton choix. La couleur revient sur sa mouche et c’est de nouveau une rouge. Chaque couleur a sa valeur, la noire la plus haute : 7.',
+        tutTitle3: 'Fautes et fin', tutText3: 'Une faute donne à l’adversaire au moins 4 points. Une fois les rouges parties, empoche les couleurs de la jaune à la noire dans l’ordre. Après la dernière noire, le meilleur score gagne.'
+      },
+      ar: {
+        vsAi: 'ضد الروبوت', twoPlayers: 'لاعبان', mode: 'النمط', level: 'المستوى', redsCount: 'الحمراء', rival: 'المنافس', player2: 'اللاعب الثاني',
+        yourTurn: 'دورك', turnOf: 'الدور: {n}', thinking: 'يفكر…',
+        breakHint: 'الافتتاح: ضع البيضاء في منطقة D واضرب الكرات الحمراء', inHand: 'الكرة في اليد: ضع البيضاء في منطقة D ثم صوّب',
+        onRed: 'المطلوبة: حمراء', onColour: 'المطلوبة: أي لون', onBall: 'المطلوبة: {c}',
+        cRed: 'حمراء', cYellow: 'صفراء', cGreen: 'خضراء', cBrown: 'بنية', cBlue: 'زرقاء', cPink: 'وردية', cBlack: 'سوداء', cColour: 'ملونة',
+        redsLeft: 'بقي {n} حمراء', leftOnTable: '{n} نقطة على الطاولة',
+        subOn: 'المطلوبة: {c}', subBreak: 'السلسلة {b}', subBest: 'أفضل سلسلة {b}',
+        foulInOff: 'خطأ: دخلت البيضاء', foulNoHit: 'خطأ: لم تُضرب أي كرة', foulWrong: 'خطأ: أول كرة ضُربت ليست المطلوبة', foulPot: 'خطأ: دخلت كرة غير مطلوبة',
+        penaltyTo: '+{p} لـ {n}', scored: '+{p} · سلسلة {b}', shootout: 'تعادل في النقاط: تعود السوداء إلى مكانها',
+        playerWon: '{n} يفوز', power: 'القوة', pull: 'اسحب وأفلت', fineLeft: 'دوران دقيق لليسار', fineRight: 'دوران دقيق لليمين', turnSpd: 'سرعة الدوران', turnSlow: 'بطيئة', turnMed: 'متوسطة', turnNormal: 'سريعة', aimCtl: 'التصويب', ctlPoint: 'إشارة', ctlTurn: 'تدوير', ctlNote: 'إشارة: يتبع التصويب إصبعك، ويمكنك أيضًا السحب للخلف من الكرة البيضاء للتسديد. تدوير: السحب على الطاولة يدير العصا حول البيضاء من اتجاهها الحالي دون أن تقفز إلى إصبعك؛ وكلما سحبت أبعد عن الكرة كان الدوران أدق. شريط القوة وحده يسدد.',
+        shots: 'الضربات', fouls: 'الأخطاء', frameScore: 'النتيجة', highBreak: 'أعلى سلسلة', newFrame: 'شوط جديد', startFrame: 'ابدأ',
+        dailySn: 'طاولة اليوم', dailyGoal: 'أدخل الحمراء، ثم الألوان بالترتيب، بأقل عدد من الضربات', outOfShots: 'نفدت الضربات', cleared: 'نظفت الطاولة!',
+        tableLabel: 'طاولة سنوكر', resetWarn: 'سينتهي الشوط الحالي. هل تتابع؟',
+        rules: 'أدخل كرة حمراء (نقطة واحدة)، ثم كرة ملونة: الصفراء 2، الخضراء 3، البنية 4، الزرقاء 5، الوردية 6، السوداء 7. اللون الذي تضربه أولًا هو اللون الذي تختاره؛ إن دخل تحتسب نقاطه ويعود إلى مكانه. تواصل اللعب ما دمت تُدخل الكرات، ونقاط الزيارة الواحدة هي سلسلتك. بعد انتهاء الحمراء أدخل الألوان بالترتيب من الصفراء إلى السوداء. يكون خطأً إذا دخلت البيضاء، أو لم تضرب شيئًا، أو كانت أول كرة تضربها غير مطلوبة، أو دخلت كرة غير مطلوبة. يمنح الخطأ خصمك 4 نقاط على الأقل، أو قيمة الكرة المطلوبة أو الكرة المعنية إن كانت أعلى. بعد دخول البيضاء يضعها خصمك في منطقة D. عند دخول آخر سوداء يفوز صاحب النتيجة الأعلى؛ وعند التعادل تعود السوداء إلى مكانها ويلعب خصمك من منطقة D.',
+        keyboard: 'لوحة المفاتيح', kbAim: 'تدوير التصويب', kbFine: 'دوران دقيق', kbPower: 'قوة الضربة', kbShoot: 'سدّد', kbPlace: 'حرّك البيضاء في منطقة D (الكرة في اليد)',
+        tutTitle1: 'صوّب وسدّد', tutText1: 'اسحب على الطاولة لتدير خط التصويب. ثم اسحب شريط القوة في الأسفل وأفلته. طريقة التصويب خلف الترس: تدوير يدير العصا ببطء حول البيضاء، وإشارة تتبع إصبعك.',
+        tutTitle2: 'حمراء ثم لون', tutText2: 'أدخل كرة حمراء، ثم أي لون تريده. يعود اللون إلى مكانه ويأتي دور الحمراء من جديد. لكل لون قيمته، وأعلاها السوداء: 7.',
+        tutTitle3: 'الأخطاء والنهاية', tutText3: 'يمنح الخطأ خصمك 4 نقاط على الأقل. بعد انتهاء الحمراء أدخل الألوان من الصفراء إلى السوداء بالترتيب. بعد آخر سوداء يفوز صاحب النتيجة الأعلى.'
+      },
+      hi: {
+        vsAi: 'कंप्यूटर से', twoPlayers: 'दो खिलाड़ी', mode: 'मोड', level: 'स्तर', redsCount: 'लाल गेंदें', rival: 'विरोधी', player2: 'खिलाड़ी दो',
+        yourTurn: 'आपकी बारी', turnOf: '{n} की बारी', thinking: 'सोच रहा है…',
+        breakHint: 'ब्रेक: सफ़ेद गेंद D में रखें और लाल गेंदों पर मारें', inHand: 'गेंद हाथ में: सफ़ेद गेंद D में रखें, फिर निशाना लगाएँ',
+        onRed: 'लक्ष्य: एक लाल गेंद', onColour: 'लक्ष्य: कोई भी रंगीन गेंद', onBall: 'लक्ष्य: {c} गेंद',
+        cRed: 'लाल', cYellow: 'पीली', cGreen: 'हरी', cBrown: 'भूरी', cBlue: 'नीली', cPink: 'गुलाबी', cBlack: 'काली', cColour: 'रंगीन',
+        redsLeft: '{n} लाल बाक़ी', leftOnTable: 'मेज़ पर {n} अंक',
+        subOn: 'लक्ष्य: {c}', subBreak: 'ब्रेक {b}', subBest: 'सर्वश्रेष्ठ ब्रेक {b}',
+        foulInOff: 'फ़ाउल: सफ़ेद गेंद पॉकेट में गई', foulNoHit: 'फ़ाउल: कोई गेंद नहीं लगी', foulWrong: 'फ़ाउल: पहले लगी गेंद लक्ष्य नहीं थी', foulPot: 'फ़ाउल: ग़लत गेंद पॉकेट में गई',
+        penaltyTo: '{n} को +{p}', scored: '+{p} · ब्रेक {b}', shootout: 'अंक बराबर: काली गेंद फिर से रखी गई',
+        playerWon: '{n} जीत गए', power: 'ताक़त', pull: 'खींचें और छोड़ें', fineLeft: 'बाएँ थोड़ा घुमाएँ', fineRight: 'दाएँ थोड़ा घुमाएँ', turnSpd: 'घुमाने की गति', turnSlow: 'धीमी', turnMed: 'मध्यम', turnNormal: 'तेज़', aimCtl: 'निशाना', ctlPoint: 'इशारा', ctlTurn: 'घुमाना', ctlNote: 'इशारा: निशाना आपकी उँगली के पीछे चलता है, और आप सफ़ेद गेंद से पीछे खींचकर भी मार सकते हैं। घुमाना: मेज़ पर खींचने से क्यू जहाँ है वहीं से सफ़ेद गेंद के चारों ओर घूमती है, उँगली की ओर नहीं कूदती; गेंद से जितनी दूर खींचें, उतना बारीक घूमती है। सिर्फ़ ताक़त की पट्टी शॉट मारती है।',
+        shots: 'शॉट', fouls: 'फ़ाउल', frameScore: 'स्कोर', highBreak: 'सबसे बड़ा ब्रेक', newFrame: 'नया फ़्रेम', startFrame: 'शुरू',
+        dailySn: 'रोज़ की मेज़', dailyGoal: 'लाल गेंदें, फिर रंगीन गेंदें क्रम से, कम से कम शॉट में पॉकेट में डालें', outOfShots: 'शॉट ख़त्म', cleared: 'मेज़ साफ़!',
+        tableLabel: 'स्नूकर की मेज़', resetWarn: 'इससे मौजूदा फ़्रेम ख़त्म हो जाएगा। जारी रखें?',
+        rules: 'एक लाल गेंद पॉकेट में डालें (1 अंक), फिर एक रंगीन: पीली 2, हरी 3, भूरी 4, नीली 5, गुलाबी 6, काली 7। जिस रंगीन गेंद को आप पहले मारते हैं, वही आपका लक्ष्य है; अगर वह पॉकेट में जाए तो उसके अंक मिलते हैं और वह अपनी जगह वापस रखी जाती है। जब तक आप गेंद डालते रहें, बारी आपकी रहती है, और एक बारी के लगातार अंक आपका ब्रेक हैं। लाल गेंदें ख़त्म होने पर रंगीन गेंदें पीली से काली तक क्रम से डालें। फ़ाउल तब होता है जब सफ़ेद गेंद पॉकेट में जाए, कोई गेंद न लगे, पहले लगी गेंद लक्ष्य न हो, या ग़लत गेंद पॉकेट में जाए। फ़ाउल पर विरोधी को कम से कम 4 अंक मिलते हैं, या लक्ष्य गेंद या शामिल गेंद का मूल्य, अगर वह ज़्यादा हो। सफ़ेद गेंद पॉकेट में जाने के बाद विरोधी उसे D में रखता है। आख़िरी काली गेंद पॉकेट में जाने पर ज़्यादा स्कोर वाला जीतता है; अंक बराबर हों तो काली गेंद फिर रखी जाती है और विरोधी D से खेलता है।',
+        keyboard: 'कीबोर्ड', kbAim: 'निशाना घुमाएँ', kbFine: 'बारीक घुमाव', kbPower: 'शॉट की ताक़त', kbShoot: 'मारें', kbPlace: 'D में सफ़ेद गेंद खिसकाएँ (गेंद हाथ में)',
+        tutTitle1: 'निशाना लगाएँ और मारें', tutText1: 'निशाने की रेखा घुमाने के लिए मेज़ पर खींचें। फिर नीचे ताक़त की पट्टी खींचें और छोड़ें। निशाने का तरीक़ा गियर में है: घुमाना क्यू को सफ़ेद गेंद के चारों ओर धीरे घुमाता है, इशारा आपकी उँगली के पीछे चलता है।',
+        tutTitle2: 'लाल, फिर रंगीन', tutText2: 'एक लाल गेंद डालें, फिर कोई भी रंगीन। रंगीन गेंद अपनी जगह लौट आती है और फिर लाल की बारी है। हर रंग का अपना मूल्य है, काली का सबसे ज़्यादा: 7।',
+        tutTitle3: 'फ़ाउल और अंत', tutText3: 'फ़ाउल पर विरोधी को कम से कम 4 अंक मिलते हैं। लाल गेंदें ख़त्म होने पर रंगीन गेंदें पीली से काली तक क्रम से डालें। आख़िरी काली गेंद के बाद ज़्यादा स्कोर वाला जीतता है।'
+      },
+      zh: {
+        vsAi: '对战电脑', twoPlayers: '双人', mode: '模式', level: '难度', redsCount: '红球数', rival: '对手', player2: '玩家二',
+        yourTurn: '轮到你了', turnOf: '轮到：{n}', thinking: '思考中…',
+        breakHint: '开球：把白球放在 D 区内，击打红球', inHand: '自由球：把白球放在 D 区内，再瞄准',
+        onRed: '目标球：红球', onColour: '目标球：任意彩球', onBall: '目标球：{c}',
+        cRed: '红球', cYellow: '黄球', cGreen: '绿球', cBrown: '棕球', cBlue: '蓝球', cPink: '粉球', cBlack: '黑球', cColour: '彩球',
+        redsLeft: '还剩 {n} 个红球', leftOnTable: '台面还剩 {n} 分',
+        subOn: '目标：{c}', subBreak: '单杆 {b}', subBest: '最高单杆 {b}',
+        foulInOff: '犯规：白球落袋', foulNoHit: '犯规：没有碰到球', foulWrong: '犯规：先碰到的不是目标球', foulPot: '犯规：打进了非目标球',
+        penaltyTo: '{n} 得 {p} 分', scored: '+{p} · 单杆 {b}', shootout: '比分持平：黑球重新摆放',
+        playerWon: '{n}获胜', power: '力度', pull: '拉动后松开', fineLeft: '向左微调', fineRight: '向右微调', turnSpd: '转动速度', turnSlow: '慢', turnMed: '中', turnNormal: '快', aimCtl: '瞄准方式', ctlPoint: '指向', ctlTurn: '转动', ctlNote: '指向：瞄准线跟随手指，也可以从白球向后拉来击球。转动：在球台上拖动，球杆从当前方向绕白球转动，不会跳到手指处；离白球越远，转动越精细。只有力度条能击球。',
+        shots: '击球', fouls: '犯规', frameScore: '比分', highBreak: '最高单杆', newFrame: '新一局', startFrame: '开始',
+        dailySn: '每日球台', dailyGoal: '先打红球，再按顺序打彩球，杆数越少越好', outOfShots: '杆数用完了', cleared: '清台！',
+        tableLabel: '斯诺克球台', resetWarn: '将结束当前这一局，是否继续？',
+        rules: '先打进一个红球（1 分），再打一个彩球：黄 2、绿 3、棕 4、蓝 5、粉 6、黑 7。你先碰到的彩球就是你指定的球；打进后得分，并放回原位。只要继续进球就可以一直击球，一轮连续得到的分数就是单杆得分。红球全部落袋后，按黄到黑的顺序打彩球。白球落袋、没有碰到球、先碰到的不是目标球、或打进了非目标球，都算犯规。犯规时对手至少得 4 分，如果目标球或涉及的球分值更高，则按更高的分值。白球落袋后，对手把白球放在 D 区内。最后一个黑球落袋后，分高者获胜；比分持平时黑球重新摆放，由对手从 D 区开球。',
+        keyboard: '键盘', kbAim: '转动瞄准线', kbFine: '微调', kbPower: '击球力度', kbShoot: '击球', kbPlace: '在 D 区内移动白球（自由球时）',
+        tutTitle1: '瞄准并击球', tutText1: '在球台上拖动来转动瞄准线。然后拉动下方的力度条再松开。瞄准方式在齿轮设置里：“转动”让球杆绕白球慢慢转，“指向”跟随手指。',
+        tutTitle2: '先红球，再彩球', tutText2: '打进一个红球后，可以打任意一个彩球。彩球会放回原位，接着又该打红球。每个彩球分值不同，黑球最高：7 分。',
+        tutTitle3: '犯规与结束', tutText3: '犯规时对手至少得 4 分。红球全部打完后，按从黄到黑的顺序打彩球。最后一个黑球落袋后，分高者获胜。'
+      },
+      de: {
+        vsAi: 'Gegen KI', twoPlayers: 'Zu zweit', mode: 'Modus', level: 'Stufe', redsCount: 'Rote', rival: 'Gegner', player2: 'Spieler zwei',
+        yourTurn: 'Du bist dran', turnOf: '{n} am Zug', thinking: 'Denkt nach…',
+        breakHint: 'Anstoß: Leg die Weiße ins D und spiel die Roten an', inHand: 'Ball in der Hand: Leg die Weiße ins D und ziele dann',
+        onRed: 'Zielball: eine Rote', onColour: 'Zielball: eine beliebige Farbe', onBall: 'Zielball: {c}',
+        cRed: 'Rot', cYellow: 'Gelb', cGreen: 'Grün', cBrown: 'Braun', cBlue: 'Blau', cPink: 'Pink', cBlack: 'Schwarz', cColour: 'Farbe',
+        redsLeft: 'Noch {n} Rote', leftOnTable: 'Noch {n} Punkte auf dem Tisch',
+        subOn: 'Ziel: {c}', subBreak: 'Break {b}', subBest: 'Bestes Break {b}',
+        foulInOff: 'Foul: die Weiße ist gefallen', foulNoHit: 'Foul: keine Kugel getroffen', foulWrong: 'Foul: zuerst nicht den Zielball getroffen', foulPot: 'Foul: eine falsche Kugel ist gefallen',
+        penaltyTo: '+{p} für {n}', scored: '+{p} · Break {b}', shootout: 'Punktgleich: Schwarz wird neu aufgesetzt',
+        playerWon: 'Sieg: {n}', power: 'Kraft', pull: 'Ziehen und loslassen', fineLeft: 'Fein nach links', fineRight: 'Fein nach rechts', turnSpd: 'Drehtempo', turnSlow: 'Langsam', turnMed: 'Mittel', turnNormal: 'Schnell', aimCtl: 'Zielen', ctlPoint: 'Zeigen', ctlTurn: 'Drehen', ctlNote: 'Zeigen: Die Ziellinie folgt dem Finger, und du kannst auch von der weißen Kugel zurückziehen, um zu stoßen. Drehen: Ziehen über den Tisch dreht den Queue von seiner Richtung aus um die weiße Kugel, ohne zum Finger zu springen; je weiter von der Kugel, desto feiner. Nur der Kraftbalken stößt.',
+        shots: 'Stöße', fouls: 'Fouls', frameScore: 'Punkte', highBreak: 'Höchstes Break', newFrame: 'Neuer Frame', startFrame: 'Start',
+        dailySn: 'Tagestisch', dailyGoal: 'Versenke die Roten und dann die Farben der Reihe nach, mit so wenigen Stößen wie möglich', outOfShots: 'Keine Stöße mehr', cleared: 'Tisch geräumt!',
+        tableLabel: 'Snookertisch', resetWarn: 'Der aktuelle Frame endet. Weiter?',
+        rules: 'Versenke eine Rote (1 Punkt), dann eine Farbe: Gelb 2, Grün 3, Braun 4, Blau 5, Pink 6, Schwarz 7. Die Farbe, die du zuerst triffst, ist deine angesagte; fällt sie, bekommst du ihre Punkte und sie kommt zurück auf ihren Punkt. Solange du versenkst, bleibst du dran, und die Punkte einer Aufnahme sind dein Break. Sind die Roten weg, versenke die Farben der Reihe nach von Gelb bis Schwarz. Ein Foul ist es, wenn die Weiße fällt, nichts getroffen wird, zuerst kein Zielball getroffen wird oder eine Kugel fällt, die nicht Zielball ist. Ein Foul bringt dem Gegner mindestens 4 Punkte, oder den Wert des Zielballs oder einer beteiligten Kugel, wenn der höher ist. Nach einer gefallenen Weißen legt der Gegner sie ins D. Fällt die letzte Schwarze, gewinnt die höhere Punktzahl; bei Gleichstand wird Schwarz neu aufgesetzt und der Gegner spielt aus dem D.',
+        keyboard: 'Tastatur', kbAim: 'Zielen', kbFine: 'Fein zielen', kbPower: 'Stoßkraft', kbShoot: 'Stoßen', kbPlace: 'Weiße im D bewegen (Ball in der Hand)',
+        tutTitle1: 'Zielen und stoßen', tutText1: 'Zieh über den Tisch, um die Ziellinie zu drehen. Dann zieh den Kraftbalken unten und lass los. Die Zielart stellst du hinter dem Zahnrad ein: Drehen dreht den Queue langsam um die weiße Kugel, Zeigen folgt dem Finger.',
+        tutTitle2: 'Eine Rote, dann eine Farbe', tutText2: 'Versenke eine Rote, dann eine beliebige Farbe. Die Farbe kommt zurück auf ihren Punkt, und wieder ist eine Rote dran. Jede Farbe hat ihren eigenen Wert, Schwarz den höchsten: 7.',
+        tutTitle3: 'Fouls und das Ende', tutText3: 'Ein Foul bringt dem Gegner mindestens 4 Punkte. Sind die Roten weg, versenke die Farben von Gelb bis Schwarz der Reihe nach. Nach der letzten Schwarzen gewinnt die höhere Punktzahl.'
+      },
+      es: {
+        vsAi: 'Contra la IA', twoPlayers: 'Dos jugadores', mode: 'Modo', level: 'Nivel', redsCount: 'Rojas', rival: 'Rival', player2: 'Jugador dos',
+        yourTurn: 'Te toca', turnOf: 'Turno de {n}', thinking: 'Pensando…',
+        breakHint: 'Saque: coloca la blanca en la D y golpea las rojas', inHand: 'Bola en mano: coloca la blanca en la D y luego apunta',
+        onRed: 'Bola en juego: una roja', onColour: 'Bola en juego: cualquier color', onBall: 'Bola en juego: {c}',
+        cRed: 'roja', cYellow: 'amarilla', cGreen: 'verde', cBrown: 'marrón', cBlue: 'azul', cPink: 'rosa', cBlack: 'negra', cColour: 'color',
+        redsLeft: 'Quedan {n} rojas', leftOnTable: 'Quedan {n} puntos en la mesa',
+        subOn: 'En juego: {c}', subBreak: 'Tacada {b}', subBest: 'Mejor tacada {b}',
+        foulInOff: 'Falta: la blanca entró', foulNoHit: 'Falta: no tocaste ninguna bola', foulWrong: 'Falta: la primera bola tocada no estaba en juego', foulPot: 'Falta: entró una bola que no estaba en juego',
+        penaltyTo: '+{p} para {n}', scored: '+{p} · tacada {b}', shootout: 'Empate a puntos: la negra vuelve a su sitio',
+        playerWon: 'Gana: {n}', power: 'Fuerza', pull: 'Tira y suelta', fineLeft: 'Giro fino a la izquierda', fineRight: 'Giro fino a la derecha', turnSpd: 'Velocidad de giro', turnSlow: 'Lenta', turnMed: 'Media', turnNormal: 'Rápida', aimCtl: 'Apuntar', ctlPoint: 'Señalar', ctlTurn: 'Girar', ctlNote: 'Señalar: la mira sigue tu dedo, y también puedes tirar hacia atrás desde la bola blanca para tirar. Girar: arrastrar sobre la mesa gira el taco alrededor de la bola blanca desde donde apunta, sin saltar a tu dedo; cuanto más lejos de la bola, más fino. Solo la barra de fuerza tira.',
+        shots: 'Tiros', fouls: 'Faltas', frameScore: 'Puntos', highBreak: 'Mejor tacada', newFrame: 'Nueva partida', startFrame: 'Empezar',
+        dailySn: 'Mesa diaria', dailyGoal: 'Mete las rojas y luego los colores en orden, con los menos tiros posibles', outOfShots: 'Sin tiros', cleared: '¡Mesa limpia!',
+        tableLabel: 'Mesa de snooker', resetWarn: 'Esto termina la partida actual. ¿Seguir?',
+        rules: 'Mete una roja (1 punto) y luego un color: amarilla 2, verde 3, marrón 4, azul 5, rosa 6, negra 7. El color que tocas primero es el que eliges; si entra, sumas su valor y vuelve a su sitio. Sigues tirando mientras metas bolas, y los puntos de un mismo turno son tu tacada. Cuando no quedan rojas, mete los colores en orden, de la amarilla a la negra. Es falta si entra la blanca, no tocas nada, la primera bola tocada no está en juego o entra una bola que no está en juego. Una falta da al rival al menos 4 puntos, o el valor de la bola en juego o de una bola implicada si es mayor. Si entra la blanca, el rival la coloca en la D. Cuando entra la última negra gana la puntuación más alta; si hay empate, la negra vuelve a su sitio y el rival tira desde la D.',
+        keyboard: 'Teclado', kbAim: 'Girar la mira', kbFine: 'Giro fino', kbPower: 'Fuerza del tiro', kbShoot: 'Tirar', kbPlace: 'Mover la blanca dentro de la D (bola en mano)',
+        tutTitle1: 'Apunta y tira', tutText1: 'Arrastra sobre la mesa para girar la línea de mira. Luego tira de la barra de fuerza de abajo y suelta. El modo de apuntar está tras el engranaje: Girar mueve el taco despacio alrededor de la bola blanca, Señalar sigue tu dedo.',
+        tutTitle2: 'Una roja, luego un color', tutText2: 'Mete una roja y después el color que quieras. El color vuelve a su sitio y otra vez toca una roja. Cada color tiene su valor, y la negra es la que más vale: 7.',
+        tutTitle3: 'Faltas y final', tutText3: 'Una falta da al rival al menos 4 puntos. Cuando no quedan rojas, mete los colores de la amarilla a la negra en orden. Tras la última negra gana la puntuación más alta.'
+      }
+    }
+  });
+
+  var params = new URLSearchParams(location.search);
+  var dailyDate = params.get('daily');
+  var prefs = ctx.store.get('prefs', { mode: 'ai', level: 'medium', reds: 6, breaker: 0 , aim: 'turn' });
+  // two ways to aim (#492): point, the line follows the finger; turn, a drag turns the cue
+  // slowly and only the power bar shoots, as in Miniclip's pool
+  // a new player starts on turn (#590: point was hard to control); a saved choice, or a
+  // save from before turn existed, stays as it was
+  if (prefs.aim !== 'turn') prefs.aim = 'point';
+  if (!Cue.TURN_SPEEDS[prefs.turn]) prefs.turn = 'normal';
+  if (['easy', 'medium', 'hard'].indexOf(prefs.level) < 0) prefs.level = 'medium';
+  if (prefs.mode !== 'ai' && prefs.mode !== '2p') prefs.mode = 'ai';
+  if (E.REDS_OPTIONS.indexOf(prefs.reds) < 0) prefs.reds = 6;
+
+  // F: the frame at rest (what is saved). run: the shot being animated.
+  var F = null, run = null, pending = null, startedAt = Date.now();
+  var aimA = 0, power = 0, drag = null, kbOn = false, kbPower = 0.45, msg = { text: '', kind: '' };
+  var ai = null, aiAnim = null, lastHitSfx = 0;
+
+  var cv = el('canvas', { class: 'sn-canvas', role: 'img', 'aria-label': C.t('tableLabel') });
+  var tableBox = el('div', { class: 'sn-tablebox' }, [cv]);
+  var playersRow = el('div', { class: 'sn-players' });
+  var msgEl = el('div', { class: 'sn-msg', 'aria-live': 'polite' });
+  var fill = el('div', { class: 'sn-power__fill' });
+  var plabel = el('div', { class: 'sn-power__label', text: C.t('pull') });
+  var powerBar = el('div', { class: 'sn-power', role: 'slider', 'aria-label': C.t('power'), 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': '0' }, [fill, plabel]);
+  var fineL = el('button', { class: 'ch-iconbtn sn-fine', type: 'button', 'aria-label': C.t('fineLeft') }, [el('span', { class: 'sn-fine__g', text: '↺' })]);
+  var fineR = el('button', { class: 'ch-iconbtn sn-fine', type: 'button', 'aria-label': C.t('fineRight') }, [el('span', { class: 'sn-fine__g', text: '↻' })]);
+  var gear = el('button', { class: 'ch-iconbtn sn-fine', type: 'button', 'aria-label': C.t('settings'), title: C.t('settings') }, [C.icon('gear', 20)]);
+  gear.addEventListener('click', showSettings);
+  var controls = el('div', { class: 'sn-controls' }, [gear, powerBar, fineL, fineR]);
+  var wrap = el('div', { class: 'sn-wrap' }, [playersRow, msgEl, tableBox, controls]);
+
+  ctx.button({ icon: 'help', label: C.t('help'), onClick: showHelp });
+  ctx.button({ icon: 'refresh', label: C.t('newFrame'), onClick: askNew });
+  ctx.main.appendChild(wrap);
+  ctx.mount();
+
+  /* ------------------------------------------------------------- frame */
+
+  function newGame(o) {
+    stopAi();
+    run = null; pending = null;
+    if (o.daily) {
+      F = E.newDaily(C.daily('snooker', o.daily).rng, o.daily);
+    } else {
+      prefs.mode = o.mode; prefs.level = o.level; prefs.reds = o.reds;
+      // In a match against the AI the break-off goes back and forth between frames
+      var first = o.mode === 'ai' ? (prefs.breaker || 0) : 0;
+      prefs.breaker = 1 - first;
+      ctx.store.set('prefs', prefs);
+      F = E.newFrame({ mode: o.mode, level: o.level, reds: o.reds, first: first });
+    }
+    startedAt = Date.now();
+    aimA = F.isBreak ? 0 : E.aimDefault(F);
+    setMsg(F.daily ? C.t('dailyGoal') : '', '');
+    render();
+    save();
+    maybeAi();
+  }
+
+  function humanTurn() { return F && !F.over && !run && (F.mode !== 'ai' || F.turn === 0); }
+  function aiTurn() { return F && !F.over && !run && F.mode === 'ai' && F.turn === 1; }
+
+  function pname(p) {
+    if (F.mode === 'ai') return p === 0 ? (C.state.profile.name || C.t('you')) : C.t('rival') + ' · ' + C.t(F.level);
+    if (F.mode === 'daily') return C.state.profile.name || C.t('you');
+    return p === 0 ? (C.state.profile.name || C.t('you')) : C.t('player2');
+  }
+  function cname(v) {
+    return [C.t('cColour'), C.t('cRed'), C.t('cYellow'), C.t('cGreen'), C.t('cBrown'), C.t('cBlue'), C.t('cPink'), C.t('cBlack')][v] || '';
+  }
+  // The ball on, as a word: a red, any colour, or the next colour in order
+  function onText(long) {
+    if (F.phase === 'red') return long ? C.t('onRed') : cname(1);
+    if (F.phase === 'colour') return long ? C.t('onColour') : cname(0);
+    return long ? C.t('onBall', { c: cname(F.next) }) : cname(F.next);
+  }
+
+  function setMsg(text, kind) { msg = { text: text || '', kind: kind || '' }; }
+
+  // The idle hint when nothing else needs saying
+  function hint() {
+    if (!F || F.over) return '';
+    if (F.mode === 'ai' && F.turn === 1) return C.t('thinking');
+    if (F.isBreak) return C.t('breakHint');
+    if (F.inHand) return C.t('inHand');
+    var left = E.reds(F).length, tail = left ? ' · ' + C.t('redsLeft', { n: C.num(left) }) : ' · ' + C.t('leftOnTable', { n: C.num(E.remaining(F)) });
+    var s = onText(true) + tail;
+    if (F.mode === '2p') s = C.t('turnOf', { n: pname(F.turn) }) + ' · ' + s;
+    return s;
+  }
+
+  /* -------------------------------------------------------------- shots */
+
+  function shoot(shot) {
+    if (!F || F.over || run) return;
+    var cue = E.ball(F, 0);
+    if (!cue || !cue.inPlay) return;
+    kbOn = false;
+    setMsg('', '');
+    msgEl.textContent = '';
+    // The rules see the shot first; the animation then replays the very same
+    // steps, so what is drawn is what was judged.
+    pending = E.shoot(F, shot);
+    run = Cue.start(T, F.balls, shot, 0);
+    C.audio.sfx('shoot');
+    C.haptic('tap');
+    power = 0;
+    drawPower();
+    // saved at once: leaving mid-roll keeps the shot instead of offering a redo
+    var keep = F;
+    F = pending.F;
+    save();
+    F = keep;
+    animate();
+  }
+
+  var raf = null, lastT = 0, acc = 0;
+  // potted balls on their way down the pocket (#407, Cue.sinkAt)
+  var sinks = [], sinkRaf = 0;
+  function drawSinks(g) {
+    var now = performance.now(), keep = [];
+    for (var i = 0; i < sinks.length; i++) {
+      var q = (now - sinks[i].t0) / Cue.SINK_MS;
+      if (q >= 1) continue;
+      keep.push(sinks[i]);
+      var p = Cue.sinkAt(T, sinks[i], Math.max(0, q));
+      g.save(); g.globalAlpha = p.a; g.translate(p.x, p.y); g.scale(p.k, p.k);
+      paintBall(g, { id: sinks[i].id, x: 0, y: 0, inPlay: true });
+      g.restore();
+    }
+    sinks = keep;
+    if (sinks.length && !sinkRaf) sinkRaf = requestAnimationFrame(function () { sinkRaf = 0; draw(); });
+  }
+  function animate() {
+    lastT = 0; acc = 0;
+    var step = function (t) {
+      raf = null;
+      if (!run) return;
+      if (!lastT) lastT = t;
+      acc += Math.min(0.1, (t - lastT) / 1000);
+      lastT = t;
+      var n = 0;
+      while (acc >= Cue.DT && run.moving && n < 200) {
+        Cue.tick(run);
+        acc -= Cue.DT; n++;
+        if (run.hits && t - lastHitSfx > 60) { C.audio.sfx('hit'); lastHitSfx = t; }
+        if (run.pots.length) {
+          C.audio.sfx('pop'); C.haptic('tap');
+          if (!C.ui.reduceMotion()) sinks = sinks.concat(Cue.sinksOf(run, t));
+        }
+      }
+      draw();
+      if (run.moving) raf = requestAnimationFrame(step);
+      else endShot();
+    };
+    raf = requestAnimationFrame(step);
+  }
+
+  function endShot() {
+    var res = pending.res;
+    F = pending.F;
+    run = null; pending = null;
+    var who = F.last ? F.last.by : 0;
+    if (res.foul) {
+      var why = { inOff: C.t('foulInOff'), noHit: C.t('foulNoHit'), wrongFirst: C.t('foulWrong'), wrongPot: C.t('foulPot') }[res.foul];
+      setMsg(F.mode === 'daily' ? why : why + ' · ' + C.t('penaltyTo', { p: C.num(res.penalty), n: pname(1 - who) }), 'bad');
+      C.feedback('bad');
+    } else if (res.points) setMsg(C.t('scored', { p: C.num(res.points), b: C.num(F.brk) }), 'good');
+    else setMsg('', '');
+    if (F.shootout && res.ends && !F.over) setMsg(C.t('shootout'), '');
+    if (res.points > 0 && !res.foul) C.feedback('good');
+    if (F.brk >= 20 && (F.mode === '2p' || (F.mode === 'ai' && who === 0))) C.achievements.unlock('sn-break');
+    if (!F.over) aimA = E.aimDefault(F);
+    render();
+    if (F.over) { setTimeout(finish, 650); return; }
+    save();
+    maybeAi();
+  }
+
+  /* ----------------------------------------------------------------- AI */
+
+  function stopAi() {
+    if (ai && ai.raf) cancelAnimationFrame(ai.raf);
+    if (aiAnim) cancelAnimationFrame(aiAnim);
+    ai = null; aiAnim = null;
+  }
+
+  function maybeAi() {
+    if (!aiTurn()) return;
+    stopAi();
+    var plan = E.planner(F, F.level, Math.random), t0 = performance.now();
+    ai = { plan: plan, raf: null };
+    drawPlayers();
+    // a few shots per frame keep the page responsive while the AI thinks
+    var tick = function () {
+      if (!ai || ai.plan !== plan) return;
+      var done = plan.step(4);
+      if (!done || performance.now() - t0 < 500) { ai.raf = requestAnimationFrame(tick); return; }
+      ai = null;
+      play(plan.result());
+    };
+    ai.raf = requestAnimationFrame(tick);
+  }
+
+  // The AI's shot is shown before it is played: the white is placed, the aim
+  // line swings round and the cue draws back.
+  function play(shot) {
+    if (!aiTurn()) return;
+    if (shot.place && F.inHand) E.placeCue(F, shot.place.x, shot.place.y);
+    var from = aimA, to = shot.angle, d = Math.atan2(Math.sin(to - from), Math.cos(to - from)), t0 = 0;
+    var step = function (t) {
+      if (!aiTurn()) return;
+      if (!t0) t0 = t;
+      var k = Math.min(1, (t - t0) / 700);
+      aimA = from + d * (k < 0.7 ? (k / 0.7) * (2 - k / 0.7) : 1);
+      power = k < 0.7 ? 0 : shot.power * (k - 0.7) / 0.3;
+      draw(); drawPower();
+      if (k < 1) aiAnim = requestAnimationFrame(step);
+      else { aiAnim = null; aimA = to; shoot({ angle: to, power: shot.power }); }
+    };
+    aiAnim = requestAnimationFrame(step);
+  }
+
+  /* ------------------------------------------------------------- result */
+
+  function finish() {
+    var won, title;
+    if (F.mode === 'daily') {
+      won = F.winner === 0;
+      title = won ? C.t('cleared') : C.t('outOfShots');
+    } else if (F.mode === 'ai') {
+      won = F.winner === 0;
+      title = won ? C.t('won') : C.t('lost');
+    } else {
+      won = null;
+      title = C.t('playerWon', { n: pname(F.winner) });
+    }
+    var base = F.mode === 'ai' ? ({ easy: 5, medium: 10, hard: 18 }[F.level] || 10) : 8;
+    // a longer frame is a longer game: more reds, a little more
+    base = Math.round(base * (F.reds >= 15 ? 1.6 : (F.reds >= 10 ? 1.3 : 1)));
+    var coins = Math.max(2, Math.round(won ? base : base * 0.35));
+    var points = Math.max(3, Math.round(won ? base * 4 : base * 1.2));
+    var lines;
+    if (F.mode === 'daily') {
+      var sc = F.shots + F.fouls[0];
+      coins = won ? 10 + Math.max(0, 25 - sc) : 3;
+      points = won ? 25 + Math.max(0, 50 - sc * 2) : 8;
+      lines = [{ label: C.t('shots'), value: C.num(F.shots) }, { label: C.t('fouls'), value: C.num(F.fouls[0]) }, { label: C.t('frameScore'), value: C.num(F.scores[0]) }];
+      if (won) C.stats.best('snooker', 'dailyShots', sc, true);
+      var first = C.stats.daily('snooker', F.daily, { label: won ? C.num(F.shots) + ' ' + C.t('shots') + ' · ' + C.num(F.fouls[0]) + ' ' + C.t('fouls') : C.t('outOfShots'), win: won });
+      if (!first) { coins = Math.round(coins * 0.2); points = Math.round(points * 0.2); }
+    } else {
+      lines = [{ label: C.t('frameScore'), value: C.num(F.scores[0]) + ' – ' + C.num(F.scores[1]) }, { label: C.t('highBreak'), value: C.num(F.best[0]) + ' – ' + C.num(F.best[1]) }];
+      if (F.mode === 'ai') {
+        C.stats.best('snooker', 'highBreak', F.best[0], false);
+        if (won) {
+          C.achievements.unlock('sn-win');
+          if (F.level === 'hard') C.achievements.unlock('sn-hard');
+        }
+      }
+    }
+    var daily = F.daily;
+    ctx.clearSave();
+    ctx.finish({
+      won: won, title: title, timeMs: Date.now() - startedAt, coins: coins, points: points, lines: lines,
+      shareText: 'چوگان · اسنوکر' + (daily ? ('\nروزانه ' + daily + '\n' + C.num(F.shots) + ' ' + C.t('shots')) : '\n' + title + '\n' + C.num(F.scores[0]) + ' – ' + C.num(F.scores[1])),
+      paint: cardPaint(),
+      onAgain: daily ? null : function () { newGame({ mode: F.mode, level: F.level, reds: F.reds }); }
+    });
+  }
+
+  /* -------------------------------------------------------------- saves */
+
+  ctx.autosave(function () {
+    if (!F || F.over || (F.isBreak && !F.shots && F.mode !== 'daily')) return { inProgress: false };
+    if (F.mode === 'daily' && !F.shots) return { inProgress: false };
+    return { f: F, elapsed: Date.now() - startedAt };
+  });
+  function save() { ctx.save(); }
+  function validSave(sv) {
+    var f = sv && sv.f;
+    return !!(f && Array.isArray(f.balls) && f.balls.length >= 2 && f.balls[0].id === 0 && Array.isArray(f.scores) &&
+      (f.turn === 0 || f.turn === 1) && ['ai', '2p', 'daily'].indexOf(f.mode) >= 0 && ['red', 'colour', 'order'].indexOf(f.phase) >= 0 && !f.over);
+  }
+  function restore(sv) {
+    F = sv.f;
+    startedAt = Date.now() - (sv.elapsed || 0);
+    aimA = E.aimDefault(F);
+    setMsg('', '');
+    render();
+    maybeAi();
+  }
+
+  function askNew() {
+    if (F && F.daily) {
+      var go = function () { newGame({ daily: F.daily }); };
+      if (F.shots && !F.over) C.ui.confirm({ title: C.t('newFrame'), body: C.t('resetWarn'), onOk: go }); else go();
+      return;
+    }
+    var o = { mode: F ? F.mode : prefs.mode, level: F ? F.level : prefs.level, reds: F && F.mode !== 'daily' ? F.reds : prefs.reds };
+    if (o.mode === 'daily') o.mode = 'ai';
+    if (E.REDS_OPTIONS.indexOf(o.reds) < 0) o.reds = 6;
+    var lv = el('div');
+    var drawLv = function () {
+      lv.innerHTML = '';
+      if (o.mode !== 'ai') return;
+      lv.appendChild(el('div', { class: 'ch-dim ch-sm', style: { margin: 'var(--s-3) 0 var(--s-1)' }, text: C.t('level') }));
+      lv.appendChild(C.ui.segmented([{ value: 'easy', label: C.t('easy') }, { value: 'medium', label: C.t('medium') }, { value: 'hard', label: C.t('hard') }],
+        o.level, function (v) { o.level = v; }));
+    };
+    drawLv();
+    C.ui.modal({
+      title: C.t('newFrame'),
+      body: [el('div', { class: 'ch-dim ch-sm', style: { margin: '0 0 var(--s-1)' }, text: C.t('mode') }),
+        C.ui.segmented([{ value: 'ai', label: C.t('vsAi') }, { value: '2p', label: C.t('twoPlayers') }], o.mode, function (v) { o.mode = v; drawLv(); }),
+        lv,
+        el('div', { class: 'ch-dim ch-sm', style: { margin: 'var(--s-3) 0 var(--s-1)' }, text: C.t('redsCount') }),
+        C.ui.segmented(E.REDS_OPTIONS.map(function (n) { return { value: n, label: C.num(n) }; }), o.reds, function (v) { o.reds = +v; }),
+        F && F.shots && !F.over ? el('p', { class: 'ch-dim ch-sm', style: { 'margin-top': 'var(--s-3)' }, text: C.t('resetWarn') }) : el('span')],
+      actions: [{ label: C.t('cancel') }, { label: C.t('startFrame'), kind: 'primary', onClick: function () { newGame(o); } }]
+    });
+  }
+
+  /* --------------------------------------------------------------- draw */
+
+  var COL = {};
+  // Fixed ball colours by value: cue, red, yellow, green, brown, blue, pink, black.
+  // The green is lighter than a real one so it still reads on the cloth.
+  var BALL = ['#F4F1EA', '#C8172F', '#F2C12E', '#2FA862', '#7A4722', '#2457C5', '#F297BE', '#141414'];
+  function readColors() {
+    var cs = getComputedStyle(document.documentElement);
+    var v = function (k, f) { return cs.getPropertyValue(k).trim() || f; };
+    COL = { cloth: v('--sn-cloth', '#1F7340'), cloth2: v('--sn-cloth-2', '#1A6338'), rail: v('--sn-rail', '#5A2E1A'), rail2: v('--sn-rail-2', '#3E1F11'),
+      pocket: v('--sn-pocket', '#120D0A'), line: v('--sn-line', 'rgba(255,255,255,.26)'), gold: v('--c-gold', '#D9A441'), bad: v('--c-bad', '#C0392B') };
+  }
+  readColors();
+  function ballColor(id) { return BALL[E.value(id)]; }
+
+  // Table to screen. A tall box turns the table on its side, baulk at the
+  // bottom, so a phone held upright shows it as large as it can.
+  var G = { s: 1, rot: false, W: 1, H: 1, rail: 6 };
+  function layout() {
+    var bw = tableBox.clientWidth || window.innerWidth, bh = tableBox.clientHeight || (window.innerHeight - 220);
+    var rail = 6, tl = T.L + rail * 2, tw = T.W + rail * 2;
+    var sLand = Math.min(bw / tl, bh / tw), sPort = Math.min(bw / tw, bh / tl);
+    G.rot = sPort > sLand * 1.08;
+    G.s = Math.max(0.5, G.rot ? sPort : sLand);
+    G.rail = rail;
+    G.W = Math.floor((G.rot ? tw : tl) * G.s); G.H = Math.floor((G.rot ? tl : tw) * G.s);
+    var dpr = Math.min(2, window.devicePixelRatio || 1);
+    cv.width = Math.floor(G.W * dpr); cv.height = Math.floor(G.H * dpr);
+    cv.style.width = G.W + 'px'; cv.style.height = G.H + 'px';
+    G.dpr = dpr;
+  }
+  function tableTransform(g) {
+    var s = G.s * G.dpr, r = G.rail * G.s * G.dpr;
+    if (G.rot) g.setTransform(0, -s, s, 0, r, r + T.L * s);
+    else g.setTransform(s, 0, 0, s, r, r);
+  }
+  function toTable(clientX, clientY) {
+    var rc = cv.getBoundingClientRect(), sx = (clientX - rc.left) / G.s - G.rail, sy = (clientY - rc.top) / G.s - G.rail;
+    return G.rot ? { x: T.L - sy, y: sx } : { x: sx, y: sy };
+  }
+
+  function paintTable(g, balls, o) {
+    var rail = G.rail;
+    // rails and cloth, in table units around the playing area
+    g.fillStyle = COL.rail2;
+    C.rrect(g, -rail, -rail, T.L + rail * 2, T.W + rail * 2, rail * 0.9); g.fill();
+    g.fillStyle = COL.rail;
+    C.rrect(g, -rail + 1, -rail + 1, T.L + rail * 2 - 2, T.W + rail * 2 - 2, rail * 0.8); g.fill();
+    g.fillStyle = COL.cloth;
+    g.fillRect(0, 0, T.L, T.W);
+    g.fillStyle = COL.cloth2;
+    g.fillRect(0, 0, T.L, 1); g.fillRect(0, T.W - 1, T.L, 1); g.fillRect(0, 0, 1, T.W); g.fillRect(T.L - 1, 0, 1, T.W);
+    // the baulk line, the D and the spots
+    g.strokeStyle = COL.line; g.lineWidth = 0.35;
+    g.beginPath(); g.moveTo(E.BAULK, 1); g.lineTo(E.BAULK, T.W - 1); g.stroke();
+    g.beginPath(); g.arc(E.BAULK, T.W / 2, E.DR, Math.PI / 2, Math.PI * 1.5); g.stroke();
+    g.fillStyle = COL.line;
+    for (var v = 2; v <= 7; v++) { g.beginPath(); g.arc(E.SPOT[v].x, E.SPOT[v].y, 0.55, 0, Math.PI * 2); g.fill(); }
+    // pockets
+    g.fillStyle = COL.pocket;
+    T.pockets.forEach(function (p, i) { g.beginPath(); g.arc(p.x, p.y, i < 4 ? T.corner * 0.78 : T.side * 0.5, 0, Math.PI * 2); g.fill(); });
+    if (o && o.aim) paintAim(g, balls, o);
+    for (var i = 0; i < balls.length; i++) if (balls[i].inPlay) paintBall(g, balls[i]);
+    if (o && o.ring) {
+      // in the colours sequence, the one ball on gets a faint ring
+      var on = E.ball({ balls: balls }, 20 + F.next);
+      if (on && on.inPlay) { g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 0.35; g.beginPath(); g.arc(on.x, on.y, R * 1.6, 0, Math.PI * 2); g.stroke(); }
+    }
+    if (o && o.inHand) {
+      var c = balls[0];
+      g.strokeStyle = COL.gold; g.lineWidth = 0.5; g.setLineDash([1.4, 1]);
+      g.beginPath(); g.arc(c.x, c.y, R * 2, 0, Math.PI * 2); g.stroke(); g.setLineDash([]);
+    }
+    if (o && o.cue) paintCue(g, balls[0], o);
+  }
+
+  function paintBall(g, b) {
+    var r = R;
+    g.fillStyle = 'rgba(0,0,0,.3)';
+    g.beginPath(); g.arc(b.x + r * 0.15, b.y + r * 0.2, r, 0, Math.PI * 2); g.fill();
+    g.fillStyle = ballColor(b.id);
+    g.beginPath(); g.arc(b.x, b.y, r, 0, Math.PI * 2); g.fill();
+    var hl = g.createRadialGradient(b.x - r * 0.35, b.y - r * 0.35, r * 0.1, b.x, b.y, r);
+    hl.addColorStop(0, 'rgba(255,255,255,.55)'); hl.addColorStop(0.45, 'rgba(255,255,255,0)'); hl.addColorStop(1, 'rgba(0,0,0,.28)');
+    g.fillStyle = hl;
+    g.beginPath(); g.arc(b.x, b.y, r, 0, Math.PI * 2); g.fill();
+  }
+
+  // The aim line to the first contact, the ghost ball there, where the object
+  // ball will go and where the white glances off
+  function paintAim(g, balls, o) {
+    var c = balls[0], a = Cue.aim(T, balls, c.x, c.y, o.angle, 0), ux = Math.cos(o.angle), uy = Math.sin(o.angle);
+    g.save();
+    g.beginPath(); g.rect(-R, -R, T.L + 2 * R, T.W + 2 * R); g.clip();
+    g.lineCap = 'round';
+    g.strokeStyle = 'rgba(255,255,255,.75)'; g.lineWidth = 0.4;
+    g.beginPath(); g.moveTo(c.x + ux * R, c.y + uy * R); g.lineTo(a.x, a.y); g.stroke();
+    g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = 0.35;
+    g.beginPath(); g.arc(a.x, a.y, R, 0, Math.PI * 2); g.stroke();
+    if (a.ball !== null) {
+      var ok = E.targets(F).indexOf(a.ball) >= 0;
+      var b = E.ball({ balls: balls }, a.ball), len = 30 * Math.cos(a.cut) + 5;
+      g.strokeStyle = ok ? 'rgba(255,255,255,.85)' : COL.bad; g.lineWidth = 0.5;
+      g.beginPath(); g.moveTo(b.x, b.y); g.lineTo(b.x + Math.cos(a.obj) * len, b.y + Math.sin(a.obj) * len); g.stroke();
+      if (!ok) {
+        g.beginPath(); g.moveTo(a.x - 1.3, a.y - 1.3); g.lineTo(a.x + 1.3, a.y + 1.3); g.moveTo(a.x + 1.3, a.y - 1.3); g.lineTo(a.x - 1.3, a.y + 1.3); g.stroke();
+      }
+      if (a.cueSpeed > 0.05) {
+        g.strokeStyle = 'rgba(255,255,255,.4)'; g.lineWidth = 0.35; g.setLineDash([1, 1]);
+        var cl = 18 * a.cueSpeed + 3;
+        g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(a.x + Math.cos(a.cue) * cl, a.y + Math.sin(a.cue) * cl); g.stroke();
+        g.setLineDash([]);
+      }
+    }
+    g.restore();
+  }
+
+  function paintCue(g, c, o) {
+    var ux = Math.cos(o.angle), uy = Math.sin(o.angle), back = R * 1.4 + o.power * 22, len = 66;
+    var x1 = c.x - ux * back, y1 = c.y - uy * back, x2 = x1 - ux * len, y2 = y1 - uy * len;
+    var gr = g.createLinearGradient(x1, y1, x2, y2);
+    gr.addColorStop(0, '#E9E2D0'); gr.addColorStop(0.025, '#E9E2D0'); gr.addColorStop(0.03, '#3B82C4'); gr.addColorStop(0.05, '#E2C48E'); gr.addColorStop(0.72, '#C08A4C'); gr.addColorStop(1, '#2B160B');
+    g.strokeStyle = 'rgba(0,0,0,.25)'; g.lineWidth = 1.9;
+    g.beginPath(); g.moveTo(x1 + 0.5, y1 + 0.7); g.lineTo(x2 + 0.5, y2 + 0.7); g.stroke();
+    g.strokeStyle = gr; g.lineWidth = 1.35;
+    g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke();
+  }
+
+  function draw() {
+    if (!F) return;
+    var g = cv.getContext('2d');
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, cv.width, cv.height);
+    tableTransform(g);
+    var balls = run ? run.balls : F.balls, still = !run && !F.over;
+    var cue = balls[0] && balls[0].inPlay;
+    var showAim = still && cue && (humanTurn() || aiAnim);
+    paintTable(g, balls, { aim: showAim, angle: aimA, cue: showAim, power: power || 0, inHand: still && F.inHand && humanTurn(), ring: still && F.phase === 'order' });
+    drawSinks(g);
+  }
+
+  function cardPaint() {
+    var balls = Cue.clone(F.balls);
+    return function (g, W, H) {
+      var keep = { s: G.s, rot: G.rot };
+      var tl = T.L + G.rail * 2, tw = T.W + G.rail * 2, s = Math.min(W / tl, H / tw);
+      G.rot = false;
+      g.save();
+      g.translate((W - tl * s) / 2 + G.rail * s, (H - tw * s) / 2 + G.rail * s);
+      g.scale(s, s);
+      paintTable(g, balls, null);
+      g.restore();
+      G.s = keep.s; G.rot = keep.rot;
+    };
+  }
+
+  // A small ball for the player chips: the ball on, or a ring of every colour
+  // when any colour may be played
+  function chipBall(v) {
+    var c = el('canvas', { width: 44, height: 44, style: { width: '22px', height: '22px' } }), x = c.getContext('2d');
+    if (v === 0) {
+      for (var k = 0; k < 6; k++) {
+        x.fillStyle = BALL[k + 2];
+        x.beginPath(); x.moveTo(22, 22); x.arc(22, 22, 18, -Math.PI / 2 + k * Math.PI / 3, -Math.PI / 2 + (k + 1) * Math.PI / 3); x.closePath(); x.fill();
+      }
+    } else {
+      x.fillStyle = v < 0 ? BALL[0] : BALL[v];
+      x.beginPath(); x.arc(22, 22, 18, 0, 7); x.fill();
+    }
+    x.strokeStyle = 'rgba(0,0,0,.25)'; x.lineWidth = 2; x.beginPath(); x.arc(22, 22, 18, 0, 7); x.stroke();
+    return c;
+  }
+  function onValue() { return F.phase === 'red' ? 1 : (F.phase === 'colour' ? 0 : F.next); }
+
+  function drawPlayers() {
+    playersRow.innerHTML = '';
+    if (F.mode === 'daily') {
+      playersRow.appendChild(el('div', { class: 'sn-player sn-player--on' }, [chipBall(onValue()), el('div', { class: 'sn-player__text' }, [
+        el('div', { class: 'sn-player__name', text: C.t('dailySn') + ' — ' + C.num(F.daily || '') }),
+        el('div', { class: 'sn-player__sub', text: C.t('shots') + ' ' + C.num(F.shots) + ' / ' + C.num(E.DAILY_MAX) + ' · ' + C.t('fouls') + ' ' + C.num(F.fouls[0]) })]),
+        el('div', { class: 'sn-player__score', text: C.num(F.scores[0]) })]));
+      return;
+    }
+    [0, 1].forEach(function (p) {
+      var on = F.turn === p && !F.over;
+      var sub = on ? (F.brk > 0 ? C.t('subBreak', { b: C.num(F.brk) }) : C.t('subOn', { c: onText(false) })) : (F.best[p] > 0 ? C.t('subBest', { b: C.num(F.best[p]) }) : '');
+      // Beside the score, "Opponent · Medium" was cut off on a 390px phone; the card
+      // names the rival only and puts the level on the second line
+      var aiCard = F.mode === 'ai' && p === 1, name = aiCard ? C.t('rival') : pname(p);
+      if (aiCard) sub = C.t(F.level) + (sub ? ' · ' + sub : '');
+      var box = el('div', { class: 'sn-player' + (on ? ' sn-player--on' : '') }, [
+        chipBall(on ? onValue() : -1),
+        // an empty second line would push the name up, off the score's middle
+        el('div', { class: 'sn-player__text' }, [el('div', { class: 'sn-player__name', text: name })].concat(sub ? [el('div', { class: 'sn-player__sub', text: sub })] : [])),
+        el('div', { class: 'sn-player__score', text: C.num(F.scores[p]) })
+      ]);
+      if (F.mode === 'ai' && p === 1 && (ai || aiAnim)) box.classList.add('sn-thinking');
+      playersRow.appendChild(box);
+    });
+  }
+
+  function drawMsg() {
+    var text = msg.text || hint();
+    msgEl.textContent = text;
+    msgEl.className = 'sn-msg' + (msg.kind ? ' sn-msg--' + msg.kind : '');
+  }
+
+  function drawPower() {
+    var shown = power > 0 ? power : (kbOn ? kbPower : 0);
+    fill.style.width = Math.round(shown * 100) + '%';
+    fill.className = 'sn-power__fill' + (power > 0 ? '' : ' sn-power__fill--idle');
+    plabel.textContent = power > 0 || kbOn ? C.t('power') + ' ' + C.num(Math.round(shown * 100)) + (C.isRtl() ? '٪' : '%') : C.t('pull');
+    powerBar.setAttribute('aria-valuenow', String(Math.round(shown * 100)));
+    var off = !humanTurn();
+    powerBar.setAttribute('aria-disabled', off ? 'true' : 'false');
+    fineL.disabled = off; fineR.disabled = off;
+  }
+
+  function render() {
+    layout();
+    drawPlayers();
+    drawMsg();
+    drawPower();
+    draw();
+  }
+
+  /* -------------------------------------------------------------- input */
+
+  // On the table: start on the white to pull back like a slingshot, start
+  // anywhere else to aim at the finger. With the ball in hand the first movement
+  // decides: straight back from the aim pulls, any other way moves the white (#278).
+  cv.addEventListener('pointerdown', function (e) {
+    if (!humanTurn()) return;
+    e.preventDefault();
+    var p = toTable(e.clientX, e.clientY), c = E.ball(F, 0);
+    var dc = Math.hypot(p.x - c.x, p.y - c.y), grab = Math.max(R * 2.5, 24 / G.s);
+    if (setMsgClear()) drawMsg();
+    if (F.inHand && dc < grab) drag = { id: e.pointerId, mode: 'hand', x0: e.clientX, y0: e.clientY, a0: aimA, dx: c.x - p.x, dy: c.y - p.y };
+    else if (prefs.aim === 'turn') drag = { id: e.pointerId, mode: 'turn', a0: aimA, last: p };
+    // the cue stick itself is a handle too: pull it back to shoot (#532)
+    else if (dc < grab || Cue.onStick(aimA, c.x, c.y, p.x, p.y, R, R * 1.4 + 66 + 10 / G.s, Math.max(R * 1.2, 14 / G.s))) drag = { id: e.pointerId, mode: 'sling', x0: e.clientX, y0: e.clientY, a0: aimA };
+    else { drag = { id: e.pointerId, mode: 'aim' }; aimA = Math.atan2(p.y - c.y, p.x - c.x); }
+    kbOn = false;
+    try { cv.setPointerCapture(e.pointerId); } catch (er) { /* old browsers */ }
+    draw(); drawPower();
+  });
+  // Ball in hand: the white follows the finger but stays inside the D
+  function placeTo(nx, ny) {
+    var c = E.ball(F, 0), dx = nx - E.BAULK, dy = ny - T.W / 2;
+    if (nx > E.BAULK) { nx = E.BAULK; dx = 0; }
+    var d = Math.hypot(dx, dy);
+    if (d > E.DR) { nx = E.BAULK + dx / d * E.DR * 0.999; ny = T.W / 2 + dy / d * E.DR * 0.999; }
+    if (E.legalPlace(F, nx, ny)) { c.x = nx; c.y = ny; return true; }
+    return false;
+  }
+  cv.addEventListener('pointermove', function (e) {
+    if (!drag || e.pointerId !== drag.id || !humanTurn()) return;
+    var p = toTable(e.clientX, e.clientY), c = E.ball(F, 0);
+    if (drag.mode === 'hand') {
+      var h0 = toTable(drag.x0, drag.y0);
+      if (Math.hypot(p.x - h0.x, p.y - h0.y) * G.s < 8) return;
+      drag.mode = prefs.aim !== 'turn' && Cue.pullsBack(aimA, p.x - h0.x, p.y - h0.y) ? 'sling' : 'place';
+    }
+    if (drag.mode === 'place') placeTo(p.x + drag.dx, p.y + drag.dy);
+    else if (drag.mode === 'sling') {
+      var q0 = toTable(drag.x0, drag.y0), vx = q0.x - p.x, vy = q0.y - p.y, len = Math.hypot(vx, vy) * G.s;
+      if (len > 8) aimA = Math.atan2(vy, vx);
+      power = Math.max(0, Math.min(1, (len - 8) / 150));
+      drawPower();
+    } else if (drag.mode === 'turn') {
+      // each move turns the cue by the angle it sweeps round the white ball, as Point
+      // does, but from where the cue is; within TURN_NEAR px of the ball it slows (#505)
+      // slowed by the player's turn speed, as a sensitivity setting (#587)
+      aimA += Cue.turnStep(c.x, c.y, drag.last.x, drag.last.y, p.x, p.y, TURN_NEAR / G.s) * Cue.TURN_SPEEDS[prefs.turn];
+      drag.last = p;
+    } else aimA = Math.atan2(p.y - c.y, p.x - c.x);
+    draw();
+  });
+  function endTableDrag(e) {
+    if (!drag || e.pointerId !== drag.id) return;
+    var d = drag;
+    drag = null;
+    if (d.mode === 'sling') {
+      // a short pull is a change of mind, not a shot
+      if (e.type === 'pointerup' && power >= 0.04 && humanTurn()) { shoot({ angle: aimA, power: power }); return; }
+      power = 0; aimA = d.a0;
+    }
+    if (d.mode === 'place') { aimA = E.aimDefault(F); save(); }
+    draw(); drawPower();
+  }
+  cv.addEventListener('pointerup', endTableDrag);
+  cv.addEventListener('pointercancel', endTableDrag);
+  function setMsgClear() { if (msg.text) { setMsg('', ''); return true; } return false; }
+
+  // The power bar: pull along it, let go to shoot
+  var pdrag = null;
+  powerBar.addEventListener('pointerdown', function (e) {
+    if (!humanTurn()) return;
+    e.preventDefault();
+    pdrag = { id: e.pointerId, x0: e.clientX, w: powerBar.getBoundingClientRect().width };
+    power = 0; kbOn = false;
+    try { powerBar.setPointerCapture(e.pointerId); } catch (er) { /* old browsers */ }
+    drawPower();
+  });
+  powerBar.addEventListener('pointermove', function (e) {
+    if (!pdrag || e.pointerId !== pdrag.id) return;
+    power = Cue.barPower(e.clientX - pdrag.x0, pdrag.w);
+    drawPower(); draw();
+  });
+  function endPower(e) {
+    if (!pdrag || e.pointerId !== pdrag.id) return;
+    pdrag = null;
+    if (e.type === 'pointerup' && power >= 0.04 && humanTurn()) { shoot({ angle: aimA, power: power }); return; }
+    power = 0; drawPower(); draw();
+  }
+  powerBar.addEventListener('pointerup', endPower);
+  powerBar.addEventListener('pointercancel', endPower);
+
+  // Fine turn buttons, repeating while held, for the last fraction of a degree. The
+  // repeat used to speed up fourfold after a second, which a player found defeated the
+  // point of a fine control (#586): it now keeps the same small step for as long as held.
+  function holdTurn(btn, sign) {
+    var timer = null;
+    var stop = function () { if (timer) { clearInterval(timer); timer = null; } };
+    btn.addEventListener('pointerdown', function (e) {
+      if (!humanTurn()) return;
+      e.preventDefault();
+      aimA += sign * Cue.FINE_STEP; draw();
+      stop();
+      timer = setInterval(function () { if (!humanTurn()) { stop(); return; } aimA += sign * Cue.FINE_STEP; draw(); }, 60);
+    });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (t) { btn.addEventListener(t, stop); });
+  }
+  holdTurn(fineL, -1);
+  holdTurn(fineR, 1);
+
+  window.addEventListener('keydown', function (e) {
+    if (!F || document.querySelector('.ch-scrim') || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (!humanTurn()) return;
+    var k = e.key, step = e.shiftKey ? 0.002 : 0.02;
+    if (k === 'ArrowLeft' || k === 'ArrowRight') {
+      e.preventDefault();
+      aimA += (k === 'ArrowRight' ? 1 : -1) * step;
+      draw(); return;
+    }
+    if (k === 'ArrowUp' || k === 'ArrowDown') {
+      e.preventDefault();
+      kbOn = true;
+      kbPower = Math.max(0.05, Math.min(1, kbPower + (k === 'ArrowUp' ? 0.05 : -0.05)));
+      drawPower(); return;
+    }
+    if (k === ' ' || k === 'Enter') { e.preventDefault(); shoot({ angle: aimA, power: kbPower }); return; }
+    // WASD by physical key moves the white with ball in hand, on any layout
+    var mv = { KeyW: [0, -1], KeyS: [0, 1], KeyA: [-1, 0], KeyD: [1, 0] }[e.code];
+    if (mv && F.inHand) {
+      e.preventDefault();
+      var c = E.ball(F, 0), sx = mv[0] * 1.5, sy = mv[1] * 1.5;
+      // screen directions, turned into table directions when the table is upright
+      var tx = G.rot ? -sy : sx, ty = G.rot ? sx : sy;
+      if (placeTo(c.x + tx, c.y + ty)) draw();
+    }
+  });
+
+  window.addEventListener('resize', function () { if (F) render(); });
+  if (window.matchMedia) {
+    var mq = window.matchMedia('(prefers-color-scheme: dark)');
+    if (mq.addEventListener) mq.addEventListener('change', function () { setTimeout(function () { readColors(); draw(); }, 60); });
+  }
+
+  /* --------------------------------------------------------------- help */
+
+  function kb(k, what) {
+    return el('div', { class: 'ch-item' }, [el('div', { class: 'ch-item__label', text: what }), el('span', { class: 'ch-badge', text: k })]);
+  }
+  // the turn control's radius floor, in screen pixels: a finger closer to the white ball
+  // than this turns the cue as if it were this far
+  var TURN_NEAR = 60;
+  function showSettings() {
+    // a player found Turn too quick even far from the ball and asked for a sensitivity
+    // setting (#587); it only changes Turn, so it shows only while Turn is chosen
+    var speedSeg = C.ui.segmented([{ value: 'slow', label: C.t('turnSlow') }, { value: 'medium', label: C.t('turnMed') }, { value: 'normal', label: C.t('turnNormal') }], prefs.turn, function (v) {
+      prefs.turn = Cue.TURN_SPEEDS[v] ? v : 'normal';
+      ctx.store.set('prefs', prefs);
+    });
+    var speedRow = el('div', { class: 'ch-item' }, [el('div', { class: 'ch-item__label', text: C.t('turnSpd') }), speedSeg]);
+    speedRow.hidden = prefs.aim !== 'turn';
+    var seg = C.ui.segmented([{ value: 'point', label: C.t('ctlPoint') }, { value: 'turn', label: C.t('ctlTurn') }], prefs.aim, function (v) {
+      prefs.aim = v === 'turn' ? 'turn' : 'point';
+      speedRow.hidden = prefs.aim !== 'turn';
+      ctx.store.set('prefs', prefs);
+    });
+    C.ui.modal({
+      title: C.t('settings'),
+      body: [el('div', { class: 'ch-list' }, [el('div', { class: 'ch-item' }, [el('div', { class: 'ch-item__label', text: C.t('aimCtl') }), seg]), speedRow]), el('p', { class: 'ch-dim', text: C.t('ctlNote') })],
+      actions: [{ label: C.t('done'), kind: 'primary' }]
+    });
+  }
+
+  function showHelp() {
+    C.ui.modal({
+      title: C.t('help'),
+      body: [
+        el('p', { class: 'ch-dim', text: C.t('rules') }),
+        el('h3', { style: { 'margin-top': 'var(--s-4)' }, text: C.t('keyboard') }),
+        el('div', { class: 'ch-list' }, [
+          kb('← →', C.t('kbAim')), kb('Shift + ← →', C.t('kbFine')), kb('↑ ↓', C.t('kbPower')),
+          kb('Space / Enter', C.t('kbShoot')), kb('W A S D', C.t('kbPlace'))
+        ])
+      ],
+      actions: [
+        { label: C.t('tutorial'), onClick: function () { ctx.showTutorial(TUT); } },
+        { label: C.t('done'), kind: 'primary' }
+      ]
+    });
+  }
+
+  function svgBall(x, y, v) {
+    return '<circle cx="' + x + '" cy="' + y + '" r="6" fill="' + BALL[v] + '" stroke="rgba(0,0,0,.3)"/>';
+  }
+  function art(inner) {
+    return '<svg viewBox="0 0 220 110" width="100%"><rect x="10" y="8" width="200" height="94" rx="10" fill="var(--sn-rail)"/><rect x="20" y="18" width="180" height="74" rx="3" fill="var(--sn-cloth)"/>' +
+      '<line x1="57" y1="18" x2="57" y2="92" stroke="var(--sn-line)"/><path d="M57 40A15 15 0 0 0 57 70" fill="none" stroke="var(--sn-line)"/>' +
+      '<circle cx="21" cy="19" r="5" fill="var(--sn-pocket)"/><circle cx="199" cy="19" r="5" fill="var(--sn-pocket)"/><circle cx="21" cy="91" r="5" fill="var(--sn-pocket)"/><circle cx="199" cy="91" r="5" fill="var(--sn-pocket)"/><circle cx="110" cy="18" r="4" fill="var(--sn-pocket)"/><circle cx="110" cy="92" r="4" fill="var(--sn-pocket)"/>' + inner + '</svg>';
+  }
+  var colourRow = svgBall(57, 70, 2) + svgBall(57, 55, 4) + svgBall(57, 40, 3) + svgBall(110, 55, 5) + svgBall(155, 55, 6) + svgBall(185, 55, 7);
+  var TUT = [
+    { title: C.t('tutTitle1'), text: C.t('tutText1'), art: art('<path d="M45 62L160 36" stroke="#fff" stroke-width="1.5" stroke-dasharray="4 3"/><rect x="0" y="0" width="60" height="3" rx="1.5" fill="#C08A4C" transform="translate(40 63) rotate(167)"/>' + svgBall(45, 62, 0) + svgBall(166, 35, 1)) },
+    { title: C.t('tutTitle2'), text: C.t('tutText2'), art: art(colourRow + svgBall(165, 45, 1) + svgBall(168, 66, 1) + svgBall(176, 40, 1) + svgBall(140, 76, 1) + svgBall(80, 62, 0)) },
+    { title: C.t('tutTitle3'), text: C.t('tutText3'), art: art(svgBall(57, 70, 2) + svgBall(57, 40, 3) + svgBall(110, 55, 5) + svgBall(185, 55, 7) + svgBall(75, 82, 0) + '<path d="M80 80L190 52" stroke="#fff" stroke-width="1.5" stroke-dasharray="4 3"/>') }
+  ];
+
+  /* -------------------------------------------------------------- start */
+
+  var saved = ctx.loadSave();
+  if (dailyDate) {
+    // The daily table has its own save slot, so a half-played day continues
+    if (validSave(saved) && saved.f.daily === dailyDate) restore(saved);
+    else newGame({ daily: dailyDate });
+    if (C.stats.dailyDone('snooker', dailyDate)) {
+      var rec = C.stats.dailyOf(dailyDate).snooker;
+      C.ui.toast({ icon: 'check', title: C.t('dailyDone'), sub: rec.label });
+    }
+    ctx.tutorialIfNew(TUT);
+  } else if (validSave(saved) && saved.f.mode !== 'daily') {
+    restore(saved);
+  } else {
+    newGame({ mode: prefs.mode, level: prefs.level, reds: prefs.reds });
+    ctx.tutorialIfNew(TUT);
+  }
+  setTimeout(function () { if (F) render(); }, 40);
+})();
+</script>
+</body>
+</html>

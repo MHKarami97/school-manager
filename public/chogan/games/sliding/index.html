@@ -1,0 +1,675 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#FBF6EF">
+<title>پازل کشویی — چوگان</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../lib/chogan.css">
+<script src="../../lib/early.js"></script>
+<style>
+  /* Tiles are pale ivory blocks on a violet tray in both themes, so the numbers read the same way
+     in light and dark; dark mode only deepens the tray and the shadow */
+  :root {
+    --sp-tray: #4B2A66; --sp-hole: #3B2052; --sp-tile: #F7F0E4; --sp-tile-edge: #D9CBB4; --sp-ink: #3A2450;
+    --sp-home: #8338B0; --sp-shadow: rgba(30, 10, 45, .35);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --sp-tray: #2E1A40; --sp-hole: #221330; --sp-tile: #E9DFCE; --sp-tile-edge: #BFAE93; --sp-ink: #2F1D42;
+      --sp-home: #9A55C8; --sp-shadow: rgba(0, 0, 0, .5);
+    }
+  }
+  :root[data-theme="dark"] {
+    --sp-tray: #2E1A40; --sp-hole: #221330; --sp-tile: #E9DFCE; --sp-tile-edge: #BFAE93; --sp-ink: #2F1D42;
+    --sp-home: #9A55C8; --sp-shadow: rgba(0, 0, 0, .5);
+  }
+  .sp-top { display: flex; justify-content: center; min-height: 28px; }
+  /* A tray is a physical thing: it reads 1, 2, 3 from the left in every language */
+  .sp-board {
+    direction: ltr; position: relative; aspect-ratio: 1; /* fills the room it has (#359); it stopped at a fixed size before */
+    background: var(--sp-tray); border-radius: var(--r-lg); box-shadow: var(--sh-2), inset 0 0 0 3px rgba(255, 255, 255, .06);
+    touch-action: none; user-select: none; -webkit-user-select: none;
+  }
+  .sp-hole { position: absolute; top: 6px; right: 6px; bottom: 6px; left: 6px; border-radius: calc(var(--r-lg) - 4px); background: var(--sp-hole); }
+  .sp-tile {
+    position: absolute; left: 0; top: 0; padding: 0; border: 0; cursor: pointer;
+    background: var(--sp-tile); color: var(--sp-ink); border-radius: 12%;
+    box-shadow: inset 0 -4px 0 var(--sp-tile-edge), 0 3px 6px var(--sp-shadow);
+    font: inherit; font-weight: 800; font-variant-numeric: tabular-nums;
+    display: grid; place-items: center;
+    transition: transform var(--t-mid) var(--ease);
+  }
+  .sp-tile--still { transition: none; }
+  /* A tile already in its place carries a small mark, so progress shows without counting */
+  .sp-tile::after {
+    content: ''; position: absolute; bottom: 14%; left: 50%; width: 14%; height: 5%; min-height: 3px;
+    border-radius: 99px; background: var(--sp-home); transform: translateX(-50%); opacity: 0;
+    transition: opacity var(--t-mid) var(--ease);
+  }
+  .sp-tile--home::after { opacity: 1; }
+  .sp-tile--cur { outline: 3px solid var(--c-accent); outline-offset: 2px; }
+  .sp-board--won .sp-tile { box-shadow: inset 0 -4px 0 var(--sp-tile-edge), 0 0 0 2px var(--sp-home); }
+  /* the win shimmer: a band of light sweeps over the tray, corner to corner (#407) */
+  .sp-shine .sp-tile {
+    background-image: linear-gradient(115deg, transparent 38%, rgba(255, 255, 255, .8) 50%, transparent 62%);
+    background-size: 250% 100%; background-repeat: no-repeat;
+    animation: sp-shine var(--shine-ms, 420ms) var(--ease) both; animation-delay: var(--d, 0ms);
+  }
+  @keyframes sp-shine { from { background-position: 110% 0; } to { background-position: -20% 0; } }
+  .sp-status { min-height: 1.6em; font-weight: 700; color: var(--c-text-dim); text-align: center; font-size: var(--fs-sm); }
+  .sp-tut { display: block; }
+</style>
+</head>
+<body>
+<script src="../../version.js"></script>
+<script src="../../lib/chogan.js"></script>
+
+<script>
+/* ==== ENGINE START ==== */
+function SlidingEngineFactory() {
+  'use strict';
+
+  var SIZES = [3, 4, 5];
+  var DAILY_SIZE = 4;
+
+  function solvedTiles(n) {
+    var t = [];
+    for (var i = 1; i < n * n; i++) t.push(i);
+    t.push(0);
+    return t;
+  }
+  function isSolved(t) {
+    for (var i = 0; i < t.length - 1; i++) if (t[i] !== i + 1) return false;
+    return t[t.length - 1] === 0;
+  }
+  function inversions(t) {
+    var inv = 0;
+    for (var i = 0; i < t.length; i++) {
+      if (!t[i]) continue;
+      for (var j = i + 1; j < t.length; j++) if (t[j] && t[j] < t[i]) inv++;
+    }
+    return inv;
+  }
+  // Half of all orderings can never be put back in order. On an odd tray that is the ones with an
+  // odd number of inversions; on an even tray the blank's row counts too, from the bottom.
+  function solvable(t, n) {
+    var inv = inversions(t);
+    if (n % 2) return inv % 2 === 0;
+    var fromBottom = n - Math.floor(t.indexOf(0) / n);
+    return (inv + fromBottom) % 2 === 1;
+  }
+  function valid(t, n) {
+    if (!Array.isArray(t) || SIZES.indexOf(n) < 0 || t.length !== n * n) return false;
+    var seen = [];
+    for (var i = 0; i < t.length; i++) {
+      var v = t[i];
+      if (typeof v !== 'number' || v !== Math.floor(v) || v < 0 || v >= n * n || seen[v]) return false;
+      seen[v] = true;
+    }
+    return true;
+  }
+  function misplaced(t) {
+    var k = 0;
+    for (var i = 0; i < t.length; i++) if (t[i] && t[i] !== i + 1) k++;
+    return k;
+  }
+  // Sum of each tile's distance from home: a floor under the number of moves still needed
+  function distance(t, n) {
+    var d = 0;
+    for (var i = 0; i < t.length; i++) {
+      if (!t[i]) continue;
+      var h = t[i] - 1;
+      d += Math.abs(Math.floor(i / n) - Math.floor(h / n)) + Math.abs((i % n) - (h % n));
+    }
+    return d;
+  }
+
+  // A random ordering, made solvable if it is not by swapping two tiles (that flips the parity
+  // and nothing else), and drawn again while it is still close to sorted
+  function make(n, rnd) {
+    var t, tries = 0;
+    do {
+      t = solvedTiles(n);
+      for (var i = t.length - 1; i > 0; i--) {
+        var j = Math.floor(rnd() * (i + 1)), x = t[i];
+        t[i] = t[j]; t[j] = x;
+      }
+      if (!solvable(t, n)) {
+        var a = t[0] ? 0 : 1, b = t[a + 1] ? a + 1 : a + 2, y = t[a];
+        t[a] = t[b]; t[b] = y;
+      }
+    } while (misplaced(t) < Math.ceil((n * n - 1) * 0.6) && ++tries < 50);
+    return { n: n, tiles: t, start: t.slice(), moves: 0, done: false };
+  }
+
+  // The tiles that slide when tile i is tapped: every tile between it and the blank, nearest the
+  // blank first, when they share a row or a column; none otherwise
+  function line(t, n, i) {
+    var z = t.indexOf(0);
+    if (i === z || i < 0 || i >= t.length) return [];
+    var zr = Math.floor(z / n), zc = z % n, r = Math.floor(i / n), c = i % n, out = [], k;
+    if (r === zr) { var dc = c > zc ? 1 : -1; for (k = zc + dc; k !== c + dc; k += dc) out.push(r * n + k); }
+    else if (c === zc) { var dr = r > zr ? 1 : -1; for (k = zr + dr; k !== r + dr; k += dr) out.push(k * n + c); }
+    return out;
+  }
+  function slide(S, cells) {
+    var t = S.tiles, moved = [];
+    for (var k = 0; k < cells.length; k++) {
+      var z = t.indexOf(0), from = cells[k];
+      moved.push({ tile: t[from], from: from, to: z });
+      t[z] = t[from]; t[from] = 0;
+    }
+    S.moves += moved.length;
+    if (isSolved(t)) S.done = true;
+    return { moved: moved, won: S.done };
+  }
+  // A tap: every tile from it to the blank moves one step. Each tile moved is one move.
+  function tap(S, i) {
+    if (S.done) return { moved: [], won: false };
+    var cells = line(S.tiles, S.n, i);
+    if (!cells.length) return { moved: [], won: false };
+    return slide(S, cells);
+  }
+  // An arrow or a swipe: the tile on the far side of the blank moves that way into it.
+  // d: 0 up, 1 right, 2 down, 3 left
+  function step(S, d) {
+    if (S.done) return { moved: [], won: false };
+    var n = S.n, z = S.tiles.indexOf(0), r = Math.floor(z / n), c = z % n, from = -1;
+    if (d === 0 && r < n - 1) from = z + n;
+    else if (d === 2 && r > 0) from = z - n;
+    else if (d === 1 && c > 0) from = z - 1;
+    else if (d === 3 && c < n - 1) from = z + 1;
+    if (from < 0) return { moved: [], won: false };
+    return slide(S, [from]);
+  }
+  // A save is taken back only if it is a whole, solvable tray
+  function restore(o) {
+    if (!o || SIZES.indexOf(o.n) < 0 || !valid(o.tiles, o.n) || !valid(o.start, o.n)) return null;
+    if (!solvable(o.tiles, o.n) || !solvable(o.start, o.n)) return null;
+    if (!(o.moves >= 0) || o.moves !== Math.floor(o.moves)) return null;
+    return { n: o.n, tiles: o.tiles.slice(), start: o.start.slice(), moves: o.moves, done: isSolved(o.tiles) };
+  }
+
+  var api = { SIZES: SIZES, DAILY_SIZE: DAILY_SIZE, solvedTiles: solvedTiles, isSolved: isSolved, inversions: inversions,
+    solvable: solvable, valid: valid, misplaced: misplaced, distance: distance, make: make, line: line, tap: tap, step: step, restore: restore };
+  if (typeof self !== 'undefined') self.SlidingEngine = api;
+  return api;
+}
+if (typeof module !== 'undefined' && module.exports) module.exports = SlidingEngineFactory;
+/* ==== ENGINE END ==== */
+</script>
+
+<script>
+(function () {
+  'use strict';
+  var C = window.Chogan, el = C.el;
+  var E = SlidingEngineFactory();
+
+  C.boot({});
+  var ctx = C.game({
+    id: 'sliding',
+    name: { fa: 'پازل کشویی', en: 'Sliding Puzzle', zh: '数字华容道', de: 'Schiebepuzzle', es: 'Puzle deslizante', pl: 'Układanka przesuwana', fr: 'Taquin', ar: 'اللغز المنزلق', hi: 'स्लाइडिंग पहेली' },
+    accent: '#8338B0',
+    mood: 'sudoku',
+    strings: {
+      fa: {
+        moves: 'حرکت', movesN: '{n} حرکت', fewestN: 'بهترین: {n} حرکت', size: 'اندازه', newShuffle: 'چیدمان تازه',
+        solvedIt: 'مرتب شد!', dailySp: 'پازل کشویی روزانه', board: 'سینی پازل کشویی', tileN: 'کاشی {n}', tileHome: 'کاشی {n}، سر جایش',
+        keysMove: 'جابه‌جایی کاشی کنار جای خالی', keysPick: 'انتخاب کاشی و زدنش',
+        mvUp: 'سُر دادن به بالا', mvDown: 'سُر دادن به پایین', mvLeft: 'سُر دادن به چپ', mvRight: 'سُر دادن به راست',
+        rules: 'کاشی‌ها را به ترتیب بچین: از ۱ در گوشه‌ی بالا چپ، ردیف به ردیف، و جای خالی در گوشه‌ی پایین راست. روی کاشی‌ای بزن که با جای خالی در یک ردیف یا ستون است تا خودش و کاشی‌های میانش یک خانه سُر بخورند. هر کاشی که جابه‌جا می‌شود یک حرکت است، پس هر چه کمتر، بهتر. کاشی‌ای که سر جایش نشسته یک نشان کوچک دارد. هر چیدمان حتماً حل می‌شود. چالش روزانه یک سینی ۴×۴ یکسان برای همه است.',
+        tutTitle1: 'به ترتیب', tutText1: 'کاشی‌ها را از ۱ به ترتیب بچین، ردیف به ردیف از بالا چپ. جای خالی آخر می‌ماند.',
+        tutTitle2: 'سُر بده', tutText2: 'روی کاشی‌ای در ردیف یا ستون جای خالی بزن تا به سمتش سُر بخورد. هر کاشی جابه‌جاشده یک حرکت است.'
+      },
+      en: {
+        moves: 'Moves', movesN: '{n} moves', fewestN: 'Best: {n} moves', size: 'Size', newShuffle: 'New shuffle',
+        solvedIt: 'In order!', dailySp: 'Daily Sliding Puzzle', board: 'Sliding puzzle tray', tileN: 'Tile {n}', tileHome: 'Tile {n}, in place',
+        keysMove: 'Slide a tile into the gap', keysPick: 'Pick a tile and tap it',
+        mvUp: 'Slide up', mvDown: 'Slide down', mvLeft: 'Slide left', mvRight: 'Slide right',
+        rules: 'Put the tiles in order: 1 in the top left corner, row by row, with the gap in the bottom right. Tap a tile in the same row or column as the gap and it slides, along with every tile between. Each tile that moves is one move, so fewer is better. A tile already in its place wears a small mark. Every shuffle can be solved. The daily challenge is one 4×4 tray, the same for everyone.',
+        tutTitle1: 'In order', tutText1: 'Put the tiles in order from 1, row by row from the top left. The gap ends up last.',
+        tutTitle2: 'Slide', tutText2: 'Tap a tile in the gap\'s row or column to slide it over. Every tile moved counts as one move.'
+      },
+      pl: {
+        moves: 'Ruchy', movesN: '{n} ruchów', fewestN: 'Najlepszy: {n} ruchów', size: 'Rozmiar', newShuffle: 'Nowy układ',
+        solvedIt: 'Ułożone!', dailySp: 'Codzienna Układanka przesuwana', board: 'Ramka układanki', tileN: 'Płytka {n}', tileHome: 'Płytka {n}, na swoim miejscu',
+        keysMove: 'Przesuń płytkę w wolne miejsce', keysPick: 'Wybierz płytkę i dotknij jej',
+        mvUp: 'Przesuń w górę', mvDown: 'Przesuń w dół', mvLeft: 'Przesuń w lewo', mvRight: 'Przesuń w prawo',
+        rules: 'Ułóż płytki w kolejności: 1 w lewym górnym rogu, rząd po rzędzie, tak aby puste miejsce znalazło się w prawym dolnym rogu. Dotknięcie płytki w tym samym wierszu lub kolumnie, co puste miejsce, powoduje jej przesunięcie wraz ze wszystkimi płytkami znajdującymi się pomiędzy. Każda płytka, która zmieni położenie, liczy się jako jeden ruch, więc im mniej, tym lepiej. Płytka znajdująca się już na swoim miejscu ma małe oznaczenie. Każdy układ da się rozwiązać. Codzienne wyzwanie to jedna plansza 4×4, taka sama dla wszystkich.',
+        tutTitle1: 'W kolejności', tutText1: 'Ułóż płytki w kolejności od 1, rząd po rzędzie od lewego górnego rogu. Puste miejsce powinno znaleźć się na samym końcu.',
+        tutTitle2: 'Przesunięcie', tutText2: 'Dotknij płytki w tym samym wierszu lub kolumnie, co puste miejsce, aby ją przesunąć. Każda poruszona płytka liczy się jako jeden ruch.'
+      },
+      fr: {
+        moves: 'Coups', movesN: '{n} coups', fewestN: 'Record : {n} coups', size: 'Taille', newShuffle: 'Nouveau mélange',
+        solvedIt: 'Dans l’ordre !', dailySp: 'Taquin du jour', board: 'Plateau du taquin', tileN: 'Pièce {n}', tileHome: 'Pièce {n}, à sa place',
+        keysMove: 'Glisser une pièce dans le trou', keysPick: 'Choisir une pièce et la toucher',
+        mvUp: 'Glisser en haut', mvDown: 'Glisser en bas', mvLeft: 'Glisser à gauche', mvRight: 'Glisser à droite',
+        rules: 'Remets les pièces dans l’ordre : 1 dans le coin en haut à gauche, ligne par ligne, avec le trou en bas à droite. Touche une pièce sur la même ligne ou colonne que le trou et elle glisse, avec toutes les pièces entre les deux. Chaque pièce déplacée compte pour un coup, donc moins c’est mieux. Une pièce déjà à sa place porte une petite marque. Chaque mélange a une solution. Le défi du jour est un plateau de 4×4, le même pour tous.',
+        tutTitle1: 'Dans l’ordre', tutText1: 'Remets les pièces dans l’ordre à partir de 1, ligne par ligne depuis le haut à gauche. Le trou finit en dernier.',
+        tutTitle2: 'Glisser', tutText2: 'Touche une pièce sur la ligne ou la colonne du trou pour la faire glisser. Chaque pièce déplacée compte pour un coup.'
+      },
+      ar: {
+        moves: 'الحركات', movesN: '{n} حركة', fewestN: 'الأفضل: {n} حركة', size: 'الحجم', newShuffle: 'خلط جديد',
+        solvedIt: 'مرتبة!', dailySp: 'اللغز المنزلق اليومي', board: 'لوحة اللغز المنزلق', tileN: 'القطعة {n}', tileHome: 'القطعة {n}، في مكانها',
+        keysMove: 'حرّك قطعة إلى الفراغ', keysPick: 'اختر قطعة وانقرها',
+        mvUp: 'إزاحة للأعلى', mvDown: 'إزاحة للأسفل', mvLeft: 'إزاحة لليسار', mvRight: 'إزاحة لليمين',
+        rules: 'رتّب القطع: الرقم 1 في الزاوية العليا اليسرى، صفًا بعد صف، والفراغ في الزاوية السفلى اليمنى. انقر قطعة في صف الفراغ أو عموده فتنزلق، ومعها كل القطع التي بينهما. كل قطعة تتحرك تُحسب حركة واحدة، فالأقل أفضل. القطعة الموجودة في مكانها تحمل علامة صغيرة. كل خلط يمكن حله. تحدي اليوم لوحة واحدة 4×4، واحدة للجميع.',
+        tutTitle1: 'بالترتيب', tutText1: 'رتّب القطع بدءًا من 1، صفًا بعد صف من أعلى اليسار. يبقى الفراغ في الآخر.',
+        tutTitle2: 'الانزلاق', tutText2: 'انقر قطعة في صف الفراغ أو عموده لتنزلق إليه. كل قطعة تتحرك تُحسب حركة واحدة.'
+      },
+      hi: {
+        moves: 'चालें', movesN: '{n} चालें', fewestN: 'सर्वश्रेष्ठ: {n} चालें', size: 'आकार', newShuffle: 'नया फेरबदल',
+        solvedIt: 'क्रम में!', dailySp: 'रोज़ की स्लाइडिंग पहेली', board: 'स्लाइडिंग पहेली की ट्रे', tileN: 'टाइल {n}', tileHome: 'टाइल {n}, अपनी जगह पर',
+        keysMove: 'टाइल को ख़ाली जगह में खिसकाएँ', keysPick: 'टाइल चुनें और उसे छुएँ',
+        mvUp: 'ऊपर खिसकाएँ', mvDown: 'नीचे खिसकाएँ', mvLeft: 'बाएँ खिसकाएँ', mvRight: 'दाएँ खिसकाएँ',
+        rules: 'टाइलों को क्रम में लगाएँ: 1 ऊपर बाएँ कोने में, पंक्ति दर पंक्ति, और ख़ाली जगह नीचे दाएँ। ख़ाली जगह वाली पंक्ति या स्तंभ की किसी टाइल को छुएँ, तो वह बीच की सारी टाइलों के साथ खिसक जाती है। हर खिसकी टाइल एक चाल है, इसलिए जितनी कम, उतना अच्छा। जो टाइल पहले से अपनी जगह पर है, उस पर एक छोटा निशान होता है। हर फेरबदल हल हो सकता है। रोज़ की चुनौती एक 4×4 ट्रे है, सबके लिए एक जैसी।',
+        tutTitle1: 'क्रम में', tutText1: 'टाइलों को 1 से क्रम में लगाएँ, ऊपर बाएँ से पंक्ति दर पंक्ति। ख़ाली जगह आख़िर में रहती है।',
+        tutTitle2: 'खिसकाएँ', tutText2: 'ख़ाली जगह की पंक्ति या स्तंभ की किसी टाइल को छुएँ और वह खिसक जाएगी। हर खिसकी टाइल एक चाल गिनी जाती है।'
+      },
+      zh: {
+        moves: '步数', movesN: '{n} 步', fewestN: '最佳：{n} 步', size: '尺寸', newShuffle: '重新打乱',
+        solvedIt: '排好了！', dailySp: '每日数字华容道', board: '数字华容道盘面', tileN: '方块 {n}', tileHome: '方块 {n}，已归位',
+        keysMove: '把方块滑进空位', keysPick: '选中方块并点击',
+        mvUp: '向上滑动', mvDown: '向下滑动', mvLeft: '向左滑动', mvRight: '向右滑动',
+        rules: '把方块按顺序排好：1 在左上角，一行一行排下去，空位留在右下角。点击和空位同一行或同一列的方块，它和中间的方块会一起滑动一格。每移动一个方块算一步，越少越好。已经归位的方块会有一个小标记。每一局都一定有解。每日挑战是同一个 4×4 盘面，所有人都一样。',
+        tutTitle1: '按顺序', tutText1: '从 1 开始，从左上角一行一行把方块排好。空位留在最后。',
+        tutTitle2: '滑动', tutText2: '点击空位所在行或列中的方块，它就会滑过去。每移动一个方块算一步。'
+      },
+      de: {
+        moves: 'Züge', movesN: '{n} Züge', fewestN: 'Bestwert: {n} Züge', size: 'Größe', newShuffle: 'Neu mischen',
+        solvedIt: 'Geordnet!', dailySp: 'Schiebepuzzle des Tages', board: 'Schiebepuzzle-Rahmen', tileN: 'Plättchen {n}', tileHome: 'Plättchen {n}, am Platz',
+        keysMove: 'Plättchen in die Lücke schieben', keysPick: 'Plättchen wählen und antippen',
+        mvUp: 'Nach oben schieben', mvDown: 'Nach unten schieben', mvLeft: 'Nach links schieben', mvRight: 'Nach rechts schieben',
+        rules: 'Bring die Plättchen in Reihenfolge: die 1 oben links, Reihe für Reihe, die Lücke unten rechts. Tippe auf ein Plättchen in der Reihe oder Spalte der Lücke, dann rutscht es mit allen Plättchen dazwischen. Jedes bewegte Plättchen ist ein Zug, also gilt: je weniger, desto besser. Ein Plättchen am richtigen Platz trägt eine kleine Marke. Jede Mischung ist lösbar. Die Tagesaufgabe ist ein 4×4-Rahmen, für alle gleich.',
+        tutTitle1: 'In Reihenfolge', tutText1: 'Ordne die Plättchen ab 1, Reihe für Reihe von oben links. Die Lücke bleibt am Ende.',
+        tutTitle2: 'Schieben', tutText2: 'Tippe auf ein Plättchen in der Reihe oder Spalte der Lücke, dann rutscht es hinüber. Jedes bewegte Plättchen zählt als ein Zug.'
+      },
+      es: {
+        moves: 'Movimientos', movesN: '{n} movimientos', fewestN: 'Mejor: {n} movimientos', size: 'Tamaño', newShuffle: 'Mezclar de nuevo',
+        solvedIt: '¡En orden!', dailySp: 'Puzle deslizante diario', board: 'Bandeja del puzle deslizante', tileN: 'Ficha {n}', tileHome: 'Ficha {n}, en su sitio',
+        keysMove: 'Desliza una ficha al hueco', keysPick: 'Elige una ficha y tócala',
+        mvUp: 'Deslizar arriba', mvDown: 'Deslizar abajo', mvLeft: 'Deslizar a la izquierda', mvRight: 'Deslizar a la derecha',
+        rules: 'Pon las fichas en orden: el 1 arriba a la izquierda, fila por fila, con el hueco abajo a la derecha. Toca una ficha en la misma fila o columna que el hueco y se desliza, junto con todas las que hay en medio. Cada ficha que se mueve es un movimiento, así que cuantos menos, mejor. Una ficha ya en su sitio lleva una pequeña marca. Toda mezcla tiene solución. El reto diario es una bandeja de 4×4, la misma para todos.',
+        tutTitle1: 'En orden', tutText1: 'Ordena las fichas desde el 1, fila por fila desde arriba a la izquierda. El hueco queda al final.',
+        tutTitle2: 'Desliza', tutText2: 'Toca una ficha en la fila o columna del hueco para que se deslice. Cada ficha movida cuenta como un movimiento.'
+      }
+    }
+  });
+
+  var params = new URLSearchParams(location.search);
+  var dailyDate = params.get('daily');
+  var GAP = 0.06, WIN_MS = 700, SWIPE_PX = 24;
+  // #407: the solved tray only gained a ring before the result. Now a band of
+  // light sweeps over it from the top-left tile to the bottom-right one,
+  // inside the pause that already waited for the result.
+  var SHINE_MS = 420;
+  function shineDelays(n) {
+    var step = (WIN_MS - SHINE_MS) / (2 * n - 2), d = [0];
+    for (var v = 1; v < n * n; v++) d[v] = Math.round(((((v - 1) / n) | 0) + (v - 1) % n) * step);
+    return d;
+  }
+
+  var prefs = ctx.store.get('prefs', null);
+  if (!prefs || E.SIZES.indexOf(prefs.size) < 0) prefs = { size: 4 };
+
+  var S = null, nodes = [], busy = false, cur = -1, press = null;
+  var startedAt = Date.now(), pausedAt = 0;
+
+  var top = el('div', { class: 'sp-top ch-above' });
+  var board = el('div', { class: 'sp-board', role: 'group', 'aria-label': C.t('board') }, [el('div', { class: 'sp-hole' })]);
+  var status = el('div', { class: 'sp-status', 'aria-live': 'polite' });
+  // #854: arrows for a mouse player, as in Doubles; each moves a tile the way the arrow keys
+  // do (Up slides the tile under the gap up). The tray is not mirrored, so neither are they.
+  var PAD_DIR = { up: 0, right: 1, down: 2, left: 3 };
+  var pad = C.ui.arrowPad({ up: C.t('mvUp'), down: C.t('mvDown'), left: C.t('mvLeft'), right: C.t('mvRight') },
+    function (dir) { cur = -1; stepDir(PAD_DIR[dir]); });
+  var wrap = el('div', { class: 'sp-wrap ch-split' }, [el('div', { class: 'ch-fit' }, [board]), el('div', { class: 'ch-side' }, [top, status, pad])]);
+
+  ctx.stat('moves', C.t('moves'));
+  ctx.button({ icon: 'help', label: C.t('help'), onClick: showHelp });
+  var newBtn = ctx.button({ icon: 'refresh', label: C.t('newShuffle'), onClick: askNew });
+  if (dailyDate) newBtn.classList.add('ch-hidden');
+  ctx.main.appendChild(wrap);
+  ctx.mount();
+
+  /* --------------------------------------------------------- drawing */
+
+  function sizeLabel(n) { return C.num(n) + '×' + C.num(n); }
+
+  function renderTop() {
+    top.innerHTML = '';
+    if (dailyDate) { top.appendChild(el('span', { class: 'ch-badge', text: C.t('dailySp') })); return; }
+    top.appendChild(C.ui.segmented(
+      E.SIZES.map(function (n) { return { value: n, label: sizeLabel(n) }; }),
+      S.n,
+      function (v) {
+        if (v === S.n) return;
+        var go = function () { prefs.size = v; ctx.store.set('prefs', prefs); newGame(v); };
+        // a tray already worked on is not thrown away without asking
+        if (S.moves > 0 && !S.done) {
+          C.ui.confirm({ title: C.t('newShuffle'), body: C.t('resetWarn'), onOk: go, onCancel: renderTop });
+          renderTop();
+          return;
+        }
+        go();
+      }
+    ));
+  }
+
+  // One button per tile, kept for the whole game and moved with a transform, so a slide animates
+  function build() {
+    nodes.forEach(function (b) { b.remove(); });
+    nodes = [];
+    for (var v = 1; v < S.n * S.n; v++) {
+      var b = el('button', { class: 'sp-tile sp-tile--still', type: 'button', tabindex: '-1', text: C.num(v) });
+      b._v = v;
+      nodes[v] = b;
+      board.appendChild(b);
+    }
+    board.classList.toggle('sp-board--won', !!S.done);
+    board.classList.remove('sp-shine');
+    place(true);
+    requestAnimationFrame(function () { nodes.forEach(function (b) { if (b) b.classList.remove('sp-tile--still'); }); });
+  }
+  function place() {
+    var n = S.n, inner = board.clientWidth - 12, cell = inner / n, g = cell * GAP, size = cell - g;
+    var fs = Math.round(size * (n === 3 ? 0.42 : n === 4 ? 0.4 : 0.38));
+    for (var i = 0; i < S.tiles.length; i++) {
+      var v = S.tiles[i];
+      if (!v) continue;
+      var b = nodes[v], x = 6 + (i % n) * cell + g / 2, y = 6 + Math.floor(i / n) * cell + g / 2;
+      b.style.width = size + 'px';
+      b.style.height = size + 'px';
+      b.style.fontSize = fs + 'px';
+      b.style.transform = 'translate(' + x + 'px,' + y + 'px)';
+      var home = v === i + 1;
+      b.classList.toggle('sp-tile--home', home);
+      b.classList.toggle('sp-tile--cur', i === cur);
+      b.setAttribute('aria-label', C.t(home ? 'tileHome' : 'tileN', { n: C.num(v) }));
+    }
+  }
+  function render() {
+    ctx.setStat('moves', C.num(S.moves));
+    var best = C.stats.getBest('sliding', 'moves' + S.n);
+    status.textContent = !dailyDate && best ? C.t('fewestN', { n: C.num(best) }) : '';
+    place();
+  }
+
+  /* ------------------------------------------------------------ moves */
+
+  function after(r) {
+    if (!r.moved.length) { C.feedback('bad'); C.ui.shake(board); return; }
+    C.feedback('tap');
+    ctx.setStat('moves', C.num(S.moves), true);
+    if (r.won) { won(); return; }
+    save();
+    render();
+  }
+  function tapCell(i) {
+    if (!S || S.done || busy) return;
+    after(E.tap(S, i));
+  }
+  function stepDir(d) {
+    if (!S || S.done || busy) return;
+    after(E.step(S, d));
+  }
+
+  function won() {
+    busy = true;
+    cur = -1;
+    save();
+    render();
+    board.classList.add('sp-board--won');
+    if (!C.ui.reduceMotion()) {
+      var sd = shineDelays(S.n);
+      nodes.forEach(function (b) { if (b) b.style.setProperty('--d', sd[b._v] + 'ms'); });
+      board.style.setProperty('--shine-ms', SHINE_MS + 'ms');
+      board.classList.add('sp-shine');
+    }
+    C.feedback('good');
+    status.textContent = C.t('solvedIt');
+    setTimeout(finish, C.ui.reduceMotion() ? 0 : WIN_MS);
+  }
+
+  function finish() {
+    var elapsed = (pausedAt || Date.now()) - startedAt, n = S.n;
+    var base = n === 3 ? 4 : (n === 4 ? 9 : 16);
+    var coins = base, points = base * 4, note = null;
+    C.achievements.unlock('sp-win');
+    if (n === 5) C.achievements.unlock('sp-five');
+    if (n === 3 && S.moves <= 40) C.achievements.unlock('sp-tidy');
+    if (S.daily) {
+      coins += 8; points += 25;
+      if (!C.stats.daily('sliding', S.daily, { label: C.t('movesN', { n: C.num(S.moves) }), moves: S.moves, ms: elapsed })) {
+        coins = Math.round(coins * 0.2); points = Math.round(points * 0.2);
+      }
+    } else if (C.stats.best('sliding', 'moves' + n, S.moves, true)) {
+      note = C.t('fewestN', { n: C.num(S.moves) });
+    }
+    var shot = { n: n, start: S.start.slice() };
+    ctx.clearSave();
+    ctx.finish({
+      won: true, title: C.t('solvedIt'), note: note, timeMs: elapsed, coins: coins, points: points,
+      lines: [
+        S.daily ? { label: C.t('daily'), value: C.num(S.daily) } : { label: C.t('size'), value: sizeLabel(n) },
+        { label: C.t('moves'), value: C.num(S.moves) },
+        { label: C.t('time'), value: C.time(elapsed) }
+      ],
+      shareText: 'چوگان · پازل کشویی' + (S.daily ? ('\nروزانه ' + S.daily) : ('\n' + sizeLabel(n))) + '\n' + C.t('movesN', { n: C.num(S.moves) }) + '\n' + C.time(elapsed),
+      paint: cardPaint(shot),
+      againLabel: S.daily ? null : C.t('newShuffle'),
+      onAgain: S.daily ? null : function () { newGame(n); }
+    });
+  }
+
+  /* ------------------------------------------------------- share card */
+
+  function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#999'; }
+  // The card shows the tray as it was shuffled, the puzzle the player put back in order
+  function cardPaint(shot) {
+    return function (g, w, h) {
+      var n = shot.n, side = Math.min(w, h), ox = (w - side) / 2, oy = (h - side) / 2, pad = side * 0.03;
+      var cell = (side - 2 * pad) / n, gap = cell * GAP, sz = cell - gap;
+      g.fillStyle = cssVar('--sp-tray');
+      C.rrect(g, ox, oy, side, side, side * 0.06);
+      g.fill();
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.font = '800 ' + Math.round(sz * 0.42) + 'px Vazirmatn, sans-serif';
+      for (var i = 0; i < shot.start.length; i++) {
+        var v = shot.start[i];
+        if (!v) continue;
+        var x = ox + pad + (i % n) * cell + gap / 2, y = oy + pad + Math.floor(i / n) * cell + gap / 2;
+        g.fillStyle = cssVar('--sp-tile-edge');
+        C.rrect(g, x, y, sz, sz, sz * 0.12);
+        g.fill();
+        g.fillStyle = cssVar('--sp-tile');
+        C.rrect(g, x, y, sz, sz - sz * 0.06, sz * 0.12);
+        g.fill();
+        g.fillStyle = cssVar('--sp-ink');
+        g.fillText(C.num(v), x + sz / 2, y + sz * 0.47);
+      }
+    };
+  }
+
+  /* ---------------------------------------------------------- saving */
+
+  ctx.autosave(function () {
+    if (!S || S.done || busy || S.moves === 0) return { inProgress: false };
+    return { s: { n: S.n, tiles: S.tiles, start: S.start, moves: S.moves }, daily: S.daily || null, elapsed: (pausedAt || Date.now()) - startedAt };
+  });
+  function save() { ctx.save(); }
+
+  function newGame(n, daily) {
+    S = E.make(n, daily ? C.daily('sliding', daily).rng : Math.random);
+    S.daily = daily || null;
+    startedAt = Date.now();
+    pausedAt = 0;
+    busy = false; cur = -1;
+    board.classList.remove('sp-board--won');
+    renderTop();
+    build();
+    render();
+    save();
+  }
+
+  function askNew() {
+    if (!S || busy || S.daily) return;
+    if (S.done || S.moves === 0) { newGame(S.n); return; }
+    C.ui.confirm({ title: C.t('newShuffle'), body: C.t('resetWarn'), onOk: function () { newGame(S.n); } });
+  }
+
+  /* ------------------------------------------------------------ help */
+
+  function showHelp() {
+    var m = C.ui.modal({
+      title: C.t('help'),
+      body: [
+        el('p', { class: 'ch-dim', text: C.t('rules') }),
+        el('h3', { style: { 'margin-top': 'var(--s-4)' }, text: C.t('keyboard') }),
+        el('div', { class: 'ch-list' }, [
+          kb('← ↑ → ↓', C.t('keysMove')),
+          kb('Tab / Enter', C.t('keysPick')),
+          kb('R', C.t('newShuffle'))
+        ])
+      ],
+      actions: [
+        { label: C.t('tutorial'), onClick: function () { ctx.showTutorial(TUT); } },
+        { label: C.t('done'), kind: 'primary' }
+      ]
+    });
+    if (m && m.box) { m.box.scrollTop = 0; setTimeout(function () { m.box.scrollTop = 0; }, 80); }
+  }
+  function kb(k, what) {
+    return el('div', { class: 'ch-item' }, [
+      el('div', { class: 'ch-item__label', text: what }),
+      el('span', { class: 'ch-badge', text: k })
+    ]);
+  }
+
+  // Tutorial art: a small 3×3 tray drawn with the same colours as the board
+  function tTray(tiles, arrow) {
+    var s = '<rect x="58" y="4" width="84" height="84" rx="10" fill="var(--sp-tray)"/>';
+    for (var i = 0; i < 9; i++) {
+      var v = tiles[i];
+      if (!v) continue;
+      var x = 62 + (i % 3) * 26.7, y = 8 + Math.floor(i / 3) * 26.7;
+      s += '<rect x="' + x + '" y="' + y + '" width="23.5" height="23.5" rx="3" fill="var(--sp-tile)" stroke="var(--sp-tile-edge)" stroke-width="1.2"/>' +
+        '<text x="' + (x + 11.75) + '" y="' + (y + 16.5) + '" font-size="13" font-weight="800" text-anchor="middle" fill="var(--sp-ink)">' + C.num(v) + '</text>';
+    }
+    if (arrow) s += '<path d="' + arrow + '" fill="none" stroke="var(--game)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>';
+    return '<svg viewBox="0 0 200 92" width="100%" class="sp-tut" direction="ltr">' + s + '</svg>';
+  }
+  var TUT = [
+    { title: C.t('tutTitle1'), text: C.t('tutText1'), art: tTray([1, 2, 3, 4, 5, 6, 7, 8, 0]) },
+    // the arrow stands outside the tray, beside the tile it moves, so it covers no number
+    { title: C.t('tutTitle2'), text: C.t('tutText2'), art: tTray([1, 2, 3, 4, 5, 6, 7, 0, 8], 'M172 72H150M156 66l-6 6 6 6') }
+  ];
+
+  /* ------------------------------------------------------------ input */
+
+  function cellAt(e) {
+    var r = board.getBoundingClientRect(), n = S.n, inner = r.width - 12;
+    var c = Math.floor((e.clientX - r.left - 6) / (inner / n)), row = Math.floor((e.clientY - r.top - 6) / (inner / n));
+    if (c < 0 || c >= n || row < 0 || row >= n) return -1;
+    return row * n + c;
+  }
+  // A tap slides the tile under the finger; a swipe anywhere slides the tile next to the gap
+  board.addEventListener('pointerdown', function (e) {
+    if (!S || S.done || busy || press) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    press = { id: e.pointerId, x: e.clientX, y: e.clientY, cell: cellAt(e) };
+    try { board.setPointerCapture(e.pointerId); } catch (err) { /* older WebViews */ }
+  });
+  board.addEventListener('pointerup', function (e) {
+    if (!press || press.id !== e.pointerId) return;
+    var p = press, dx = e.clientX - p.x, dy = e.clientY - p.y;
+    press = null;
+    if (cur >= 0) { cur = -1; place(); }
+    if (Math.hypot(dx, dy) >= SWIPE_PX) {
+      stepDir(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 1 : 3) : (dy > 0 ? 2 : 0));
+      return;
+    }
+    if (p.cell >= 0 && S.tiles[p.cell]) tapCell(p.cell);
+  });
+  board.addEventListener('pointercancel', function () { press = null; });
+  board.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+  window.addEventListener('keydown', function (e) {
+    if (!S || S.done || busy) return;
+    if (document.querySelector('.ch-scrim')) return;
+    var tg = e.target, tag = tg && tg.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (tg && tg.isContentEditable)) return;
+    if (tag === 'BUTTON' && (e.key === ' ' || e.key === 'Enter') && !tg.classList.contains('sp-tile')) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    var k = e.key;
+    if (C.keyIs(e, 'r')) { askNew(); e.preventDefault(); return; }
+    // the tray is not mirrored, so the arrows are geometric in every language
+    var d = { ArrowUp: 0, ArrowRight: 1, ArrowDown: 2, ArrowLeft: 3 }[k];
+    if (d !== undefined) { cur = -1; stepDir(d); e.preventDefault(); return; }
+    // Tab walks the tiles in reading order, Enter or Space taps the one picked
+    if (k === 'Tab') {
+      var at = cur < 0 ? -1 : cur, dir = e.shiftKey ? -1 : 1, len = S.tiles.length;
+      do { at = (at + dir + len) % len; } while (!S.tiles[at]);
+      cur = at;
+      place();
+      e.preventDefault();
+      return;
+    }
+    if ((k === 'Enter' || k === ' ') && cur >= 0) {
+      var was = S.tiles[cur];
+      tapCell(cur);
+      if (S && !S.done) cur = S.tiles.indexOf(was);
+      place();
+      e.preventDefault();
+    }
+  });
+
+  // time in the background is not time spent on the tray
+  C.onPause(function () { if (!pausedAt) pausedAt = Date.now(); });
+  C.onResume(function () {
+    if (pausedAt) startedAt += Date.now() - pausedAt;
+    pausedAt = 0;
+  });
+
+  var resizeT = null;
+  function onResize() {
+    clearTimeout(resizeT);
+    resizeT = setTimeout(function () { if (S) place(); }, 80);
+  }
+  // the board's size follows its slot, which changes with the window and the side column (#359)
+  if (window.ResizeObserver) new ResizeObserver(onResize).observe(board);
+  else window.addEventListener('resize', onResize);
+
+  /* ------------------------------------------------------------ start */
+
+  var saved = ctx.loadSave();
+  // a save that fails its checks is dropped and a fresh tray is dealt
+  var resume = saved && saved.s && (saved.daily || null) === (dailyDate || null) ? E.restore(saved.s) : null;
+  if (resume && !resume.done) {
+    S = resume;
+    S.daily = saved.daily || null;
+    startedAt = Date.now() - (saved.elapsed || 0);
+    renderTop();
+    build();
+    render();
+  } else if (dailyDate) {
+    newGame(E.DAILY_SIZE, dailyDate);
+    if (C.stats.dailyDone('sliding', dailyDate)) {
+      var rec = C.stats.dailyOf(dailyDate).sliding;
+      C.ui.toast({ icon: 'check', title: C.t('dailyDone'), sub: rec.label });
+    }
+  } else {
+    newGame(prefs.size);
+  }
+  ctx.tutorialIfNew(TUT);
+  // the web font changes nothing in the tray's size, but the first layout can land before the
+  // board has its width: place the tiles again once everything is in
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { if (S) place(); });
+  setTimeout(function () { if (S) place(); }, 30);
+})();
+</script>
+</body>
+</html>

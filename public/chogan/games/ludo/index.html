@@ -1,0 +1,1073 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#FBF6EF">
+<title>منچ — چوگان</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../lib/chogan.css">
+<script src="../../lib/early.js"></script>
+<style>
+  /* The four colours are part of the rules (whose base, path and tokens), so they
+     are the game's own tokens and stay the same in both themes. */
+  :root { --lu-c0: #E5484D; --lu-c1: #23A26D; --lu-c2: #E8A317; --lu-c3: #2F6FDE; }
+  .lu-top { display: flex; gap: var(--s-2); flex-wrap: wrap; justify-content: center; width: 100%; max-width: 560px; }
+  .lu-top .ch-tap { border: 0; font: inherit; font-size: var(--fs-sm); font-weight: 700; min-height: 44px; padding-inline: var(--s-4); cursor: pointer; }
+  .lu-players { width: 100%; max-width: 560px; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: var(--s-2); }
+  .lu-player {
+    display: flex; align-items: center; gap: 6px; min-width: 0;
+    background: var(--c-surface); border-radius: var(--r-md); padding: 6px 10px;
+    box-shadow: var(--sh-1); border: 2px solid transparent; min-height: 44px;
+    transition: border-color var(--t-mid) var(--ease), transform var(--t-mid) var(--ease);
+  }
+  .lu-player--on { border-color: var(--pc); transform: translateY(-2px); box-shadow: var(--sh-2); }
+  .lu-player__dot { width: 16px; height: 16px; border-radius: 50%; flex: 0 0 16px; background: var(--pc); }
+  .lu-player__name { flex: 1; min-width: 0; font-weight: 700; font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lu-player__n { font-size: var(--fs-xs); color: var(--c-text-dim); font-variant-numeric: tabular-nums; }
+  .lu-players--many .lu-player { display: grid; grid-template-columns: 14px minmax(0, 1fr); column-gap: 6px; padding: 5px 8px; }
+  .lu-players--many .lu-player__dot { width: 14px; height: 14px; }
+  .lu-players--many .lu-player__n { grid-column: 2; line-height: 1.1; }
+  .lu-thinking { animation: lu-blink 900ms infinite; }
+  @keyframes lu-blink { 50% { opacity: .55; } }
+  .ch-fit > .lu-boardbox { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
+  .lu-canvas { display: block; touch-action: manipulation; cursor: pointer; border-radius: var(--r-md); box-shadow: var(--sh-2); }
+  .lu-bar { display: flex; align-items: center; justify-content: center; gap: var(--s-3); width: 100%; max-width: 560px; }
+  .lu-status { flex: 1; min-width: 0; font-weight: 700; font-size: var(--fs-sm); color: var(--c-text-dim); text-align: center; }
+  .lu-die {
+    width: 64px; height: 64px; flex: 0 0 64px; border: 0; padding: 0; border-radius: 16px; cursor: pointer;
+    background: var(--c-surface); box-shadow: var(--sh-2), inset 0 0 0 3px var(--pc, var(--c-line));
+    display: grid; place-items: center; touch-action: manipulation;
+    transition: transform var(--t-fast) var(--ease), opacity var(--t-fast) var(--ease);
+  }
+  .lu-die:disabled { cursor: default; opacity: .75; }
+  .lu-die--ready { animation: lu-nudge 1.4s var(--ease) infinite; }
+  .lu-die--roll svg { animation: lu-spin 120ms linear infinite; }
+  @keyframes lu-nudge { 0%, 70%, 100% { transform: none; } 80% { transform: rotate(-8deg) scale(1.05); } 90% { transform: rotate(8deg) scale(1.05); } }
+  @keyframes lu-spin { to { transform: rotate(90deg); } }
+  @media (prefers-reduced-motion: reduce) { :root:not([data-motion="on"]) .lu-die--ready, :root:not([data-motion="on"]) .lu-die--roll svg { animation: none; } }
+</style>
+</head>
+<body>
+<script src="../../version.js"></script>
+<script src="../../lib/chogan.js"></script>
+<script>
+/* ==== ENGINE START ==== */
+function LudoEngineFactory() {
+  'use strict';
+
+  // The loop of 52 squares on a 15×15 board, as [column, row], clockwise from
+  // red's start. Colour c starts at square 13c; a token walks 51 squares of the
+  // loop (positions 0..50), then 5 squares up its own home column (51..55), and
+  // is home at 56.
+  var TRACK = [];
+  (function () {
+    var runs = [
+      [1, 6, 1, 0, 5], [6, 5, 0, -1, 6], [7, 0, 1, 0, 1], [8, 0, 0, 1, 1],
+      [8, 1, 0, 1, 5], [9, 6, 1, 0, 6], [14, 7, 0, 1, 1], [14, 8, -1, 0, 1],
+      [13, 8, -1, 0, 5], [8, 9, 0, 1, 6], [7, 14, -1, 0, 1], [6, 14, 0, -1, 1],
+      [6, 13, 0, -1, 5], [5, 8, -1, 0, 6], [0, 7, 0, -1, 1], [0, 6, 1, 0, 1]
+    ];
+    runs.forEach(function (r) { for (var k = 0; k < r[4]; k++) TRACK.push([r[0] + r[2] * k, r[1] + r[3] * k]); });
+  })();
+  var LOOP = 52, LAST = 50, HOME = 56;
+  // Start squares and the four stars, eight squares after each start: nobody is
+  // captured there.
+  var SAFE = [0, 8, 13, 21, 26, 34, 39, 47];
+  // Colours in play order (clockwise): red, green, yellow, blue. With two players
+  // the colours sit opposite each other, as on a real board.
+  var SEATS = { 2: [0, 2], 3: [0, 1, 2], 4: [0, 1, 2, 3] };
+
+  function square(c, p) { return p >= 0 && p <= LAST ? (13 * c + p) % LOOP : -1; }
+  function isSafe(sq) { return SAFE.indexOf(sq) >= 0; }
+
+  // Board cell of a token: the loop, its home column, or -1 in base or home
+  function cell(c, p) {
+    if (p >= 0 && p <= LAST) return TRACK[square(c, p)];
+    if (p > LAST && p < HOME) {
+      var k = p - LAST;
+      if (c === 0) return [k, 7];
+      if (c === 1) return [7, k];
+      if (c === 2) return [14 - k, 7];
+      return [7, 14 - k];
+    }
+    return null;
+  }
+
+  // tokens: 2 for the quick game, 4 for the full one
+  function newGame(players, tokens) {
+    var seats = SEATS[players], pos = [];
+    for (var i = 0; i < seats.length; i++) {
+      var t = [];
+      for (var k = 0; k < tokens; k++) t.push(-1);
+      pos.push(t);
+    }
+    return { colours: seats.slice(), tokens: tokens, pos: pos, turn: 0, sixes: 0, winner: -1, rolls: 0 };
+  }
+
+  function copy(S) {
+    return {
+      colours: S.colours.slice(), tokens: S.tokens, pos: S.pos.map(function (t) { return t.slice(); }),
+      turn: S.turn, sixes: S.sixes, winner: S.winner, rolls: S.rolls
+    };
+  }
+
+  function canMove(S, k, roll) {
+    var p = S.pos[S.turn][k];
+    if (p < 0) return roll === 6;
+    if (p >= HOME) return false;
+    return p + roll <= HOME;
+  }
+
+  // Tokens that can move; two tokens on the same spot are the same move, so only
+  // the first of them is listed.
+  function moves(S, roll) {
+    var out = [], seen = {};
+    for (var k = 0; k < S.tokens; k++) {
+      if (!canMove(S, k, roll)) continue;
+      var key = S.pos[S.turn][k];
+      if (seen[key]) continue;
+      seen[key] = 1;
+      out.push(k);
+    }
+    return out;
+  }
+
+  function nextSeat(S) { return (S.turn + 1) % S.colours.length; }
+
+  // A roll that cannot be played: a third six in a row loses the turn, and so
+  // does a roll with no token to move. Returns null when the roll can be played.
+  function dead(S, roll) {
+    if (roll === 6 && S.sixes === 2) return 'sixes';
+    if (!moves(S, roll).length) return 'none';
+    return null;
+  }
+  function pass(S) {
+    var N = copy(S);
+    N.turn = nextSeat(N);
+    N.sixes = 0;
+    N.rolls++;
+    return N;
+  }
+
+  // Moves token k by the roll. Returns the new state, the cells the token steps
+  // through (for the animation), who was sent home, and whether the player
+  // rolls again: after a six, a capture, or a token reaching home.
+  function play(S, k, roll) {
+    if (S.winner >= 0 || !canMove(S, k, roll) || (roll === 6 && S.sixes === 2)) return null;
+    var N = copy(S), me = N.turn, c = N.colours[me], p = N.pos[me][k], steps = [];
+    var to = p < 0 ? 0 : p + roll;
+    if (p < 0) steps.push(0);
+    else for (var q = p + 1; q <= to; q++) steps.push(q);
+    N.pos[me][k] = to;
+    var captured = [];
+    var sq = square(c, to);
+    if (sq >= 0 && !isSafe(sq)) {
+      for (var s = 0; s < N.colours.length; s++) {
+        if (s === me) continue;
+        for (var j = 0; j < N.tokens; j++) {
+          if (square(N.colours[s], N.pos[s][j]) === sq) { N.pos[s][j] = -1; captured.push({ seat: s, k: j }); }
+        }
+      }
+    }
+    var home = to === HOME;
+    if (N.pos[me].every(function (x) { return x === HOME; })) N.winner = me;
+    var again = N.winner < 0 && (roll === 6 || captured.length > 0 || home);
+    N.rolls++;
+    if (again) N.sixes = roll === 6 ? N.sixes + 1 : 0;
+    else { N.turn = nextSeat(N); N.sixes = 0; }
+    return { state: N, steps: steps, captured: captured, home: home, again: again };
+  }
+
+  // How many enemy tokens could hit square sq with one roll: those on the loop
+  // one to six squares behind it.
+  function threats(S, me, sq) {
+    if (sq < 0 || isSafe(sq)) return 0;
+    var n = 0;
+    for (var s = 0; s < S.colours.length; s++) {
+      if (s === me) continue;
+      for (var j = 0; j < S.tokens; j++) {
+        var e = square(S.colours[s], S.pos[s][j]);
+        if (e < 0) continue;
+        var d = (sq - e + LOOP) % LOOP;
+        // an enemy turns off into its home column before it could reach sq
+        if (d >= 1 && d <= 6 && S.pos[s][j] + d <= LAST) n++;
+      }
+    }
+    return n;
+  }
+
+  // The worth of moving token k for the player to move. medium weighs captures,
+  // reaching home, leaving base and progress; hard also avoids landing where an
+  // enemy can hit it, rescues tokens under threat and keeps tokens on safe squares.
+  function score(S, k, roll, level) {
+    var me = S.turn, c = S.colours[me], p = S.pos[me][k], r = play(S, k, roll);
+    var to = r.state.pos[me][k], v = 0;
+    if (r.captured.length) v += 60 + r.captured.length * 5;
+    if (r.home) v += 50;
+    if (p < 0) v += 35;
+    if (to > LAST) v += 18;
+    v += to * 0.4;
+    if (level === 'hard') {
+      var after = r.state, sq = square(c, to), from = square(c, p);
+      v -= threats(after, me, sq) * 22;
+      v += threats(S, me, from) * 16;
+      if (isSafe(sq)) v += 12;
+      if (r.again) v += 6;
+    } else if (isSafe(square(c, to))) v += 8;
+    return v;
+  }
+
+  // easy: a random token, but it always takes a token home or a capture when one
+  // is there. medium and hard: the best score.
+  function think(S, roll, level, rnd) {
+    rnd = rnd || Math.random;
+    var list = moves(S, roll);
+    if (!list.length) return -1;
+    if (level === 'easy') {
+      for (var i = 0; i < list.length; i++) {
+        var r = play(S, list[i], roll);
+        if (r.captured.length || r.home) return list[i];
+      }
+      return list[Math.floor(rnd() * list.length)];
+    }
+    var best = list[0], bestV = -Infinity;
+    for (i = 0; i < list.length; i++) {
+      var v = score(S, list[i], roll, level) + rnd() * 0.01;
+      if (v > bestV) { bestV = v; best = list[i]; }
+    }
+    return best;
+  }
+
+  function roll(rnd) { return 1 + Math.floor(rnd() * 6); }
+
+  var api = {
+    TRACK: TRACK, SAFE: SAFE, SEATS: SEATS, LAST: LAST, HOME: HOME, square: square, isSafe: isSafe, cell: cell,
+    newGame: newGame, copy: copy, canMove: canMove, moves: moves, dead: dead, pass: pass, play: play,
+    threats: threats, think: think, roll: roll
+  };
+  if (typeof self !== 'undefined') self.LudoEngine = api;
+  return api;
+}
+if (typeof module !== 'undefined' && module.exports) module.exports = LudoEngineFactory;
+/* ==== ENGINE END ==== */
+</script>
+
+<script>
+(function () {
+  'use strict';
+  var C = window.Chogan, el = C.el;
+  var E = LudoEngineFactory();
+
+  C.boot({});
+  var ctx = C.game({
+    id: 'ludo',
+    name: { fa: 'منچ', en: 'Ludo', zh: '飞行棋', de: 'Ludo', es: 'Ludo', pl: 'Chińczyk', fr: 'Petits chevaux', ar: 'لودو', hi: 'लूडो' },
+    accent: '#776A12',
+    mood: 'menu',
+    strings: {
+      fa: {
+        players: 'بازیکن', vsBots: 'با ربات', people: 'چند نفره', you: 'تو', playerN: 'بازیکن {n}', bot: 'ربات',
+        quick: 'سریع، ۲ مهره', full: 'کامل، ۴ مهره', newMatch: 'دست تازه', resetWarn: 'دست فعلی تمام می‌شود. ادامه؟',
+        boardLabel: 'صفحه‌ی منچ', roll: 'تاس بریز', rolling: 'تاس می‌چرخد…', pick: 'یک مهره را انتخاب کن',
+        noMove: 'حرکتی نیست', threeSixes: 'سه شش پشت سر هم؛ نوبت سوخت', rollAgain: 'دوباره تاس بریز',
+        captured: 'زدی!', wasCaptured: 'مهره‌ات زده شد', reachedHome: 'یک مهره رسید خانه',
+        turnOf: 'نوبت {n}', yourTurn: 'نوبت توست', dailyLudo: 'منچ روزانه', vsMedium: 'مقابل ربات متوسط', home: 'خانه',
+        rollsLabel: 'تاس‌های تو', capturesLabel: 'مهره‌هایی که زدی', playerWon: '{n} برد',
+        rules: 'به نوبت تاس بریزید. با شش یک مهره از لانه بیرون می‌آید و دوباره تاس می‌ریزی. مهره‌ها دور صفحه می‌چرخند و از ستون رنگ خودشان به خانه‌ی وسط می‌روند؛ برای رسیدن، عدد تاس باید دقیقاً جا شود. اگر روی مهره‌ی حریف بنشینی آن را به لانه برمی‌گردانی، مگر روی خانه‌های امن (خانه‌ی شروع هر رنگ و ستاره‌ها). زدن مهره، رسیدن به خانه و شش یک تاس دیگر می‌دهند؛ سه شش پشت سر هم نوبت را می‌سوزاند. اولین کسی که همه‌ی مهره‌هایش را به خانه برساند می‌برد.',
+        keyboard: 'صفحه‌کلید', rollKey: 'ریختن تاس', pickKey: 'انتخاب مهره', moveKey: 'حرکت مهره‌ی انتخاب‌شده',
+        tutTitle1: 'با شش بیرون بیا', tutText1: 'تاس بریز. با شش یک مهره از لانه بیرون می‌آید و یک تاس دیگر هم داری.',
+        tutTitle2: 'بزن و امن بمان', tutText2: 'روی مهره‌ی حریف بنشین تا به لانه برگردد. روی خانه‌ی شروع و ستاره‌ها هیچ مهره‌ای زده نمی‌شود.',
+        tutTitle3: 'برو خانه', tutText3: 'بعد از یک دور، مهره از ستون رنگ خودش به وسط می‌رود. اولین کسی که همه‌ی مهره‌هایش را برساند می‌برد.'
+      },
+      en: {
+        players: 'players', vsBots: 'Versus bots', people: 'Pass and play', you: 'You', playerN: 'Player {n}', bot: 'Bot',
+        quick: 'Quick, 2 tokens', full: 'Full, 4 tokens', newMatch: 'New game', resetWarn: 'This ends the current game. Continue?',
+        boardLabel: 'Ludo board', roll: 'Roll the die', rolling: 'Rolling…', pick: 'Pick a token',
+        noMove: 'No move', threeSixes: 'Three sixes in a row: turn lost', rollAgain: 'Roll again',
+        captured: 'Captured!', wasCaptured: 'Your token was captured', reachedHome: 'A token is home',
+        turnOf: "{n}'s turn", yourTurn: 'Your turn', dailyLudo: 'Daily ludo', vsMedium: 'against the medium bot', home: 'home',
+        rollsLabel: 'Your rolls', capturesLabel: 'Tokens you captured', playerWon: '{n} wins',
+        rules: 'Take turns rolling the die. A six brings a token out of its base and gives another roll. Tokens go round the board and up their own colour to the home in the middle; to get there the roll must fit exactly. Landing on an opponent sends it back to its base, except on the safe squares (each colour\'s start square and the stars). A capture, a token reaching home and a six each give another roll; three sixes in a row lose the turn. The first to bring all their tokens home wins.',
+        keyboard: 'Keyboard', rollKey: 'Roll the die', pickKey: 'Choose a token', moveKey: 'Move the chosen token',
+        tutTitle1: 'Out with a six', tutText1: 'Roll the die. A six brings a token out of its base, and you roll again.',
+        tutTitle2: 'Capture, stay safe', tutText2: 'Land on an opponent to send it back to its base. Nobody can be captured on a start square or a star.',
+        tutTitle3: 'Go home', tutText3: 'After one lap a token turns up its own colour to the middle. The first to bring all their tokens home wins.'
+      },
+      pl: {
+        players: 'gracze', vsBots: 'Przeciwko botom', people: 'Podaj i graj', you: 'Ty', playerN: 'Gracz {n}', bot: 'Bot',
+        quick: 'Szybka, 2 pionki', full: 'Pełna, 4 pionki', newMatch: 'Nowa gra', resetWarn: 'To zakończy obecną grę. Kontynuować?',
+        boardLabel: 'Plansza do Ludo', roll: 'Rzuć kostką', rolling: 'Rzucanie…', pick: 'Wybierz pionek',
+        noMove: 'Brak ruchu', threeSixes: 'Trzy szóstki z rzędu: utrata kolejki', rollAgain: 'Rzuć ponownie',
+        captured: 'Zbity!', wasCaptured: 'Twój pionek został zbity', reachedHome: 'Pionek dotarł do domku',
+        turnOf: 'Kolej gracza {n}', yourTurn: 'Twoja kolej', dailyLudo: 'Codzienny Chińczyk', vsMedium: 'przeciwko średniemu botowi', home: 'domek',
+        rollsLabel: 'Twoje rzuty', capturesLabel: 'Zbite przez Ciebie pionki', playerWon: '{n} wygrywa',
+        rules: 'Gracze na zmianę rzucają kostką. Szóstka wyprowadza pionek z bazy i daje dodatkowy rzut. Pionki poruszają się wokół planszy i wchodzą po torze swojego koloru do domku na środku; aby tam dotrzeć, rzut musi pasować idealnie. Stanęcie na polu przeciwnika odsyła go z powrotem do bazy, z wyjątkiem bezpiecznych pól (pole startowe każdego koloru oraz gwiazdki). Zbicie, dotarcie pionka do domku oraz szóstka dają dodatkowy rzut; trzy szóstki z rzędu powodują utratę kolejki. Wygrywa ten, kto jako pierwszy wprowadzi wszystkie swoje pionki do domku.',
+        keyboard: 'Klawiatura', rollKey: 'Rzuć kostką', pickKey: 'Wybierz pionek', moveKey: 'Rusz wybranym pionkiem',
+        tutTitle1: 'Wyjście z szóstką', tutText1: 'Rzuć kostką. Szóstka wyprowadza pionek z bazy i pozwala rzucić ponownie.',
+        tutTitle2: 'Zbijaj i bądź bezpieczny', tutText2: 'Stań na pionku przeciwnika, aby odesłać go do bazy. Nikogo nie można zbić na polu startowym ani na gwiazdce.',
+        tutTitle3: 'Idź do domku', tutText3: 'Po okrążeniu planszy pionek skręca w tor swojego koloru prowadzący do środka. Wygrywa ten, kto jako pierwszy wprowadzi wszystkie swoje pionki do domku.'
+      },
+      fr: {
+        players: 'joueurs', vsBots: 'Contre des robots', people: 'Chacun son tour', you: 'Toi', playerN: 'Joueur {n}', bot: 'Robot',
+        quick: 'Rapide, 2 pions', full: 'Complète, 4 pions', newMatch: 'Nouvelle partie', resetWarn: 'La partie en cours va s’arrêter. Continuer ?',
+        boardLabel: 'Plateau des petits chevaux', roll: 'Lance le dé', rolling: 'Lancer…', pick: 'Choisis un pion',
+        noMove: 'Aucun coup', threeSixes: 'Trois six d’affilée : tour perdu', rollAgain: 'Relance',
+        captured: 'Pris !', wasCaptured: 'Ton pion a été pris', reachedHome: 'Un pion est arrivé',
+        turnOf: 'Au tour de {n}', yourTurn: 'À toi', dailyLudo: 'Petits chevaux du jour', vsMedium: 'contre le robot moyen', home: 'arrivée',
+        rollsLabel: 'Tes lancers', capturesLabel: 'Pions que tu as pris', playerWon: '{n} gagne',
+        rules: 'Lancez le dé à tour de rôle. Un six fait sortir un pion de sa base et donne un autre lancer. Les pions font le tour du plateau puis montent leur propre couleur jusqu’à l’arrivée au centre ; pour y entrer, le lancer doit tomber juste. Tomber sur un adversaire le renvoie à sa base, sauf sur les cases sûres (la case de départ de chaque couleur et les étoiles). Une prise, un pion arrivé et un six donnent chacun un autre lancer ; trois six d’affilée font perdre le tour. Le premier à ramener tous ses pions à l’arrivée gagne.',
+        keyboard: 'Clavier', rollKey: 'Lancer le dé', pickKey: 'Choisir un pion', moveKey: 'Avancer le pion choisi',
+        tutTitle1: 'Sortir avec un six', tutText1: 'Lance le dé. Un six fait sortir un pion de sa base, et tu relances.',
+        tutTitle2: 'Prendre, rester à l’abri', tutText2: 'Tombe sur un adversaire pour le renvoyer à sa base. Personne ne peut être pris sur une case de départ ou une étoile.',
+        tutTitle3: 'Rentrer', tutText3: 'Après un tour, un pion monte sa propre couleur jusqu’au centre. Le premier à ramener tous ses pions gagne.'
+      },
+      ar: {
+        players: 'لاعبين', vsBots: 'ضد الروبوتات', people: 'على جهاز واحد', you: 'أنت', playerN: 'اللاعب {n}', bot: 'الروبوت',
+        quick: 'سريعة، قطعتان', full: 'كاملة، 4 قطع', newMatch: 'لعبة جديدة', resetWarn: 'سينهي هذا اللعبة الحالية. هل تتابع؟',
+        boardLabel: 'لوح اللودو', roll: 'ارمِ النرد', rolling: 'يُرمى…', pick: 'اختر قطعة',
+        noMove: 'لا حركة', threeSixes: 'ثلاث ستات متتالية: ضاع الدور', rollAgain: 'ارمِ مجددًا',
+        captured: 'أُسرت!', wasCaptured: 'أُسرت قطعتك', reachedHome: 'وصلت قطعة إلى البيت',
+        turnOf: 'دور {n}', yourTurn: 'دورك', dailyLudo: 'لودو اليوم', vsMedium: 'ضد الروبوت المتوسط', home: 'البيت',
+        rollsLabel: 'رمياتك', capturesLabel: 'القطع التي أسرتها', playerWon: 'فاز {n}',
+        rules: 'ترمون النرد بالتناوب. الستة تُخرج قطعة من قاعدتها وتمنحك رمية أخرى. تدور القطع حول اللوح ثم تصعد في ممر لونها إلى البيت في الوسط؛ وللوصول إليه يجب أن تطابق الرمية المسافة تمامًا. إذا وقفت على قطعة خصم أعدتها إلى قاعدتها، إلا في المربعات الآمنة (مربع البداية لكل لون والنجوم). الأسر، ووصول قطعة إلى البيت، والستة، كل منها يمنحك رمية أخرى؛ وثلاث ستات متتالية تُضيع الدور. أول من يوصل كل قطعه إلى البيت يفوز.',
+        keyboard: 'لوحة المفاتيح', rollKey: 'ارمِ النرد', pickKey: 'اختر قطعة', moveKey: 'حرّك القطعة المختارة',
+        tutTitle1: 'اخرج بستة', tutText1: 'ارمِ النرد. الستة تُخرج قطعة من قاعدتها، وترمي مرة أخرى.',
+        tutTitle2: 'الأسر والأمان', tutText2: 'قف على قطعة خصم لتعيدها إلى قاعدتها. لا يمكن أسر أحد على مربع البداية أو النجمة.',
+        tutTitle3: 'عُد إلى البيت', tutText3: 'بعد دورة كاملة تصعد القطعة في ممر لونها إلى الوسط. أول من يوصل كل قطعه إلى البيت يفوز.'
+      },
+      hi: {
+        players: 'खिलाड़ी', vsBots: 'बॉट से', people: 'बारी-बारी', you: 'आप', playerN: 'खिलाड़ी {n}', bot: 'बॉट',
+        quick: 'तेज़, 2 गोटियाँ', full: 'पूरा, 4 गोटियाँ', newMatch: 'नया खेल', resetWarn: 'इससे मौजूदा खेल ख़त्म हो जाएगा। जारी रखें?',
+        boardLabel: 'लूडो बोर्ड', roll: 'पासा फेंकें', rolling: 'पासा घूम रहा है…', pick: 'एक गोटी चुनें',
+        noMove: 'कोई चाल नहीं', threeSixes: 'लगातार तीन छक्के: बारी गई', rollAgain: 'फिर फेंकें',
+        captured: 'काट दी!', wasCaptured: 'आपकी गोटी कट गई', reachedHome: 'एक गोटी घर पहुँची',
+        turnOf: '{n} की बारी', yourTurn: 'आपकी बारी', dailyLudo: 'रोज़ का लूडो', vsMedium: 'मध्यम बॉट के ख़िलाफ़', home: 'घर',
+        rollsLabel: 'आपके पासे', capturesLabel: 'आपने कितनी गोटियाँ काटीं', playerWon: '{n} जीत गए',
+        rules: 'बारी-बारी से पासा फेंकें। छक्का आने पर एक गोटी अपने ठिकाने से बाहर निकलती है और एक और बार पासा मिलता है। गोटियाँ बोर्ड का चक्कर लगाकर अपने रंग के रास्ते से बीच के घर तक जाती हैं; वहाँ पहुँचने के लिए पासा ठीक उतना ही आना चाहिए। विरोधी की गोटी पर उतरने से वह अपने ठिकाने लौट जाती है, सिवाय सुरक्षित ख़ानों के (हर रंग का शुरुआती ख़ाना और सितारे)। गोटी काटने, गोटी घर पहुँचने और छक्के पर एक और बार पासा मिलता है; लगातार तीन छक्कों पर बारी चली जाती है। जो पहले अपनी सारी गोटियाँ घर पहुँचाए, वह जीतता है।',
+        keyboard: 'कीबोर्ड', rollKey: 'पासा फेंकें', pickKey: 'गोटी चुनें', moveKey: 'चुनी गोटी चलाएँ',
+        tutTitle1: 'छक्के से बाहर', tutText1: 'पासा फेंकें। छक्का आने पर एक गोटी ठिकाने से बाहर आती है, और आप फिर फेंकते हैं।',
+        tutTitle2: 'काटें, सुरक्षित रहें', tutText2: 'विरोधी की गोटी पर उतरें तो वह अपने ठिकाने लौट जाती है। शुरुआती ख़ाने या सितारे पर किसी को नहीं काटा जा सकता।',
+        tutTitle3: 'घर जाएँ', tutText3: 'एक चक्कर के बाद गोटी अपने रंग के रास्ते से बीच की ओर मुड़ती है। जो पहले सारी गोटियाँ घर पहुँचाए, वह जीतता है।'
+      },
+      zh: {
+        players: '名玩家', vsBots: '对战电脑', people: '轮流对战', you: '你', playerN: '玩家{n}', bot: '电脑',
+        quick: '快速，2枚棋子', full: '完整，4枚棋子', newMatch: '新一局', resetWarn: '将结束当前对局，是否继续？',
+        boardLabel: '飞行棋棋盘', roll: '掷骰子', rolling: '掷骰中…', pick: '选择一枚棋子',
+        noMove: '无棋可走', threeSixes: '连掷三个六：本轮作废', rollAgain: '再掷一次',
+        captured: '吃掉了！', wasCaptured: '你的棋子被吃了', reachedHome: '一枚棋子到家了',
+        turnOf: '轮到{n}', yourTurn: '轮到你', dailyLudo: '每日飞行棋', vsMedium: '对战中等电脑', home: '到家',
+        rollsLabel: '你的掷骰次数', capturesLabel: '你吃掉的棋子', playerWon: '{n}获胜',
+        rules: '轮流掷骰子。掷出六点可让一枚棋子出营并再掷一次。棋子绕棋盘一圈后沿自己颜色的跑道走进中间的家，点数必须正好。停在对手棋子上会把它送回营地，但起点格和星形格是安全格。吃子、棋子到家和掷出六点都能再掷一次；连掷三个六本轮作废。先让全部棋子到家的人获胜。',
+        keyboard: '键盘', rollKey: '掷骰子', pickKey: '选择棋子', moveKey: '移动选中的棋子',
+        tutTitle1: '掷六出营', tutText1: '掷骰子。掷出六点，一枚棋子出营，还能再掷一次。',
+        tutTitle2: '吃子与安全格', tutText2: '停在对手棋子上把它送回营地。起点格和星形格上谁都不会被吃。',
+        tutTitle3: '回家', tutText3: '绕一圈后，棋子沿自己颜色的跑道走进中间。先让全部棋子到家的人获胜。'
+      },
+      de: {
+        players: 'Spieler', vsBots: 'Gegen Bots', people: 'Reihum', you: 'Du', playerN: 'Spieler {n}', bot: 'Bot',
+        quick: 'Schnell, 2 Figuren', full: 'Voll, 4 Figuren', newMatch: 'Neue Partie', resetWarn: 'Die aktuelle Partie endet. Weiter?',
+        boardLabel: 'Ludo-Brett', roll: 'Würfeln', rolling: 'Würfelt…', pick: 'Wähle eine Figur',
+        noMove: 'Kein Zug', threeSixes: 'Drei Sechsen hintereinander: Zug verfällt', rollAgain: 'Nochmal würfeln',
+        captured: 'Geschlagen!', wasCaptured: 'Deine Figur wurde geschlagen', reachedHome: 'Eine Figur ist im Ziel',
+        turnOf: 'Am Zug: {n}', yourTurn: 'Du bist dran', dailyLudo: 'Tägliches Ludo', vsMedium: 'gegen den mittleren Bot', home: 'Ziel',
+        rollsLabel: 'Deine Würfe', capturesLabel: 'Geschlagene Figuren', playerWon: 'Sieg: {n}',
+        rules: 'Würfelt abwechselnd. Eine Sechs bringt eine Figur aus dem Haus und gibt einen weiteren Wurf. Die Figuren laufen einmal ums Brett und dann über ihre eigene Farbe ins Ziel in der Mitte; dafür muss der Wurf genau passen. Wer auf einer gegnerischen Figur landet, schickt sie ins Haus zurück, außer auf den sicheren Feldern (Startfeld jeder Farbe und Sterne). Schlagen, eine Figur im Ziel und eine Sechs geben je einen weiteren Wurf; drei Sechsen hintereinander lassen den Zug verfallen. Wer zuerst alle Figuren ins Ziel bringt, gewinnt.',
+        keyboard: 'Tastatur', rollKey: 'Würfeln', pickKey: 'Figur wählen', moveKey: 'Gewählte Figur ziehen',
+        tutTitle1: 'Mit einer Sechs raus', tutText1: 'Würfle. Eine Sechs bringt eine Figur aus dem Haus, und du würfelst nochmal.',
+        tutTitle2: 'Schlagen und sicher stehen', tutText2: 'Lande auf einer gegnerischen Figur, um sie zurück ins Haus zu schicken. Auf Startfeldern und Sternen wird niemand geschlagen.',
+        tutTitle3: 'Ab ins Ziel', tutText3: 'Nach einer Runde läuft eine Figur über ihre Farbe in die Mitte. Wer zuerst alle Figuren ins Ziel bringt, gewinnt.'
+      },
+      es: {
+        players: 'jugadores', vsBots: 'Contra bots', people: 'Por turnos', you: 'Tú', playerN: 'Jugador {n}', bot: 'Bot',
+        quick: 'Rápida, 2 fichas', full: 'Completa, 4 fichas', newMatch: 'Nueva partida', resetWarn: 'Esto termina la partida actual. ¿Seguir?',
+        boardLabel: 'Tablero de ludo', roll: 'Tirar el dado', rolling: 'Tirando…', pick: 'Elige una ficha',
+        noMove: 'Sin jugada', threeSixes: 'Tres seises seguidos: pierdes el turno', rollAgain: 'Tira otra vez',
+        captured: '¡Comida!', wasCaptured: 'Te han comido una ficha', reachedHome: 'Una ficha ha llegado a casa',
+        turnOf: 'Turno: {n}', yourTurn: 'Tu turno', dailyLudo: 'Ludo diario', vsMedium: 'contra el bot medio', home: 'casa',
+        rollsLabel: 'Tus tiradas', capturesLabel: 'Fichas que comiste', playerWon: 'Gana: {n}',
+        rules: 'Tirad el dado por turnos. Un seis saca una ficha de su casa y da otra tirada. Las fichas dan una vuelta al tablero y suben por su color hasta la meta del centro; para llegar, la tirada debe encajar justa. Caer sobre una ficha rival la manda a su casa, salvo en las casillas seguras (la salida de cada color y las estrellas). Comer, llegar a la meta y sacar un seis dan otra tirada; tres seises seguidos pierden el turno. Gana quien lleve primero todas sus fichas a la meta.',
+        keyboard: 'Teclado', rollKey: 'Tirar el dado', pickKey: 'Elegir ficha', moveKey: 'Mover la ficha elegida',
+        tutTitle1: 'Sal con un seis', tutText1: 'Tira el dado. Un seis saca una ficha de su casa, y vuelves a tirar.',
+        tutTitle2: 'Come y ponte a salvo', tutText2: 'Cae sobre una ficha rival para mandarla a su casa. En las salidas y las estrellas nadie puede ser comido.',
+        tutTitle3: 'A la meta', tutText3: 'Tras una vuelta, la ficha sube por su color hasta el centro. Gana quien lleve primero todas sus fichas a la meta.'
+      }
+    }
+  });
+
+  var params = new URLSearchParams(location.search);
+  var dailyDate = params.get('daily');
+  var LEVELS = ['easy', 'medium', 'hard'];
+  var prefs = ctx.store.get('prefs', { players: 2, mode: 'bots', level: 'medium', tokens: 2 });
+  if ([2, 3, 4].indexOf(prefs.players) < 0) prefs.players = 2;
+  if (prefs.mode !== 'bots' && prefs.mode !== 'people') prefs.mode = 'bots';
+  if (LEVELS.indexOf(prefs.level) < 0) prefs.level = 'medium';
+  if (prefs.tokens !== 2 && prefs.tokens !== 4) prefs.tokens = 2;
+
+  // G: the game. phase: 'roll' (waiting for the die), 'choose' (the player picks a
+  // token), 'busy' (the die or a token is moving).
+  var G = null, timer = null, anim = null, spots = [], sel = -1, kbOn = false;
+
+  // #407: a captured token was back in its base in one frame, and reaching
+  // home was only a message. Now a captured token flies home in an arc, and
+  // home gets a burst in the player's colour. The game state is final first.
+  var FLY_MS = 480, lfx = null, lfxRaf = 0;
+  // each captured token's flight, from where it was taken (at0) to its base (at1)
+  function flyFx(captured, at0, at1) {
+    return captured.map(function (c) { return { seat: c.seat, k: c.k, from: at0(c.seat, c.k), to: at1(c.seat, c.k) }; });
+  }
+  // a flight's point at t (0..1), in board cells; it rises up to 1.6 cells mid-way
+  function flyAt(f, t) {
+    var e = 1 - Math.pow(1 - t, 3);
+    return [f.from[0] + (f.to[0] - f.from[0]) * e, f.from[1] + (f.to[1] - f.from[1]) * e - Math.sin(Math.PI * t) * 1.6];
+  }
+  function lfxTick() {
+    lfxRaf = 0;
+    draw();
+    if (lfx && performance.now() - lfx.t0 < FLY_MS) lfxRaf = requestAnimationFrame(lfxTick);
+    else { lfx = null; draw(); }
+  }
+
+  var cv = document.createElement('canvas');
+  cv.className = 'lu-canvas';
+  cv.setAttribute('role', 'img');
+  cv.setAttribute('aria-label', C.t('boardLabel'));
+  var boardBox = el('div', { class: 'lu-boardbox' }, [cv]);
+  var top = el('div', { class: 'lu-top ch-above' });
+  var playersRow = el('div', { class: 'lu-players ch-above' });
+  var status = el('div', { class: 'lu-status', role: 'status', 'aria-live': 'polite' });
+  var die = el('button', { class: 'lu-die', type: 'button', 'aria-label': C.t('roll') });
+  var bar = el('div', { class: 'lu-bar' }, [status, die]);
+  var wrap = el('div', { class: 'lu-wrap ch-split' }, [el('div', { class: 'ch-fit' }, [boardBox]), el('div', { class: 'ch-side' }, [top, playersRow, bar])]);
+
+  ctx.button({ icon: 'help', label: C.t('help'), onClick: showHelp });
+  ctx.button({ icon: 'refresh', label: C.t('newMatch'), onClick: askNew });
+  ctx.main.appendChild(wrap);
+  ctx.mount();
+
+  /* ------------------------------------------------------------ setup */
+
+  // Seat 0 is always the person holding the phone (red). Against bots every other
+  // seat is a bot of the chosen level; in pass-and-play they are people.
+  function newGame(o) {
+    stop();
+    anim = null; lfx = null;
+    var daily = o.daily || null;
+    G = {
+      players: daily ? 2 : o.players, mode: daily ? 'bots' : o.mode, level: daily ? 'medium' : o.level,
+      tokens: daily ? 2 : o.tokens, daily: daily, phase: 'roll', roll: 0, msg: '',
+      captures: 0, myRolls: 0, startedAt: Date.now(), done: false
+    };
+    G.s = E.newGame(G.players, G.tokens);
+    if (!daily) {
+      prefs.players = o.players; prefs.mode = o.mode; prefs.level = o.level; prefs.tokens = o.tokens;
+      ctx.store.set('prefs', prefs);
+    }
+    render();
+    save();
+    startTurn();
+  }
+  function current() { return { players: G.players, mode: G.mode, level: G.level, tokens: G.tokens }; }
+  function fromPrefs() { return { players: prefs.players, mode: prefs.mode, level: prefs.level, tokens: prefs.tokens }; }
+
+  function isBot(seat) { return G.mode === 'bots' && seat !== 0; }
+  function stop() { if (timer) { clearTimeout(timer); timer = null; } }
+  function later(fn, ms) { stop(); timer = setTimeout(function () { timer = null; fn(); }, ms); }
+
+  /* ------------------------------------------------------------- turns */
+
+  function startTurn() {
+    if (!G || G.done) return;
+    G.phase = 'roll';
+    G.roll = 0;
+    sel = -1;
+    render();
+    if (isBot(G.s.turn)) later(doRoll, 650);
+  }
+
+  // The daily dice come from the day's seed and the roll number, so everyone
+  // gets the same throws whatever they choose.
+  function throwDie() {
+    var rnd = G.daily ? C.daily('ludo', G.daily + '|' + G.s.rolls).rng : Math.random;
+    return E.roll(rnd);
+  }
+
+  function doRoll() {
+    if (!G || G.done || G.phase !== 'roll') return;
+    G.phase = 'busy';
+    var who = G.s.turn, v = throwDie();
+    if (who === 0) G.myRolls++;
+    die.classList.add('lu-die--roll');
+    drawDie(1 + Math.floor(Math.random() * 6));
+    C.feedback('clack');
+    render();
+    later(function () {
+      die.classList.remove('lu-die--roll');
+      G.roll = v;
+      // Saved the moment it is known: without it a reload threw the die again,
+      // so a bad roll could be swapped for a new one
+      save();
+      afterRoll(v);
+    }, C.ui.reduceMotion() ? 120 : 520);
+  }
+
+  function afterRoll(v) {
+    var who = G.s.turn;
+    drawDie(v);
+    var dead = E.dead(G.s, v);
+    if (dead) {
+      G.msg = C.t(dead === 'sixes' ? 'threeSixes' : 'noMove');
+      render();
+      later(function () { G.s = E.pass(G.s); G.roll = 0; G.msg = ''; save(); startTurn(); }, 1000);
+      return;
+    }
+    var list = E.moves(G.s, v);
+    if (isBot(who)) {
+      var rnd = G.daily ? C.daily('ludo', G.daily + '|bot|' + G.s.rolls).rng : Math.random;
+      later(function () { move(E.think(G.s, v, G.level, rnd)); }, 420);
+    } else if (list.length === 1) {
+      // one possible move: no need to ask
+      later(function () { move(list[0]); }, 380);
+    } else {
+      G.phase = 'choose';
+      sel = list[0];
+      G.msg = C.t('pick');
+      render();
+      kick();
+    }
+  }
+
+  function move(k) {
+    if (!G || G.done || !G.roll) return;
+    var who = G.s.turn, r = E.play(G.s, k, G.roll);
+    if (!r) return;
+    G.phase = 'busy';
+    G.msg = '';
+    sel = -1;
+    var step = C.ui.reduceMotion() ? 30 : 120;
+    anim = { seat: who, k: k, steps: r.steps, i: 0, from: G.s };
+    render();
+    kick();
+    (function next() {
+      if (!anim) return;
+      if (anim.i < anim.steps.length - 1) {
+        anim.i++;
+        C.feedback('place');
+        draw();
+        later(next, step);
+        return;
+      }
+      var before = anim.from;
+      anim = null;
+      G.s = r.state;
+      if (r.captured.length && !C.ui.reduceMotion()) {
+        lfx = { t0: performance.now(), list: flyFx(r.captured,
+          function (st, kk) { return tokenAt(before, st, kk, before.pos[st][kk]); },
+          function (st, kk) { return tokenAt(r.state, st, kk, -1); }) };
+        if (!lfxRaf) lfxRaf = requestAnimationFrame(lfxTick);
+      }
+      if (r.home) {
+        var hr = cv.getBoundingClientRect(), hu = hr.width / 15, hp = tokenAt(G.s, who, k, E.HOME), hc = colors().c[G.s.colours[who]];
+        C.ui.burst({ x: hr.left + hp[0] * hu, y: hr.top + hp[1] * hu }, { count: 26, speed: 260, ring: hu * 1.2, colors: [hc, '#FFF1C9', '#F2B84B'] });
+      }
+      if (r.captured.length) {
+        C.feedback(who === 0 || !isBot(who) ? 'good' : 'bad');
+        if (who === 0) G.captures += r.captured.length;
+        G.msg = r.captured.some(function (x) { return x.seat === 0; }) && G.mode === 'bots' ? C.t('wasCaptured') : C.t('captured');
+        if (who === 0 && G.mode === 'bots' && G.captures >= 3) C.achievements.unlock('lu-hunter');
+      } else if (r.home) { C.feedback('good'); G.msg = C.t('reachedHome'); }
+      if (G.s.winner >= 0) {
+        G.done = true;
+        render();
+        later(finish, 600);
+        return;
+      }
+      if (r.again && !G.msg) G.msg = C.t('rollAgain');
+      G.roll = 0;
+      save();
+      later(startTurn, r.captured.length || r.home ? 600 : 250);
+    })();
+  }
+
+  /* ------------------------------------------------------------ result */
+
+  function finish() {
+    stop();
+    var vsBots = G.mode === 'bots', w = G.s.winner, won = vsBots ? w === 0 : true;
+    var base = vsBots ? ({ easy: 5, medium: 10, hard: 18 }[G.level] || 10) + (G.players - 2) * 3 + (G.tokens === 4 ? 4 : 0) : 8;
+    var coins = Math.max(2, Math.round(won && vsBots ? base : base * 0.35)) + (G.daily ? 8 : 0);
+    var points = Math.max(3, Math.round(won && vsBots ? base * 4 : base * 1.2)) + (G.daily ? 25 : 0);
+    if (vsBots && won) {
+      C.achievements.unlock('lu-win');
+      if (G.level === 'hard') C.achievements.unlock('lu-hard');
+      // Fewest rolls of your own in a quick win against bots
+      if (G.tokens === 2) C.stats.best('ludo', 'rolls', G.myRolls, true);
+    }
+    if (G.daily) {
+      var first = C.stats.daily('ludo', G.daily, { label: won ? C.t('won') + ' · ' + C.num(G.myRolls) : C.t('lost'), win: won });
+      if (!first) { coins = Math.round(coins * 0.2); points = Math.round(points * 0.2); }
+    }
+    ctx.clearSave();
+    ctx.finish({
+      won: vsBots ? won : null,
+      title: vsBots ? (won ? C.t('won') : C.t('lost')) : C.t('playerWon', { n: pname(w) }),
+      timeMs: Date.now() - G.startedAt, coins: coins, points: points,
+      lines: [
+        { label: C.t('rollsLabel'), value: C.num(G.myRolls) },
+        { label: C.t('capturesLabel'), value: C.num(G.captures) }
+      ],
+      shareText: 'چوگان · منچ' + (G.daily ? ('\nروزانه ' + G.daily) : '') + '\n' + pname(w),
+      paint: cardPaint(),
+      onAgain: G.daily ? null : function () { newGame(current()); }
+    });
+  }
+
+  /* ------------------------------------------------------------- saves */
+
+  // Saved between turns and as soon as the die lands, with the roll. A token
+  // caught mid-move is saved as the turn before it, so a reload plays that same
+  // roll again.
+  ctx.autosave(function () {
+    if (!G || G.done || (!G.s.rolls && !G.roll)) return { inProgress: false };
+    return {
+      g: {
+        players: G.players, mode: G.mode, level: G.level, tokens: G.tokens, daily: G.daily, s: G.s,
+        // a die that has landed but not been played yet; 0 between turns
+        roll: G.roll,
+        captures: G.captures, myRolls: G.myRolls, elapsed: Date.now() - G.startedAt
+      },
+      prefs: prefs
+    };
+  });
+  function save() { ctx.save(); }
+
+  function validSave(sv) {
+    var g = sv && sv.g, s = g && g.s;
+    return !!(g && [2, 3, 4].indexOf(g.players) >= 0 && (g.tokens === 2 || g.tokens === 4) && LEVELS.indexOf(g.level) >= 0 &&
+      (g.mode === 'bots' || g.mode === 'people') && s && Array.isArray(s.pos) && s.pos.length === g.players &&
+      s.pos.every(function (t) { return Array.isArray(t) && t.length === g.tokens; }) && s.winner < 0 &&
+      s.turn >= 0 && s.turn < g.players);
+  }
+  function restore(g) {
+    G = {
+      players: g.players, mode: g.mode, level: g.level, tokens: g.tokens, daily: g.daily || null, s: g.s,
+      phase: 'roll', roll: 0, msg: '', captures: g.captures || 0, myRolls: g.myRolls || 0,
+      startedAt: Date.now() - (g.elapsed || 0), done: false
+    };
+    render();
+    if (g.roll >= 1 && g.roll <= 6) { G.phase = 'busy'; G.roll = g.roll; afterRoll(g.roll); }
+    else startTurn();
+  }
+
+  function askNew() {
+    if (!G || !G.daily) { settings(); return; }
+    var dd = G.daily;
+    if (G.done || !G.s.rolls) { newGame({ daily: dd }); return; }
+    C.ui.confirm({ title: C.t('newMatch'), body: C.t('resetWarn'), onOk: function () { newGame({ daily: dd }); } });
+  }
+
+  // New game settings in one window, so the board keeps the room on a phone.
+  // Nothing changes until Start, so it doubles as the "end this game?" question.
+  function settings() {
+    var o = G ? current() : fromPrefs(), body = el('div', { class: 'ch-col', style: { gap: 'var(--s-3)', 'align-items': 'center' } });
+    function rows() {
+      body.innerHTML = '';
+      body.appendChild(C.ui.segmented([2, 3, 4].map(function (n) { return { value: n, label: C.num(n) + ' ' + C.t('players') }; }),
+        o.players, function (v) { o.players = v; }));
+      body.appendChild(C.ui.segmented([{ value: 'bots', label: C.t('vsBots') }, { value: 'people', label: C.t('people') }],
+        o.mode, function (v) { o.mode = v; rows(); }));
+      if (o.mode === 'bots') {
+        body.appendChild(C.ui.segmented(LEVELS.map(function (l) { return { value: l, label: C.t(l) }; }), o.level, function (v) { o.level = v; }));
+      }
+      body.appendChild(C.ui.segmented([{ value: 2, label: C.t('quick') }, { value: 4, label: C.t('full') }], o.tokens, function (v) { o.tokens = v; }));
+      if (G && G.s.rolls && !G.done) body.appendChild(el('p', { class: 'ch-xs ch-dim', text: C.t('resetWarn') }));
+    }
+    rows();
+    C.ui.modal({
+      title: C.t('newMatch'), closeButton: true, body: [body],
+      actions: [{ label: C.t('cancel') }, { label: C.t('start'), kind: 'primary', onClick: function () { newGame(o); } }]
+    });
+  }
+
+  /* --------------------------------------------------------------- draw */
+
+  function colors() {
+    var cs = getComputedStyle(document.documentElement);
+    var v = function (k, f) { return cs.getPropertyValue(k).trim() || f; };
+    return {
+      c: [v('--lu-c0', '#E5484D'), v('--lu-c1', '#23A26D'), v('--lu-c2', '#E8A317'), v('--lu-c3', '#2F6FDE')],
+      cell: v('--c-surface', '#FFFFFF'), bg: v('--c-surface-2', '#F7F1E8'), line: v('--c-line', '#E6DDD0'),
+      text: v('--c-text', '#2B2118'), dim: v('--c-text-faint', '#A89A88')
+    };
+  }
+
+  function boardSize() {
+    // the slot the core sized for the board (#359); before, 520-560px wide at most and
+    // the window's height less a guess for the rows below
+    var maxW = boardBox.clientWidth || 360, maxH = boardBox.clientHeight || maxW;
+    var cell = Math.floor(Math.min(maxW, maxH) / 15);
+    return { cell: cell, w: cell * 15 };
+  }
+
+  // Corners of the four bases, in board cells, by colour
+  var BASE = [[0, 0], [9, 0], [9, 9], [0, 9]];
+  var BASE_SPOT = [[2, 2], [4, 2], [2, 4], [4, 4]];
+  // Where finished tokens wait in the middle, by colour
+  var HOME_AT = [[6.65, 7.5], [7.5, 6.65], [8.35, 7.5], [7.5, 8.35]];
+
+  function tint(hex, a) {
+    var n = parseInt(hex.slice(1), 16);
+    return 'rgba(' + (n >> 16) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+  }
+
+  function star(g, x, y, r, color) {
+    g.beginPath();
+    for (var k = 0; k < 10; k++) {
+      var a = -Math.PI / 2 + k * Math.PI / 5, rr = k % 2 ? r * 0.45 : r;
+      g.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+    }
+    g.closePath();
+    g.fillStyle = color; g.fill();
+  }
+
+  // Where token k of a seat is drawn, in board cells (its centre)
+  function tokenAt(s, seat, k, p) {
+    var c = s.colours[seat];
+    if (p < 0) { var b = BASE[c], o = BASE_SPOT[k]; return [b[0] + o[0], b[1] + o[1]]; }
+    if (p >= E.HOME) { var h = HOME_AT[c]; return [h[0] + (k - (s.tokens - 1) / 2) * 0.28 * (c % 2 ? 1 : 0), h[1] + (k - (s.tokens - 1) / 2) * 0.28 * (c % 2 ? 0 : 1)]; }
+    var q = E.cell(c, p);
+    return [q[0] + 0.5, q[1] + 0.5];
+  }
+
+  function paintBoard(g, W, o, col) {
+    var u = W / 15, s = o.s;
+    g.fillStyle = col.bg;
+    C.rrect(g, 0, 0, W, W, Math.round(u * 0.6));
+    g.fill();
+    // bases
+    for (var c = 0; c < 4; c++) {
+      var b = BASE[c], playing = s.colours.indexOf(c) >= 0;
+      g.fillStyle = playing ? col.c[c] : tint(col.c[c], 0.25);
+      C.rrect(g, b[0] * u + u * 0.15, b[1] * u + u * 0.15, 6 * u - u * 0.3, 6 * u - u * 0.3, u * 0.6);
+      g.fill();
+      g.fillStyle = col.cell;
+      C.rrect(g, (b[0] + 1) * u, (b[1] + 1) * u, 4 * u, 4 * u, u * 0.5);
+      g.fill();
+      for (var k = 0; k < 4; k++) {
+        g.beginPath();
+        g.arc((b[0] + BASE_SPOT[k][0]) * u, (b[1] + BASE_SPOT[k][1]) * u, u * 0.55, 0, Math.PI * 2);
+        g.fillStyle = tint(col.c[c], playing ? 0.22 : 0.1); g.fill();
+      }
+    }
+    // the loop and the home columns
+    g.lineWidth = Math.max(1, u / 24);
+    E.TRACK.forEach(function (q, i) {
+      var colour = -1;
+      for (var c2 = 0; c2 < 4; c2++) if (i === 13 * c2) colour = c2;
+      g.fillStyle = colour >= 0 ? col.c[colour] : col.cell;
+      g.fillRect(q[0] * u, q[1] * u, u, u);
+      g.strokeStyle = col.line;
+      g.strokeRect(q[0] * u, q[1] * u, u, u);
+      if (E.SAFE.indexOf(i) >= 0 && colour < 0) star(g, (q[0] + 0.5) * u, (q[1] + 0.5) * u, u * 0.32, col.dim);
+      if (colour >= 0) star(g, (q[0] + 0.5) * u, (q[1] + 0.5) * u, u * 0.3, 'rgba(255,255,255,.75)');
+    });
+    for (c = 0; c < 4; c++) {
+      for (var p = E.LAST + 1; p < E.HOME; p++) {
+        var h = E.cell(c, p);
+        g.fillStyle = tint(col.c[c], 0.85);
+        g.fillRect(h[0] * u, h[1] * u, u, u);
+        g.strokeStyle = col.line;
+        g.strokeRect(h[0] * u, h[1] * u, u, u);
+      }
+    }
+    // the home in the middle: four triangles, one per colour
+    var cx = 7.5 * u, cy = 7.5 * u, tri = [[[6, 6], [6, 9]], [[6, 6], [9, 6]], [[9, 6], [9, 9]], [[6, 9], [9, 9]]];
+    for (c = 0; c < 4; c++) {
+      g.beginPath();
+      g.moveTo(tri[c][0][0] * u, tri[c][0][1] * u);
+      g.lineTo(tri[c][1][0] * u, tri[c][1][1] * u);
+      g.lineTo(cx, cy);
+      g.closePath();
+      g.fillStyle = col.c[c]; g.fill();
+    }
+    // tokens; several on one cell sit side by side and a little smaller
+    var list = [];
+    for (var seat = 0; seat < s.colours.length; seat++) {
+      for (k = 0; k < s.tokens; k++) {
+        var pp = s.pos[seat][k];
+        if (o.anim && o.anim.seat === seat && o.anim.k === k) pp = o.anim.steps[o.anim.i];
+        var at = tokenAt(s, seat, k, pp), fl = null;
+        if (o.fly) for (var fi = 0; fi < o.fly.length; fi++) if (o.fly[fi].seat === seat && o.fly[fi].k === k) fl = o.fly[fi];
+        if (fl) { list.push({ seat: seat, k: k, p: pp, x: fl.x, y: fl.y, key: '', flying: true }); continue; }
+        list.push({ seat: seat, k: k, p: pp, x: at[0], y: at[1], key: pp >= 0 && pp < E.HOME ? at[0] + ',' + at[1] : '' });
+      }
+    }
+    var groups = {};
+    list.forEach(function (t) { if (t.key) (groups[t.key] = groups[t.key] || []).push(t); });
+    Object.keys(groups).forEach(function (key) {
+      var gr = groups[key];
+      if (gr.length < 2) return;
+      gr.forEach(function (t, i) {
+        var a = i * Math.PI * 2 / gr.length - Math.PI / 4;
+        t.x += Math.cos(a) * 0.2; t.y += Math.sin(a) * 0.2; t.small = true;
+      });
+    });
+    spots = [];
+    var now = o.now || 0, pulse = 0.5 + 0.5 * Math.sin(now / 160);
+    list.forEach(function (t) {
+      var c3 = s.colours[t.seat], R = u * (t.small ? 0.3 : (t.p >= E.HOME ? 0.22 : 0.38));
+      if (t.flying) R = u * 0.42;
+      var x = t.x * u, y = t.y * u;
+      var movable = o.movable && t.seat === s.turn && o.movable.indexOf(t.k) >= 0;
+      if (movable) {
+        g.beginPath(); g.arc(x, y, R * (1.35 + pulse * 0.15), 0, Math.PI * 2);
+        g.fillStyle = tint(col.c[c3], 0.3); g.fill();
+      }
+      g.beginPath(); g.arc(x + R * 0.08, y + R * 0.14, R, 0, Math.PI * 2);
+      g.fillStyle = 'rgba(0,0,0,.25)'; g.fill();
+      g.beginPath(); g.arc(x, y, R, 0, Math.PI * 2);
+      g.fillStyle = col.c[c3]; g.fill();
+      g.lineWidth = Math.max(1.5, R * 0.22);
+      g.strokeStyle = '#FFFFFF'; g.stroke();
+      g.beginPath(); g.arc(x - R * 0.3, y - R * 0.32, R * 0.28, 0, Math.PI * 2);
+      g.fillStyle = 'rgba(255,255,255,.45)'; g.fill();
+      if (o.sel === t.k && movable) {
+        g.beginPath(); g.arc(x, y, R * 1.55, 0, Math.PI * 2);
+        g.lineWidth = Math.max(2, u / 12); g.strokeStyle = col.text; g.stroke();
+      }
+      spots.push({ seat: t.seat, k: t.k, x: x, y: y, r: Math.max(R * 1.6, u * 0.6) });
+    });
+  }
+
+  var raf = 0;
+  function draw() {
+    if (!G) return;
+    var B = boardSize(), dpr = Math.min(2, window.devicePixelRatio || 1);
+    // both sides: a new canvas is 300×150, so a board exactly 300px wide kept a
+    // 150px-high backing and was drawn squashed (#359, seen in Ludo)
+    if (cv.width !== B.w * dpr || cv.height !== B.w * dpr) { cv.width = B.w * dpr; cv.height = B.w * dpr; }
+    cv.style.width = B.w + 'px'; cv.style.height = B.w + 'px';
+    var g = cv.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, B.w, B.w);
+    var movable = G.phase === 'choose' ? E.moves(G.s, G.roll) : null;
+    var fly = null;
+    if (lfx) {
+      var ft = Math.min(1, (performance.now() - lfx.t0) / FLY_MS);
+      if (ft < 1) fly = lfx.list.map(function (f) { var q = flyAt(f, ft); return { seat: f.seat, k: f.k, x: q[0], y: q[1] }; });
+    }
+    paintBoard(g, B.w, { s: anim ? anim.from : G.s, anim: anim, movable: movable, sel: kbOn ? sel : -1, now: performance.now(), fly: fly }, colors());
+  }
+  function loop() {
+    raf = 0;
+    draw();
+    if (G && G.phase === 'choose' && !C.ui.reduceMotion() && !document.hidden) raf = requestAnimationFrame(loop);
+  }
+  function kick() { if (!raf) raf = requestAnimationFrame(loop); }
+
+  var PIPS = { 1: [[1, 1]], 2: [[0, 0], [2, 2]], 3: [[0, 0], [1, 1], [2, 2]], 4: [[0, 0], [2, 0], [0, 2], [2, 2]],
+    5: [[0, 0], [2, 0], [1, 1], [0, 2], [2, 2]], 6: [[0, 0], [2, 0], [0, 1], [2, 1], [0, 2], [2, 2]] };
+  function drawDie(v) {
+    var c = G ? 'var(--lu-c' + G.s.colours[G.s.turn] + ')' : 'var(--c-text)';
+    var s = '<svg viewBox="0 0 44 44" width="44" height="44" aria-hidden="true">';
+    if (v) PIPS[v].forEach(function (q) { s += '<circle cx="' + (10 + q[0] * 12) + '" cy="' + (10 + q[1] * 12) + '" r="4.6" fill="' + c + '"/>'; });
+    else s += '<path d="M14 22h16M22 14v16" stroke="' + c + '" stroke-width="3" stroke-linecap="round" opacity=".4"/>';
+    die.innerHTML = s + '</svg>';
+  }
+
+  function cardPaint() {
+    var s = E.copy(G.s);
+    return function (g, W, H) {
+      var side = Math.min(W, H);
+      g.translate((W - side) / 2, (H - side) / 2);
+      paintBoard(g, side, { s: s, now: 0 }, colors());
+    };
+  }
+
+  function pname(seat) {
+    if (seat === 0) return C.state.profile.name || C.t('you');
+    if (isBot(seat)) return G.players > 2 ? C.t('bot') + ' ' + C.num(seat + 1) : C.t('bot') + ' · ' + C.t(G.level);
+    return C.t('playerN', { n: C.num(seat + 1) });
+  }
+
+  function drawPlayers() {
+    playersRow.innerHTML = '';
+    playersRow.classList.toggle('lu-players--many', G.players > 2);
+    for (var seat = 0; seat < G.players; seat++) {
+      var homeN = G.s.pos[seat].filter(function (p) { return p >= E.HOME; }).length;
+      var box = el('div', {
+        class: 'lu-player' + (G.s.turn === seat && !G.done ? ' lu-player--on' : ''),
+        style: { '--pc': 'var(--lu-c' + G.s.colours[seat] + ')' }
+      }, [
+        el('div', { class: 'lu-player__dot' }),
+        el('div', { class: 'lu-player__name', text: pname(seat) }),
+        el('span', { class: 'lu-player__n', text: C.num(homeN) + '/' + C.num(G.tokens) })
+      ]);
+      if (isBot(seat) && G.s.turn === seat && !G.done) box.classList.add('lu-thinking');
+      playersRow.appendChild(box);
+    }
+  }
+
+  function drawTop() {
+    top.innerHTML = '';
+    if (G.daily) {
+      top.appendChild(el('span', { class: 'ch-badge ch-badge--accent' },
+        [C.icon('calendar', 14), el('span', { text: C.t('dailyLudo') + ' — ' + C.num(G.daily) })]));
+      top.appendChild(el('span', { class: 'ch-badge', text: C.t('vsMedium') }));
+      return;
+    }
+    var o = current();
+    var parts = [C.num(o.players) + ' ' + C.t('players'), o.mode === 'bots' ? C.t('vsBots') + ' · ' + C.t(o.level) : C.t('people'), C.t(o.tokens === 2 ? 'quick' : 'full')];
+    top.appendChild(el('button', { class: 'ch-badge ch-tap', type: 'button', onclick: askNew, text: parts.join(' · ') }));
+  }
+
+  function drawBar() {
+    var mine = !isBot(G.s.turn) && !G.done;
+    die.style.setProperty('--pc', 'var(--lu-c' + G.s.colours[G.s.turn] + ')');
+    die.disabled = !(mine && G.phase === 'roll');
+    die.classList.toggle('lu-die--ready', mine && G.phase === 'roll');
+    if (G.phase === 'roll' && !G.roll) drawDie(0);
+    // "You's turn" read wrong; seat one is always the person holding the phone
+    var who = G.s.turn === 0 ? C.t('yourTurn') : C.t('turnOf', { n: pname(G.s.turn) });
+    status.textContent = G.msg ? (G.phase === 'roll' && !isBot(G.s.turn) ? G.msg + ' · ' + C.t('roll') : G.msg) :
+      (G.phase === 'roll' && mine ? (G.players > 1 && G.mode === 'people' ? who + ' · ' : '') + C.t('roll') : who);
+  }
+
+  function render() {
+    if (!G) return;
+    drawTop();
+    drawPlayers();
+    drawBar();
+    draw();
+  }
+
+  /* -------------------------------------------------------------- input */
+
+  die.addEventListener('click', function () { if (G && !G.done && !isBot(G.s.turn) && G.phase === 'roll') { kbOn = false; doRoll(); } });
+
+  cv.addEventListener('pointerdown', function (e) {
+    if (!G || G.done || G.phase !== 'choose' || isBot(G.s.turn)) return;
+    var r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+    var list = E.moves(G.s, G.roll), best = null, bestD = Infinity;
+    spots.forEach(function (t) {
+      if (t.seat !== G.s.turn) return;
+      // a token that shares its spot with the listed one makes the same move
+      var k = list.indexOf(t.k) >= 0 ? t.k : list.filter(function (m) { return G.s.pos[t.seat][m] === G.s.pos[t.seat][t.k]; })[0];
+      if (k === undefined) return;
+      var d = Math.hypot(t.x - x, t.y - y);
+      if (d <= t.r && d < bestD) { bestD = d; best = k; }
+    });
+    if (best === null) return;
+    e.preventDefault();
+    kbOn = false;
+    move(best);
+  });
+
+  window.addEventListener('keydown', function (e) {
+    if (!G || G.done || document.querySelector('.ch-scrim') || isBot(G.s.turn)) return;
+    var k = e.key;
+    if (G.phase === 'roll' && (k === ' ' || k === 'Enter' || C.keyIs(e, 'r'))) { e.preventDefault(); doRoll(); return; }
+    if (G.phase !== 'choose') return;
+    var list = E.moves(G.s, G.roll);
+    if (k === 'ArrowRight' || k === 'ArrowLeft' || k === 'ArrowUp' || k === 'ArrowDown' || k === 'Tab') {
+      e.preventDefault();
+      kbOn = true;
+      var i = list.indexOf(sel), d = (k === 'ArrowLeft' || k === 'ArrowUp' || (k === 'Tab' && e.shiftKey)) ? -1 : 1;
+      sel = list[((i < 0 ? 0 : i + d) % list.length + list.length) % list.length];
+      draw();
+      return;
+    }
+    if ((k === ' ' || k === 'Enter') && list.indexOf(sel) >= 0) { e.preventDefault(); move(sel); }
+  });
+
+  // the board follows its slot, which changes with the window and the side column (#359)
+  if (window.ResizeObserver) new ResizeObserver(function () { if (G) draw(); }).observe(boardBox);
+  else window.addEventListener('resize', function () { if (G) draw(); });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && G) kick(); });
+  if (window.matchMedia) {
+    var mq = window.matchMedia('(prefers-color-scheme: dark)');
+    if (mq.addEventListener) mq.addEventListener('change', function () { if (G) draw(); });
+  }
+  // A pause in the middle of a move plays the same roll again from the turn's
+  // start (the move is applied only when it ends); a die still in the air is
+  // thrown again, before anyone has seen it.
+  C.onPause(function () { stop(); });
+  C.onResume(function () {
+    if (!G || G.done) return;
+    if (G.phase === 'choose') { kick(); return; }
+    anim = null;
+    die.classList.remove('lu-die--roll');
+    if (G.roll) { G.phase = 'busy'; G.msg = ''; afterRoll(G.roll); }
+    else startTurn();
+  });
+
+  /* --------------------------------------------------------------- help */
+
+  function kb(k, what) {
+    return el('div', { class: 'ch-item' }, [el('div', { class: 'ch-item__label', text: what }), el('span', { class: 'ch-badge', text: k })]);
+  }
+  function showHelp() {
+    C.ui.modal({
+      title: C.t('help'),
+      body: [
+        el('p', { class: 'ch-dim', text: C.t('rules') }),
+        el('h3', { style: { 'margin-top': 'var(--s-4)' }, text: C.t('keyboard') }),
+        el('div', { class: 'ch-list' }, [
+          kb('Space / R', C.t('rollKey')), kb('← → / Tab', C.t('pickKey')), kb('Space / Enter', C.t('moveKey'))
+        ])
+      ],
+      actions: [
+        { label: C.t('tutorial'), onClick: function () { ctx.showTutorial(TUT); } },
+        { label: C.t('done'), kind: 'primary' }
+      ]
+    });
+  }
+
+  function art(kind) {
+    var s = '<svg viewBox="0 0 220 120" width="100%">';
+    if (kind === 1) {
+      s += '<rect x="30" y="10" width="100" height="100" rx="14" fill="var(--lu-c0)"/><rect x="47" y="27" width="66" height="66" rx="10" fill="var(--c-surface)"/>' +
+        '<circle cx="64" cy="44" r="10" fill="var(--lu-c0)" stroke="#fff" stroke-width="3"/><circle cx="96" cy="76" r="10" fill="var(--lu-c0)" stroke="#fff" stroke-width="3"/>' +
+        '<rect x="150" y="38" width="44" height="44" rx="10" fill="var(--c-surface)" stroke="var(--c-line)" stroke-width="2"/>';
+      [[0, 0], [2, 0], [0, 1], [2, 1], [0, 2], [2, 2]].forEach(function (q) { s += '<circle cx="' + (160 + q[0] * 12) + '" cy="' + (48 + q[1] * 12) + '" r="3.8" fill="var(--lu-c0)"/>'; });
+    } else if (kind === 2) {
+      for (var i = 0; i < 6; i++) s += '<rect x="' + (20 + i * 30) + '" y="45" width="30" height="30" fill="var(--c-surface)" stroke="var(--c-line)" stroke-width="1.5"/>';
+      s += '<path d="M155 50l3 7 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z" fill="var(--c-text-faint)"/>' +
+        '<circle cx="95" cy="60" r="10" fill="var(--lu-c2)" stroke="#fff" stroke-width="3" opacity=".35"/><circle cx="95" cy="60" r="10" fill="var(--lu-c0)" stroke="#fff" stroke-width="3"/>' +
+        '<path d="M50 40q22-26 40 6" stroke="var(--lu-c0)" stroke-width="3" fill="none" stroke-linecap="round"/>';
+    } else {
+      s += '<path d="M70 20h80v80H70z" fill="var(--c-surface)"/><path d="M70 20l40 40-40 40z" fill="var(--lu-c0)"/><path d="M70 20h80l-40 40z" fill="var(--lu-c1)"/>' +
+        '<path d="M150 20v80l-40-40z" fill="var(--lu-c2)"/><path d="M70 100h80l-40-40z" fill="var(--lu-c3)"/>' +
+        '<circle cx="86" cy="52" r="7" fill="var(--lu-c0)" stroke="#fff" stroke-width="2.5"/><circle cx="86" cy="68" r="7" fill="var(--lu-c0)" stroke="#fff" stroke-width="2.5"/>';
+    }
+    return s + '</svg>';
+  }
+  var TUT = [
+    { title: C.t('tutTitle1'), text: C.t('tutText1'), art: art(1) },
+    { title: C.t('tutTitle2'), text: C.t('tutText2'), art: art(2) },
+    { title: C.t('tutTitle3'), text: C.t('tutText3'), art: art(3) }
+  ];
+
+  /* -------------------------------------------------------------- start */
+
+  var saved = ctx.loadSave();
+  if (dailyDate) {
+    // The daily game has its own save slot, so a half-played day continues
+    if (validSave(saved) && saved.g.daily === dailyDate) restore(saved.g);
+    else newGame({ daily: dailyDate });
+    if (C.stats.dailyDone('ludo', dailyDate)) {
+      var rec = C.stats.dailyOf(dailyDate).ludo;
+      C.ui.toast({ icon: 'check', title: C.t('dailyDone'), sub: rec.label });
+    }
+    ctx.tutorialIfNew(TUT);
+  } else if (validSave(saved) && !saved.g.daily) {
+    if (saved.prefs) prefs = saved.prefs;
+    restore(saved.g);
+  } else {
+    newGame(fromPrefs());
+    ctx.tutorialIfNew(TUT);
+  }
+})();
+</script>
+</body>
+</html>

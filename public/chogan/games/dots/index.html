@@ -1,0 +1,1295 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#FBF6EF">
+<title>نقطه‌بازی — چوگان</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../lib/chogan.css">
+<script src="../../lib/early.js"></script>
+<style>
+  .dt-top { display: flex; gap: var(--s-2); flex-wrap: wrap; justify-content: center; }
+  .dt-players { display: flex; gap: var(--s-2); width: 100%; max-width: 520px; }
+  .dt-player {
+    flex: 1; display: flex; align-items: center; gap: var(--s-2);
+    background: var(--c-surface); border-radius: var(--r-md); padding: 8px 12px;
+    box-shadow: var(--sh-1); border: 2px solid transparent;
+    transition: border-color var(--t-mid) var(--ease), transform var(--t-mid) var(--ease);
+    min-width: 0;
+  }
+  .dt-player--on { border-color: var(--pc); transform: translateY(-2px); box-shadow: var(--sh-2); }
+  .dt-player__dot { width: 14px; height: 14px; border-radius: 50%; background: var(--pc); flex: 0 0 14px; }
+  .dt-player__name { flex: 1; min-width: 0; font-weight: 700; font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dt-player__score { font-weight: 800; font-size: var(--fs-lg); font-variant-numeric: tabular-nums; color: var(--pc); }
+  /* three or four chips share one row on a phone (#987) */
+  .dt-players--many { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; }
+  /* name over score: side by side, four names were cut to three letters on a 390px phone */
+  .dt-players--many .dt-player { display: grid; grid-template-columns: 12px minmax(0, 1fr); column-gap: 6px; row-gap: 0; padding: 6px 8px; }
+  .dt-players--many .dt-player__dot { width: 12px; height: 12px; }
+  .dt-players--many .dt-player__name { font-size: var(--fs-xs); }
+  .dt-players--many .dt-player__score { grid-column: 2; line-height: 1.15; }
+  /* beside the board the side column is narrower than a phone, and one row of four cut "Player 1" to "Player…" */
+  @container game (min-aspect-ratio: 5 / 4) {
+    .dt-players--many { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  .ch-nocq .ch-gamemain.ch-wide .dt-players--many { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dt-top .ch-seg button:disabled { opacity: .35; cursor: not-allowed; }
+  .dt-seats { display: flex; gap: var(--s-2); flex-wrap: wrap; justify-content: center; }
+  .dt-seat {
+    display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 12px;
+    border: 2px solid var(--pc); border-radius: 999px; background: var(--c-surface);
+    color: var(--c-text); font: inherit; font-size: var(--fs-sm); font-weight: 700; cursor: pointer;
+  }
+  .dt-seat[aria-pressed="true"] { border-style: dashed; color: var(--c-text-dim); }
+  .dt-boardbox { aspect-ratio: 1; } /* fills the room it has (#359); it stopped at a fixed size before */
+  .dt-svg { width: 100%; height: auto; display: block; touch-action: manipulation; }
+  .dt-hit { stroke: transparent; cursor: pointer; }
+  @media (hover: hover) { .dt-hit:hover { stroke: color-mix(in srgb, var(--game) 28%, transparent); } }
+  .dt-line { stroke-linecap: round; }
+  .dt-line--new { animation: dt-draw 260ms var(--ease) backwards; }
+  @keyframes dt-draw { from { stroke-dasharray: 0 200; } }
+  /* fill-box: without it the scale ran from the board's top-left corner, so a
+     new box flew in from there instead of growing in place (#407) */
+  .dt-box, .dt-boxlabel--new { transform-box: fill-box; transform-origin: center; }
+  .dt-box { animation: dt-fill 300ms var(--ease-back) backwards; animation-delay: var(--d, 0ms); }
+  @keyframes dt-fill { from { opacity: 0; transform: scale(.4); } }
+  /* the second box onward of one turn's run flashes as it fills, so a chain reads as one */
+  .dt-box--chain { animation-name: dt-chain; animation-duration: 380ms; }
+  @keyframes dt-chain { 0% { opacity: 0; transform: scale(.4); } 45% { opacity: .62; transform: scale(1.06); } }
+  .dt-boxlabel { font-weight: 800; font-family: inherit; }
+  .dt-boxlabel--new { animation: dt-label 220ms var(--ease-back) backwards; animation-delay: calc(var(--d, 0ms) + 140ms); }
+  @keyframes dt-label { from { opacity: 0; transform: scale(.3); } }
+  .dt-thinking { animation: dt-blink 900ms infinite; }
+  @keyframes dt-blink { 50% { opacity: .45; } }
+</style>
+</head>
+<body>
+<script src="../../version.js"></script>
+<script src="../../lib/chogan.js"></script>
+<script>
+/* ==== ENGINE START ==== */
+function DotsEngineFactory() {
+  'use strict';
+
+  // مدل: تخته‌ی R در C مربع.
+  // یال‌های افقی: (R+1)*C  ·  یال‌های عمودی: R*(C+1)
+  function makeBoard(R, C) {
+    var HC = (R + 1) * C;
+    var VC = R * (C + 1);
+    var E = HC + VC;
+    var boxEdges = [];
+    var edgeBoxes = [];
+    for (var i = 0; i < E; i++) edgeBoxes.push([]);
+    for (var r = 0; r < R; r++) {
+      for (var c = 0; c < C; c++) {
+        var b = r * C + c;
+        var e = [
+          r * C + c,                     // بالا
+          (r + 1) * C + c,               // پایین
+          HC + r * (C + 1) + c,          // چپ
+          HC + r * (C + 1) + c + 1       // راست
+        ];
+        boxEdges.push(e);
+        for (var k = 0; k < 4; k++) edgeBoxes[e[k]].push(b);
+      }
+    }
+    return { R: R, C: C, HC: HC, E: E, boxes: R * C, boxEdges: boxEdges, edgeBoxes: edgeBoxes };
+  }
+
+  function sides(bd, edges, b) {
+    var e = bd.boxEdges[b], n = 0;
+    for (var i = 0; i < 4; i++) if (edges[e[i]]) n++;
+    return n;
+  }
+
+  function legalMoves(bd, edges) {
+    var out = [];
+    for (var i = 0; i < bd.E; i++) if (!edges[i]) out.push(i);
+    return out;
+  }
+
+  // گذاشتن یک یال. خروجی: تعداد مربع‌های بسته‌شده
+  function play(bd, edges, owner, e, player) {
+    edges[e] = 1;
+    var closed = 0;
+    var bs = bd.edgeBoxes[e];
+    for (var i = 0; i < bs.length; i++) {
+      if (sides(bd, edges, bs[i]) === 4 && !owner[bs[i]]) { owner[bs[i]] = player; closed++; }
+    }
+    return closed;
+  }
+
+  // یک حرکت روی وضعیت کامل بازی؛ صفحه و آزمون‌ها همین را صدا می‌زنند تا
+  // برگرداندن دقیقاً عکس همان چیزی باشد که ثبت شده.
+  function applyEdge(bd, S, e) {
+    if (!S.edgeOwner) S.edgeOwner = {};
+    S.history.push({ e: e, turn: S.turn, scores: S.scores.slice(), turnBoxes: S.turnBoxes });
+    S.edgeOwner[e] = S.turn;
+    var got = play(bd, S.edges, S.owner, e, S.turn);
+    if (got > 0) {
+      S.scores[S.turn] += got;
+      S.turnBoxes += got;
+    } else {
+      S.turnBoxes = 0;
+      S.turn = nextTurn(S, S.turn);
+    }
+    return got;
+  }
+
+  /* Seats (#987). A two-seat game keeps its old shape, mode 'ai' or '2p' and
+     no seat list, so every save from before three and four players still
+     restores as it was. A game of three or four is mode 'multi' with a list
+     of 'h' (a person on this phone) or 'b' (the medium bot), player 1 first. */
+  var MAX_SEATS = 4;
+  function seatsOf(S) {
+    if (S.mode === 'multi' && S.seats && S.seats.length >= 2) return S.seats;
+    return S.mode === 'ai' ? ['h', 'b'] : ['h', 'h'];
+  }
+  function isBot(S, p) { return seatsOf(S)[p - 1] === 'b'; }
+  function nextTurn(S, p) { return p % seatsOf(S).length + 1; }
+  // Four players on nine boxes left most of them a box or two and a lot of
+  // waiting, so the smallest board needs at least four boxes a side for four.
+  function sizeOk(size, players) { return players < 4 || size >= 4; }
+
+  // A fresh game. Null when the board is too small for that many players, so
+  // no caller can start one by mistake.
+  function newState(size, mode, seats) {
+    var n = mode === 'multi' ? (seats || []).length : 2;
+    if (n < 2 || n > MAX_SEATS || !sizeOk(size, n)) return null;
+    var bd = makeBoard(size, size), sc = [];
+    for (var i = 0; i <= n; i++) sc.push(0);
+    var S = {
+      size: size, mode: mode,
+      edges: new Array(bd.E).fill(0), owner: new Array(bd.boxes).fill(0), edgeOwner: {},
+      turn: 1, scores: sc, history: [], turnBoxes: 0
+    };
+    if (mode === 'multi') S.seats = seats.map(function (kind) { return kind === 'b' ? 'b' : 'h'; });
+    return S;
+  }
+
+  // A saved game back into play. Old saves have no seat list and a three-slot
+  // score list; only a well-formed multi save keeps its seats, anything else
+  // falls back to the two-seat game it was.
+  function restore(v) {
+    var multi = v.mode === 'multi' && Array.isArray(v.seats) && v.seats.length >= 3 && v.seats.length <= MAX_SEATS;
+    var S = {
+      size: v.size, mode: multi ? 'multi' : (v.mode === '2p' ? '2p' : 'ai'), level: v.level, daily: v.daily || null,
+      edges: v.edges, owner: v.owner, edgeOwner: v.edgeOwner || {},
+      turn: v.turn, scores: v.scores, history: v.history || [], turnBoxes: v.turnBoxes || 0
+    };
+    if (multi) S.seats = v.seats.slice();
+    var n = seatsOf(S).length;
+    while (S.scores.length < n + 1) S.scores.push(0);
+    if (!(S.turn >= 1 && S.turn <= n)) S.turn = 1;
+    return S;
+  }
+
+  // Everyone on the top score, in seat order: one name is a win, two or more
+  // a shared lead, all of them a draw.
+  function leaders(S) {
+    var n = seatsOf(S).length, best = -1, out = [];
+    for (var p = 1; p <= n; p++) {
+      if (S.scores[p] > best) { best = S.scores[p]; out = [p]; }
+      else if (S.scores[p] === best) out.push(p);
+    }
+    return out;
+  }
+
+  // Back to the last turn a person had: past every bot move, one line when a
+  // person drew it (#987 made this per seat, for three and four players).
+  // با حریف کامپیوتری تا نوبت بعدی بازیکن عقب می‌رود. دونفره فقط یک خط،
+  // چون دو نفر روی یک گوشی‌اند و اشتباه یک ضربه است؛ پیش‌تر دونفره اصلاً
+  // برگرداندن نداشت و یک خط اشتباه کل دست را خراب می‌کرد (#69).
+  function takeBack(bd, S) {
+    var n = 0;
+    do {
+      var h = S.history.pop();
+      if (!h) break;
+      S.edges[h.e] = 0;
+      if (S.edgeOwner) delete S.edgeOwner[h.e];
+      S.scores = h.scores;
+      S.turn = h.turn;
+      S.turnBoxes = h.turnBoxes;
+      // مالکیت مربع‌هایی که با این یال بسته شده بودند برداشته شود
+      var bs = bd.edgeBoxes[h.e];
+      for (var i = 0; i < bs.length; i++) if (sides(bd, S.edges, bs[i]) < 4) S.owner[bs[i]] = 0;
+      n++;
+    } while (isBot(S, S.turn) && n < 200);
+    return n;
+  }
+
+  function freeBoxes(bd, edges, owner) {
+    var out = [];
+    for (var b = 0; b < bd.boxes; b++) if (!owner[b] && sides(bd, edges, b) === 3) out.push(b);
+    return out;
+  }
+  function freeEdgeOf(bd, edges, b) {
+    var e = bd.boxEdges[b];
+    for (var i = 0; i < 4; i++) if (!edges[e[i]]) return e[i];
+    return -1;
+  }
+
+  // یالی که به حریف مربع هدیه نمی‌دهد
+  function safeMoves(bd, edges, owner) {
+    var out = [];
+    var all = legalMoves(bd, edges);
+    for (var i = 0; i < all.length; i++) {
+      var e = all[i];
+      var bs = bd.edgeBoxes[e];
+      var bad = false;
+      for (var j = 0; j < bs.length; j++) {
+        if (sides(bd, edges, bs[j]) === 2) { bad = true; break; }   // بعد از این حرکت سه‌ضلعی می‌شود
+      }
+      if (!bad) out.push(e);
+    }
+    return out;
+  }
+
+  /* تجزیه‌ی وضعیت به زنجیره‌ها: هر گروه از مربع‌های به‌هم‌چسبیده که
+     با یک حرکت به حریف، پشت سر هم باز می‌شوند. برای تصمیم قربانی دادن. */
+
+  /* بازی دقیق در انتهای کار: وقتی یال‌های باقی‌مانده کم شدند،
+     با کمینه‌بیشینه و حافظه دقیقاً بهترین حرکت را می‌دهد. */
+  function endgame(bd, edges, owner, maxEdges) {
+    var rem = legalMoves(bd, edges);
+    if (rem.length > maxEdges) return null;
+    var index = {};
+    for (var i = 0; i < rem.length; i++) index[rem[i]] = i;
+    var memo = {};
+
+    function key(mask) { return mask; }
+
+    function best(mask, e0, o0) {
+      // mask: بیت‌های یال‌های هنوز باز
+      if (mask === 0) return { diff: 0, move: -1 };
+      var m = memo[key(mask)];
+      if (m) return m;
+      var bestDiff = -Infinity, bestMove = -1;
+      for (var i = 0; i < rem.length; i++) {
+        if (!(mask & (1 << i))) continue;
+        var e = rem[i];
+        var edges2 = e0.slice(), owner2 = o0.slice();
+        var got = play(bd, edges2, owner2, e, 1);
+        var nm = mask & ~(1 << i);
+        var val;
+        if (got > 0) {
+          var sub = best(nm, edges2, owner2);
+          val = got + sub.diff;              // نوبت دوباره‌ی خودم
+        } else {
+          var sub2 = best(nm, edges2, owner2);
+          val = -sub2.diff;                  // نوبت حریف
+        }
+        if (val > bestDiff) { bestDiff = val; bestMove = e; }
+      }
+      var res = { diff: bestDiff, move: bestMove };
+      memo[key(mask)] = res;
+      return res;
+    }
+
+    var full = rem.length >= 31 ? 0 : ((1 << rem.length) - 1);
+    if (!full) return null;
+    return best(full, edges, owner);
+  }
+
+  /* ---------------------------------------------------------------------
+     تجزیه‌ی وضعیت به گروه‌های بازنشده: مربع‌هایی که هنوز سه‌ضلعی نشده‌اند
+     و از راه یال‌های کشیده‌نشده به هم وصل‌اند. هر گروه یک زنجیره یا حلقه است.
+     --------------------------------------------------------------------- */
+  function openGroups(bd, edges, owner) {
+    var seen = {}, out = [];
+    for (var b = 0; b < bd.boxes; b++) {
+      if (owner[b] || seen[b] || sides(bd, edges, b) >= 3) continue;
+      var stack = [b], group = [];
+      seen[b] = 1;
+      while (stack.length) {
+        var x = stack.pop();
+        group.push(x);
+        var e = bd.boxEdges[x];
+        for (var i = 0; i < 4; i++) {
+          if (edges[e[i]]) continue;
+          var nbs = bd.edgeBoxes[e[i]];
+          for (var j = 0; j < nbs.length; j++) {
+            var y = nbs[j];
+            if (y === x || seen[y] || owner[y] || sides(bd, edges, y) >= 3) continue;
+            seen[y] = 1; stack.push(y);
+          }
+        }
+      }
+      out.push(group);
+    }
+    return out;
+  }
+
+  // حلقه: گروهی که هیچ یال کشیده‌نشده‌ای به بیرون گروه ندارد
+  function isLoop(bd, edges, owner, group) {
+    var inGroup = {};
+    for (var i = 0; i < group.length; i++) inGroup[group[i]] = 1;
+    for (var k = 0; k < group.length; k++) {
+      var e = bd.boxEdges[group[k]];
+      for (var j = 0; j < 4; j++) {
+        if (edges[e[j]]) continue;
+        var nb = bd.edgeBoxes[e[j]];
+        if (nb.length === 1) return false;                       // یال لبه‌ی تخته
+        var other = nb[0] === group[k] ? nb[1] : nb[0];
+        if (!inGroup[other]) return false;
+      }
+    }
+    return group.length >= 4;
+  }
+
+  // مربع‌هایی که با گرفتن پشت سر هم از این نقطه به دست می‌آیند
+  function captureCascade(bd, edges, owner) {
+    var e2 = edges.slice(), o2 = owner.slice(), got = [], guard = 0;
+    for (;;) {
+      var fb = freeBoxes(bd, e2, o2);
+      if (!fb.length || guard++ > 400) break;
+      var fe = freeEdgeOf(bd, e2, fb[0]);
+      var before = o2.slice();
+      play(bd, e2, o2, fe, 1);
+      for (var b = 0; b < bd.boxes; b++) if (!before[b] && o2[b]) got.push(b);
+    }
+    return got;
+  }
+
+  // حرکت «دو تا آخر»: یالی داخل همین گروه که هیچ مربعی را نمی‌بندد.
+  // نتیجه‌اش این است که مربع‌های باقی‌مانده به حریف می‌رسند ولی نوبت هم
+  // به او می‌افتد و مجبور می‌شود زنجیره‌ی بعدی را باز کند.
+  function doubleCross(bd, edges, owner, group) {
+    for (var i = 0; i < group.length; i++) {
+      var e = bd.boxEdges[group[i]];
+      for (var k = 0; k < 4; k++) {
+        var ed = e[k];
+        if (edges[ed]) continue;
+        var closes = 0;
+        var bs = bd.edgeBoxes[ed];
+        for (var j = 0; j < bs.length; j++) if (sides(bd, edges, bs[j]) === 3) closes++;
+        if (closes === 0) return ed;
+      }
+    }
+    return -1;
+  }
+
+  // کم‌ضررترین باز کردن: کوتاه‌ترین زنجیره را باز کن، حلقه‌ها را برای آخر بگذار
+  function openShortest(bd, edges, owner, all) {
+    var groups = openGroups(bd, edges, owner);
+    var best = all[0], bestCost = Infinity;
+    for (var i = 0; i < all.length; i++) {
+      var e2 = edges.slice(), o2 = owner.slice();
+      e2[all[i]] = 1;
+      var got = captureCascade(bd, e2, o2).length;
+      // حلقه گران‌تر است، آخر باز شود
+      var touchesLoop = 0;
+      for (var g = 0; g < groups.length; g++) {
+        if (groups[g].some(function (b) { return bd.boxEdges[b].indexOf(all[i]) >= 0; })) {
+          if (isLoop(bd, edges, owner, groups[g])) touchesLoop = 2;
+        }
+      }
+      var cost = got + touchesLoop;
+      if (cost < bestCost) { bestCost = cost; best = all[i]; }
+    }
+    return best;
+  }
+
+  /* انتخاب حرکت هوش مصنوعی.
+     آسان: تصادفی، ولی مربع آماده را اغلب می‌گیرد.
+     متوسط: مربع می‌گیرد، بعد حرکت امن، وگرنه کم‌ضررترین قربانی.
+     سخت: زنجیره و حلقه را می‌شناسد، «دو تا آخر» را قربانی می‌دهد تا کنترل
+           را نگه دارد، پاریتی حرکت‌های امن را حساب می‌کند و در انتهای بازی
+           با کمینه‌بیشینه دقیق بازی می‌کند. */
+  function aiMove(bd, edges, owner, level, rnd) {
+    rnd = rnd || Math.random;
+    var all = legalMoves(bd, edges);
+    if (!all.length) return -1;
+    var free = freeBoxes(bd, edges, owner);
+
+    if (level === 'easy') {
+      if (free.length && rnd() < 0.85) return freeEdgeOf(bd, edges, free[0]);
+      return all[Math.floor(rnd() * all.length)];
+    }
+
+    if (level === 'medium') {
+      if (free.length) return freeEdgeOf(bd, edges, free[0]);
+      var sf = safeMoves(bd, edges, owner);
+      if (sf.length) return sf[Math.floor(rnd() * sf.length)];
+      return openShortest(bd, edges, owner, all);
+    }
+
+    // ---------------------------------------------------------------- سخت
+    var exact = endgame(bd, edges, owner, 16);
+    if (exact && exact.move >= 0) return exact.move;
+
+    if (free.length) {
+      var cascade = captureCascade(bd, edges, owner);
+      var others = openGroups(bd, edges, owner);
+      var group = [];
+      var seenG = {};
+      for (var i = 0; i < cascade.length; i++) { group.push(cascade[i]); seenG[cascade[i]] = 1; }
+      var loop = isLoop(bd, edges, owner, group);
+      var keepBack = loop ? 4 : 2;
+      // اگر این آخرین گروه است، همه را بگیر. وگرنه دو تای آخر را قربانی بده.
+      if (others.length >= 1 && cascade.length <= keepBack && cascade.length >= 2) {
+        var dc = doubleCross(bd, edges, owner, group);
+        if (dc >= 0) return dc;
+      }
+      return freeEdgeOf(bd, edges, free[0]);
+    }
+
+    var safe = safeMoves(bd, edges, owner);
+    if (safe.length) {
+      // پاریتی: می‌خواهم بعد از حرکت من تعداد حرکت‌های امن زوج بماند تا
+      // در نهایت حریف مجبور به باز کردن اولین زنجیره شود.
+      var bestE = safe[0], bestScore = -Infinity;
+      for (var s = 0; s < safe.length; s++) {
+        var e2 = edges.slice(), o2 = owner.slice();
+        e2[safe[s]] = 1;
+        var left = safeMoves(bd, e2, o2).length;
+        var gs = openGroups(bd, e2, o2);
+        var longs = 0, loops = 0;
+        for (var g = 0; g < gs.length; g++) {
+          if (isLoop(bd, e2, o2, gs[g])) loops++;
+          else if (gs[g].length >= 3) longs++;
+        }
+        var score = (left % 2 === 0 ? 3 : 0)          // پاریتی به نفع من
+          + (longs % 2 === 1 ? 1.5 : 0)               // تعداد فرد زنجیره‌ی بلند
+          - loops * 0.3
+          + rnd() * 0.05;
+        if (score > bestScore) { bestScore = score; bestE = safe[s]; }
+      }
+      return bestE;
+    }
+
+    return openShortest(bd, edges, owner, all);
+  }
+
+  var api = {
+    makeBoard: makeBoard, sides: sides, legalMoves: legalMoves, play: play,
+    freeBoxes: freeBoxes, freeEdgeOf: freeEdgeOf, safeMoves: safeMoves,
+    openGroups: openGroups, isLoop: isLoop, captureCascade: captureCascade,
+    aiMove: aiMove, endgame: endgame, applyEdge: applyEdge, takeBack: takeBack,
+    seatsOf: seatsOf, isBot: isBot, nextTurn: nextTurn, sizeOk: sizeOk,
+    newState: newState, restore: restore, leaders: leaders, MAX_SEATS: MAX_SEATS
+  };
+  if (typeof self !== 'undefined') self.DotsEngine = api;
+  return api;
+}
+if (typeof module !== 'undefined' && module.exports) module.exports = DotsEngineFactory;
+/* ==== ENGINE END ==== */
+</script>
+<script>
+(function () {
+  'use strict';
+  var C = window.Chogan, el = C.el;
+  var E = DotsEngineFactory();
+  var NS = 'http://www.w3.org/2000/svg';
+
+  C.boot({});
+  var ctx = C.game({
+    id: 'dots',
+    name: { fa: 'نقطه‌بازی', en: 'Dots and Boxes', zh: '点格棋', de: 'Käsekästchen', es: 'Puntos y cajas', pl: 'Kropki i kwadraty', fr: 'Petits carrés', ar: 'النقاط والمربعات', hi: 'डॉट्स और बॉक्स' },
+    accent: '#7BAE7F',
+    mood: 'dots',
+    strings: {
+      fa: {
+        nPlayers: '{n} نفره', seatHuman: 'آدم', seatBot: 'ربات', botN: 'ربات {n}', playerN: 'بازیکن {n}', tiedN: 'مساوی: {n}', listSep: '، ', listAnd: ' و ',
+        twoPlayers: 'دو نفره', vsAi: 'با حریف', size: 'اندازه',
+        you: 'تو', rival: 'حریف', player1: 'بازیکن یک', player2: 'بازیکن دو', renameP2: 'نام بازیکن دو',
+        thinking: 'فکر می‌کند…', yourTurn: 'نوبت توست', draw: 'مساوی', playerWon: '{n} برد', move: 'جابه‌جایی',
+        rotate: 'چرخاندن خط',
+        boxes: 'مربع', newMatch: 'دست تازه', undoMove: 'برگرداندن حرکت',
+        dailyDots: 'نقطه‌بازی روزانه', vsHard: 'مقابل حریف سخت',
+        tutTitle1: 'خط بکش', tutText1: 'هر نوبت یک خط بین دو نقطه‌ی کنار هم می‌کشی.',
+        tutTitle2: 'مربع ببند', tutText2: 'هر کس چهارمین ضلع یک مربع را بکشد، آن مربع مال او می‌شود و دوباره نوبت خودش است.',
+        tutTitle3: 'زنجیره', tutText3: 'گاهی بهتر است دو مربع آخر را به حریف بدهی تا او مجبور شود زنجیره‌ی بعدی را باز کند.'
+      },
+      en: {
+        nPlayers: '{n} players', seatHuman: 'Human', seatBot: 'Bot', botN: 'Bot {n}', playerN: 'Player {n}', tiedN: 'Tie: {n}', listSep: ', ', listAnd: ' and ',
+        twoPlayers: 'Two players', vsAi: 'Versus AI', size: 'Size',
+        you: 'You', rival: 'Rival', player1: 'Player 1', player2: 'Player 2', renameP2: 'Player 2 name',
+        thinking: 'Thinking…', yourTurn: 'Your turn', draw: 'Draw', playerWon: '{n} wins', move: 'Move',
+        rotate: 'Rotate line',
+        boxes: 'Boxes', newMatch: 'New match', undoMove: 'Undo move',
+        dailyDots: 'Daily dots and boxes', vsHard: 'against the hard AI',
+        tutTitle1: 'Draw a line', tutText1: 'On your turn you draw one line between two neighbouring dots.',
+        tutTitle2: 'Close a box', tutText2: 'Draw the fourth side of a box and it is yours, and you move again.',
+        tutTitle3: 'Chains', tutText3: 'Sometimes it pays to leave the last two boxes so your rival has to open the next chain.'
+      },
+      pl: {
+        nPlayers: '{n} gracze', seatHuman: 'Człowiek', seatBot: 'Bot', botN: 'Bot {n}', playerN: 'Gracz {n}', tiedN: 'Remis: {n}', listSep: ', ', listAnd: ' i ',
+        twoPlayers: 'Dwóch graczy', vsAi: 'Przeciwko SI', size: 'Rozmiar',
+        you: 'Ty', rival: 'Rywal', player1: 'Gracz 1', player2: 'Gracz 2', renameP2: 'Nazwa Gracza 2',
+        thinking: 'Myślenie…', yourTurn: 'Twoja kolej', draw: 'Remis', playerWon: '{n} wygrywa', move: 'Ruch',
+        rotate: 'Obróć linię',
+        boxes: 'Kwadraty', newMatch: 'Nowy mecz', undoMove: 'Cofnij ruch',
+        dailyDots: 'Codzienne kropki i kwadraty', vsHard: 'przeciwko trudnemu SI',
+        tutTitle1: 'Narysuj linię', tutText1: 'W swojej turze rysujesz jedną linię między dwoma sąsiadującymi ze sobą kropkami.',
+        tutTitle2: 'Zamknij kwadrat', tutText2: 'Narysuj czwarty bok kwadratu, aby go przejąć – dzięki temu zyskujesz kolejny ruch.',
+        tutTitle3: 'Łańcuchy', tutText3: 'Czasami opłaca się zostawić dwa ostatnie kwadraty, aby zmusić rywala do otwarcia kolejnego łańcucha ruchów.'
+      },
+      fr: {
+        nPlayers: '{n} joueurs', seatHuman: 'Humain', seatBot: 'Robot', botN: 'Robot {n}', playerN: 'Joueur {n}', tiedN: 'Égalité : {n}', listSep: ', ', listAnd: ' et ',
+        twoPlayers: 'Deux joueurs', vsAi: 'Contre l’IA', size: 'Taille',
+        you: 'Toi', rival: 'Rival', player1: 'Joueur 1', player2: 'Joueur 2', renameP2: 'Nom du joueur 2',
+        thinking: 'Réflexion…', yourTurn: 'À toi', draw: 'Égalité', playerWon: '{n} gagne', move: 'Coup',
+        rotate: 'Tourner le trait',
+        boxes: 'Cases', newMatch: 'Nouvelle partie', undoMove: 'Annuler le coup',
+        dailyDots: 'Pipopipette du jour', vsHard: 'contre l’IA difficile',
+        tutTitle1: 'Trace un trait', tutText1: 'À ton tour, trace un trait entre deux points voisins.',
+        tutTitle2: 'Ferme une case', tutText2: 'Trace le quatrième côté d’une case : elle est à toi et tu rejoues.',
+        tutTitle3: 'Chaînes', tutText3: 'Parfois, mieux vaut laisser les deux dernières cases pour que ton rival ouvre la chaîne suivante.'
+      },
+      ar: {
+        nPlayers: '{n} لاعبين', seatHuman: 'إنسان', seatBot: 'روبوت', botN: 'الروبوت {n}', playerN: 'اللاعب {n}', tiedN: 'تعادل: {n}', listSep: '، ', listAnd: ' و',
+        twoPlayers: 'لاعبان', vsAi: 'ضد الروبوت', size: 'الحجم',
+        you: 'أنت', rival: 'المنافس', player1: 'اللاعب 1', player2: 'اللاعب 2', renameP2: 'اسم اللاعب 2',
+        thinking: 'يفكر…', yourTurn: 'دورك', draw: 'تعادل', playerWon: '{n} يفوز', move: 'حركة',
+        rotate: 'أدر الخط',
+        boxes: 'المربعات', newMatch: 'مباراة جديدة', undoMove: 'تراجع',
+        dailyDots: 'النقاط والمربعات اليومية', vsHard: 'ضد الروبوت الصعب',
+        tutTitle1: 'ارسم خطًا', tutText1: 'في دورك ترسم خطًا واحدًا بين نقطتين متجاورتين.',
+        tutTitle2: 'أغلق مربعًا', tutText2: 'ارسم الضلع الرابع لمربع فيصبح لك، وتلعب مرة أخرى.',
+        tutTitle3: 'السلاسل', tutText3: 'أحيانًا يفيدك أن تترك آخر مربعين ليضطر منافسك إلى فتح السلسلة التالية.'
+      },
+      hi: {
+        nPlayers: '{n} खिलाड़ी', seatHuman: 'इंसान', seatBot: 'बॉट', botN: 'बॉट {n}', playerN: 'खिलाड़ी {n}', tiedN: 'बराबरी: {n}', listSep: ', ', listAnd: ' और ',
+        twoPlayers: 'दो खिलाड़ी', vsAi: 'कंप्यूटर से', size: 'आकार',
+        you: 'आप', rival: 'विरोधी', player1: 'खिलाड़ी 1', player2: 'खिलाड़ी 2', renameP2: 'खिलाड़ी 2 का नाम',
+        thinking: 'सोच रहा है…', yourTurn: 'आपकी बारी', draw: 'बराबरी', playerWon: '{n} जीत गए', move: 'चलना',
+        rotate: 'रेखा घुमाएँ',
+        boxes: 'खाने', newMatch: 'नया मुक़ाबला', undoMove: 'चाल वापस',
+        dailyDots: 'रोज़ का डॉट्स और बॉक्स', vsHard: 'कठिन कंप्यूटर के ख़िलाफ़',
+        tutTitle1: 'रेखा खींचें', tutText1: 'अपनी बारी में दो पड़ोसी बिंदुओं के बीच एक रेखा खींचें।',
+        tutTitle2: 'खाना बंद करें', tutText2: 'किसी खाने की चौथी भुजा खींचें तो वह आपका हो जाता है, और आपको फिर से चाल मिलती है।',
+        tutTitle3: 'कड़ियाँ', tutText3: 'कभी-कभी आख़िरी दो खाने छोड़ देना फ़ायदेमंद है, ताकि अगली कड़ी विरोधी को खोलनी पड़े।'
+      },
+      zh: {
+        nPlayers: '{n}人', seatHuman: '真人', seatBot: '电脑', botN: '电脑{n}', playerN: '玩家{n}', tiedN: '平局：{n}', listSep: '、', listAnd: '和',
+        twoPlayers: '双人', vsAi: '对战电脑', size: '尺寸',
+        you: '你', rival: '对手', player1: '玩家一', player2: '玩家二', renameP2: '玩家二的名字',
+        thinking: '思考中…', yourTurn: '轮到你了', draw: '平局', playerWon: '{n} 获胜', move: '移动',
+        rotate: '旋转连线',
+        boxes: '格子', newMatch: '新一局', undoMove: '撤销一步',
+        dailyDots: '每日点格棋', vsHard: '对战困难电脑',
+        tutTitle1: '画一条线', tutText1: '每回合在相邻的两个点之间画一条线。',
+        tutTitle2: '围成格子', tutText2: '画下一个格子的第四条边，这个格子就归你，而且你可以再走一步。',
+        tutTitle3: '连锁', tutText3: '有时故意留下最后两个格子，逼对手先打开下一条连锁。'
+      },
+      de: {
+        nPlayers: '{n} Spieler', seatHuman: 'Mensch', seatBot: 'Bot', botN: 'Bot {n}', playerN: 'Spieler {n}', tiedN: 'Gleichstand: {n}', listSep: ', ', listAnd: ' und ',
+        twoPlayers: 'Zwei Spieler', vsAi: 'Gegen KI', size: 'Größe',
+        you: 'Du', rival: 'Gegner', player1: 'Spieler 1', player2: 'Spieler 2', renameP2: 'Name Spieler 2',
+        thinking: 'Denkt nach…', yourTurn: 'Du bist dran', draw: 'Unentschieden', playerWon: 'Sieg: {n}', move: 'Bewegen',
+        rotate: 'Linie drehen',
+        boxes: 'Kästchen', newMatch: 'Neue Partie', undoMove: 'Zug zurück',
+        dailyDots: 'Tages-Käsekästchen', vsHard: 'gegen die starke KI',
+        tutTitle1: 'Zieh eine Linie', tutText1: 'In deinem Zug ziehst du eine Linie zwischen zwei benachbarten Punkten.',
+        tutTitle2: 'Schließ ein Kästchen', tutText2: 'Zieh die vierte Seite eines Kästchens, dann gehört es dir und du bist noch mal dran.',
+        tutTitle3: 'Ketten', tutText3: 'Manchmal lohnt es sich, die letzten zwei Kästchen liegen zu lassen, damit dein Gegner die nächste Kette öffnen muss.'
+      },
+      es: {
+        nPlayers: '{n} jugadores', seatHuman: 'Persona', seatBot: 'Bot', botN: 'Bot {n}', playerN: 'Jugador {n}', tiedN: 'Empate: {n}', listSep: ', ', listAnd: ' y ',
+        twoPlayers: 'Dos jugadores', vsAi: 'Contra la IA', size: 'Tamaño',
+        you: 'Tú', rival: 'Rival', player1: 'Jugador 1', player2: 'Jugador 2', renameP2: 'Nombre del jugador 2',
+        thinking: 'Pensando…', yourTurn: 'Tu turno', draw: 'Empate', playerWon: 'Gana: {n}', move: 'Mover',
+        rotate: 'Girar línea',
+        boxes: 'Cajas', newMatch: 'Nueva partida', undoMove: 'Deshacer',
+        dailyDots: 'Puntos y cajas diario', vsHard: 'contra la IA difícil',
+        tutTitle1: 'Traza una línea', tutText1: 'En tu turno trazas una línea entre dos puntos vecinos.',
+        tutTitle2: 'Cierra una caja', tutText2: 'Traza el cuarto lado de una caja y será tuya, y vuelves a jugar.',
+        tutTitle3: 'Cadenas', tutText3: 'A veces conviene dejar las dos últimas cajas para que tu rival tenga que abrir la siguiente cadena.'
+      }
+    }
+  });
+
+  var params = new URLSearchParams(location.search);
+  var dailyDate = params.get('daily');
+  var prefs = ctx.store.get('prefs', { size: 5, mode: 'ai', level: 'medium', p2name: '' });
+  // #987: prefs from before three and four players (also inside old saves) have
+  // no players, seats or mode2, and the count must agree with the mode
+  function normPrefs() {
+    if (prefs.mode === 'multi') { if (!(prefs.players >= 3 && prefs.players <= E.MAX_SEATS)) prefs.players = 3; }
+    else { prefs.players = 2; if (prefs.mode !== '2p') prefs.mode = 'ai'; prefs.mode2 = prefs.mode; }
+    if (prefs.mode2 !== '2p') prefs.mode2 = 'ai';
+    if (!Array.isArray(prefs.seats) || prefs.seats.length !== E.MAX_SEATS) prefs.seats = ['h', 'b', 'b', 'b'];
+    prefs.seats[0] = 'h';
+  }
+  normPrefs();
+
+  // Players 3 and 4 (#987): blue and violet, mid-tone like the first two so each
+  // reads both as a line on the light board and as score text on the dark one.
+  var P = [null, { c: '#5C9A6B', key: 'you' }, { c: '#E07A5F', key: 'rival' }, { c: '#3F7FD0' }, { c: '#A66BC8' }];
+  var S = null, bd = null, aiTimer = null;
+
+  var svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('class', 'dt-svg');
+  var boardBox = el('div', { class: 'dt-boardbox' }, [svg]);
+  var top = el('div', { class: 'dt-top ch-above' });
+  var playersRow = el('div', { class: 'dt-players ch-above' });
+  var wrap = el('div', { class: 'dt-wrap ch-split' }, [el('div', { class: 'ch-fit' }, [boardBox]), el('div', { class: 'ch-side' }, [top, playersRow])]);
+
+  ctx.button({ icon: 'help', label: C.t('help'), onClick: showHelp });
+  ctx.button({ icon: 'undo', label: C.t('undoMove'), onClick: undo });
+  ctx.button({ icon: 'refresh', label: C.t('newMatch'), onClick: askNew });
+  ctx.main.appendChild(wrap);
+  ctx.mount();
+
+  /* ------------------------------------------------------------ ساخت */
+
+  // Three or four seats come from prefs (players, seats); the daily is always
+  // the two-seat game against the hard bot.
+  function newGame(size, mode, level, daily, seedRng) {
+    stopAi();
+    if (daily) mode = 'ai';
+    var seats = mode === 'multi' ? prefs.seats.slice(0, prefs.players) : null;
+    var fresh = E.newState(size, mode, seats);
+    // only a board too small for four can refuse; the next size up fits
+    if (!fresh) { size = 4; fresh = E.newState(size, mode, seats); }
+    bd = E.makeBoard(size, size);
+    S = fresh;
+    S.level = level; S.daily = daily || null;
+    S.done = false; S.startedAt = Date.now(); S.elapsed = 0;
+    S.lastEdge = -1; S.newBoxes = [];
+    if (seedRng) S.turn = seedRng() < 0.5 ? 1 : 2;
+    cur = { v: 0, r: 0, c: 0 };
+    drawAll();
+    render();
+    save();
+    maybeAi();
+  }
+
+  /* ------------------------------------------------------------ رسم */
+
+  var GAP = 100, PAD = 34;
+
+  function drawAll() {
+    var n = S.size;
+    var W = PAD * 2 + GAP * n;
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + W);
+    svg.innerHTML = '';
+
+    var gBoxes = document.createElementNS(NS, 'g');
+    var gLines = document.createElementNS(NS, 'g');
+    var gHits = document.createElementNS(NS, 'g');
+    var gDots = document.createElementNS(NS, 'g');
+    svg.appendChild(gBoxes); svg.appendChild(gLines); svg.appendChild(gHits); svg.appendChild(gDots);
+    S.g = { boxes: gBoxes, lines: gLines, hits: gHits };
+
+    // زمینه‌ی خطوط کشیده‌نشده
+    for (var e = 0; e < bd.E; e++) {
+      var p = edgePos(e);
+      var base = document.createElementNS(NS, 'line');
+      base.setAttribute('x1', p.x1); base.setAttribute('y1', p.y1);
+      base.setAttribute('x2', p.x2); base.setAttribute('y2', p.y2);
+      base.setAttribute('stroke', 'var(--c-surface-3)');
+      base.setAttribute('stroke-width', '7');
+      base.setAttribute('stroke-linecap', 'round');
+      gLines.appendChild(base);
+    }
+    // ناحیه‌ی لمس، پهن‌تر از خط تا هدف لمسی درشت باشد
+    for (var e2 = 0; e2 < bd.E; e2++) {
+      (function (idx) {
+        var p2 = edgePos(idx);
+        var hit = document.createElementNS(NS, 'line');
+        hit.setAttribute('x1', p2.x1); hit.setAttribute('y1', p2.y1);
+        hit.setAttribute('x2', p2.x2); hit.setAttribute('y2', p2.y2);
+        hit.setAttribute('stroke-width', '46');
+        hit.setAttribute('stroke-linecap', 'round');
+        hit.setAttribute('class', 'dt-hit');
+        hit.addEventListener('click', function () { human(idx); });
+        gHits.appendChild(hit);
+      })(e2);
+    }
+    for (var r = 0; r <= n; r++) {
+      for (var c = 0; c <= n; c++) {
+        var d = document.createElementNS(NS, 'circle');
+        d.setAttribute('cx', PAD + c * GAP);
+        d.setAttribute('cy', PAD + r * GAP);
+        d.setAttribute('r', '9');
+        d.setAttribute('fill', 'var(--c-text-dim)');
+        gDots.appendChild(d);
+      }
+    }
+    repaint(true);
+  }
+
+  function edgePos(e) {
+    var n = S.size;
+    if (e < bd.HC) {
+      var r = (e / n) | 0, c = e % n;
+      return { x1: PAD + c * GAP, y1: PAD + r * GAP, x2: PAD + (c + 1) * GAP, y2: PAD + r * GAP };
+    }
+    var k = e - bd.HC;
+    var r2 = (k / (n + 1)) | 0, c2 = k % (n + 1);
+    return { x1: PAD + c2 * GAP, y1: PAD + r2 * GAP, x2: PAD + c2 * GAP, y2: PAD + (r2 + 1) * GAP };
+  }
+
+
+  /* ------------------------------------------------- تخته روی کارت نتیجه */
+  function cardPaint() {
+    var n = S.size, E_ = bd.E, HC = bd.HC;
+    var edges = S.edges.slice(), owner = S.owner.slice();
+    var eo = {};
+    for (var q in (S.edgeOwner || {})) eo[q] = S.edgeOwner[q];
+    var VB = PAD * 2 + GAP * n;
+    var pos = function (e) {
+      if (e < HC) {
+        var r = (e / n) | 0, c = e % n;
+        return { x1: PAD + c * GAP, y1: PAD + r * GAP, x2: PAD + (c + 1) * GAP, y2: PAD + r * GAP };
+      }
+      var k = e - HC, r2 = (k / (n + 1)) | 0, c2 = k % (n + 1);
+      return { x1: PAD + c2 * GAP, y1: PAD + r2 * GAP, x2: PAD + c2 * GAP, y2: PAD + (r2 + 1) * GAP };
+    };
+    return function (g, W, H, col) {
+      var side = Math.min(W, H);
+      var k = side / VB;
+      g.translate((W - side) / 2, (H - side) / 2);
+      g.scale(k, k);
+      // مربع‌های گرفته‌شده
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      for (var b = 0; b < n * n; b++) {
+        if (!owner[b]) continue;
+        var r = (b / n) | 0, c = b % n;
+        g.globalAlpha = 0.24;
+        g.fillStyle = P[owner[b]].c;
+        C.rrect(g, PAD + c * GAP + 6, PAD + r * GAP + 6, GAP - 12, GAP - 12, 10);
+        g.fill();
+        g.globalAlpha = 1;
+        g.fillStyle = P[owner[b]].c;
+        g.font = '800 38px Vazirmatn, system-ui, sans-serif';
+        g.fillText(C.num(owner[b]), PAD + c * GAP + GAP / 2, PAD + r * GAP + GAP / 2);
+      }
+      // یال‌های خالی، بعد یال‌های کشیده‌شده
+      g.lineCap = 'round';
+      for (var e = 0; e < E_; e++) {
+        var p = pos(e);
+        g.strokeStyle = edges[e] ? P[eo[e] || 1].c : col.surface2;
+        g.lineWidth = edges[e] ? 11 : 7;
+        g.beginPath(); g.moveTo(p.x1, p.y1); g.lineTo(p.x2, p.y2); g.stroke();
+      }
+      // نقطه‌ها
+      g.fillStyle = col.dim;
+      for (var rr = 0; rr <= n; rr++) {
+        for (var cc = 0; cc <= n; cc++) {
+          g.beginPath(); g.arc(PAD + cc * GAP, PAD + rr * GAP, 9, 0, Math.PI * 2); g.fill();
+        }
+      }
+    };
+  }
+
+  // #407: the boxes a move closes, in order, with their delay and whether they
+  // continue a run the same player started earlier this turn. A box used to
+  // fill on its own, so a long chain looked like unrelated pops.
+  var STAGGER_MS = 90;
+  function newBoxFx(newBoxes, turnBoxes, still) {
+    var start = turnBoxes - newBoxes.length;
+    return newBoxes.map(function (b, i) { return { b: b, d: still ? 0 : i * STAGGER_MS, chain: start + i >= 1 }; });
+  }
+
+  function repaint(full) {
+    var n = S.size;
+    var fx = full ? [] : newBoxFx(S.newBoxes || [], S.turnBoxes || S.newBoxes.length, C.ui.reduceMotion());
+    var fxOf = function (b) { for (var i = 0; i < fx.length; i++) if (fx[i].b === b) return fx[i]; return null; };
+    S.g.boxes.innerHTML = '';
+    for (var b = 0; b < bd.boxes; b++) {
+      if (!S.owner[b]) continue;
+      var r = (b / n) | 0, c = b % n;
+      var rect = document.createElementNS(NS, 'rect');
+      rect.setAttribute('x', PAD + c * GAP + 6);
+      rect.setAttribute('y', PAD + r * GAP + 6);
+      rect.setAttribute('width', GAP - 12);
+      rect.setAttribute('height', GAP - 12);
+      rect.setAttribute('rx', '10');
+      rect.setAttribute('fill', P[S.owner[b]].c);
+      rect.setAttribute('opacity', '.24');
+      var f = fxOf(b);
+      if (f) {
+        rect.setAttribute('class', 'dt-box' + (f.chain ? ' dt-box--chain' : ''));
+        rect.style.setProperty('--d', f.d + 'ms');
+      }
+      S.g.boxes.appendChild(rect);
+      var t = document.createElementNS(NS, 'text');
+      t.setAttribute('x', PAD + c * GAP + GAP / 2);
+      t.setAttribute('y', PAD + r * GAP + GAP / 2 + 13);
+      t.setAttribute('text-anchor', 'middle');
+      t.setAttribute('font-size', '38');
+      t.setAttribute('fill', P[S.owner[b]].c);
+      t.setAttribute('class', 'dt-boxlabel' + (f ? ' dt-boxlabel--new' : ''));
+      if (f) t.style.setProperty('--d', f.d + 'ms');
+      t.textContent = C.num(S.owner[b]);
+      S.g.boxes.appendChild(t);
+    }
+    // خطوط کشیده‌شده
+    var drawn = S.g.lines.querySelectorAll('.dt-line');
+    for (var d = 0; d < drawn.length; d++) drawn[d].remove();
+    for (var e = 0; e < bd.E; e++) {
+      if (!S.edges[e]) continue;
+      var p = edgePos(e);
+      var ln = document.createElementNS(NS, 'line');
+      ln.setAttribute('x1', p.x1); ln.setAttribute('y1', p.y1);
+      ln.setAttribute('x2', p.x2); ln.setAttribute('y2', p.y2);
+      ln.setAttribute('stroke', P[S.edgeOwner ? (S.edgeOwner[e] || 1) : 1].c);
+      ln.setAttribute('stroke-width', '11');
+      ln.setAttribute('class', 'dt-line' + (!full && e === S.lastEdge ? ' dt-line--new' : ''));
+      S.g.lines.appendChild(ln);
+    }
+    var hits = S.g.hits.childNodes;
+    for (var h = 0; h < hits.length; h++) {
+      hits[h].style.pointerEvents = (S.edges[h] || S.done || busy()) ? 'none' : 'auto';
+    }
+  }
+
+  function busy() { return E.isBot(S, S.turn) && !S.done; }
+  function seatN() { return E.seatsOf(S).length; }
+
+  function render() {
+    top.innerHTML = '';
+    if (S.daily) {
+      top.appendChild(el('span', { class: 'ch-badge ch-badge--accent' },
+        [C.icon('calendar', 14), el('span', { text: C.t('dailyDots') + ' — ' + C.num(S.daily) })]));
+      top.appendChild(el('span', { class: 'ch-badge', text: C.t('vsHard') }));
+    } else {
+      // هر سه انتخابگر بازی را از نو می‌سازند، پس اگر دستی در جریان است اول تأیید
+      var guard = function (same, go) {
+        if (same) return;
+        if (S.history && S.history.length && !S.done) {
+          C.ui.confirm({ title: C.t('newMatch'), body: C.t('resetWarn'), onOk: go, onCancel: function () { render(); } });
+          render();
+          return;
+        }
+        go();
+      };
+      // Size first, so mode and the level that depends on it sit together (#986)
+      var sizeSeg = C.ui.segmented([3, 4, 5, 6, 8].map(function (n) {
+        return { value: n, label: C.num(n) };
+      }), S.size, function (v) {
+        guard(v === S.size, function () {
+          prefs.size = v; ctx.store.set('prefs', prefs);
+          newGame(v, S.mode, S.level);
+        });
+      });
+      // 3×3 is greyed out for four players (#987), not hidden, so the row keeps its shape
+      var sizeBtns = sizeSeg.querySelectorAll('button');
+      [3, 4, 5, 6, 8].forEach(function (n, i) {
+        if (!E.sizeOk(n, seatN())) { sizeBtns[i].disabled = true; sizeBtns[i].setAttribute('aria-disabled', 'true'); }
+      });
+      top.appendChild(sizeSeg);
+      top.appendChild(C.ui.segmented([2, 3, 4].map(function (n) {
+        return { value: n, label: C.t('nPlayers', { n: C.num(n) }) };
+      }), seatN(), function (v) {
+        guard(v === seatN(), function () {
+          prefs.players = v;
+          // two seats go back to the vs-bot or two-player choice they had
+          prefs.mode = v === 2 ? (prefs.mode2 || 'ai') : 'multi';
+          if (!E.sizeOk(S.size, v)) prefs.size = 4;
+          ctx.store.set('prefs', prefs);
+          newGame(prefs.size, prefs.mode, S.level);
+        });
+      }));
+      if (S.mode === 'multi') {
+        // Player 1 holds the phone; every other seat is a person or the medium bot
+        var seatRow = el('div', { class: 'dt-seats' });
+        for (var sp = 2; sp <= seatN(); sp++) {
+          (function (p) {
+            var bot = E.isBot(S, p), kind = bot ? C.t('seatBot') : C.t('seatHuman');
+            var b = el('button', {
+              type: 'button', class: 'dt-seat ch-tap', 'aria-pressed': bot ? 'true' : 'false',
+              'aria-label': C.t('playerN', { n: C.num(p) }) + ': ' + kind,
+              style: { '--pc': P[p].c }
+            }, [el('span', { class: 'dt-player__dot' }), C.icon(bot ? 'brain' : 'user', 16), el('span', { text: kind })]);
+            b.addEventListener('click', function () {
+              guard(false, function () {
+                prefs.seats[p - 1] = bot ? 'h' : 'b';
+                ctx.store.set('prefs', prefs);
+                newGame(S.size, 'multi', S.level);
+              });
+            });
+            seatRow.appendChild(b);
+          })(sp);
+        }
+        top.appendChild(seatRow);
+      } else top.appendChild(C.ui.segmented([
+        { value: 'ai', label: C.t('vsAi') }, { value: '2p', label: C.t('twoPlayers') }
+      ], S.mode, function (v) {
+        guard(v === S.mode, function () {
+          prefs.mode = v; prefs.mode2 = v; ctx.store.set('prefs', prefs);
+          newGame(S.size, v, S.level);
+        });
+      }));
+      if (S.mode === 'ai') {
+        top.appendChild(C.ui.segmented([
+          { value: 'easy', label: C.t('easy') }, { value: 'medium', label: C.t('medium') }, { value: 'hard', label: C.t('hard') }
+        ], S.level, function (v) {
+          guard(v === S.level, function () {
+            prefs.level = v; ctx.store.set('prefs', prefs);
+            newGame(S.size, S.mode, v);
+          });
+        }));
+      }
+    }
+    drawPlayers();
+    repaint(true);
+  }
+
+  function pname(i) {
+    if (S.mode === 'multi') {
+      var people = S.seats.filter(function (kind) { return kind === 'h'; }).length;
+      if (S.seats[i - 1] === 'b') return C.t('botN', { n: C.num(i) });
+      // "You" only while you are the one person at the table
+      if (i === 1) return C.state.profile.name || (people > 1 ? C.t('playerN', { n: C.num(1) }) : C.t('you'));
+      return C.t('playerN', { n: C.num(i) });
+    }
+    // دونفره روی یک گوشی «تو» ندارد؛ نتیجه می‌شد «You wins» (#90)
+    if (i === 1) return C.state.profile.name || C.t(S.mode === '2p' ? 'player1' : 'you');
+    if (S.mode === 'ai') return C.t('rival') + ' · ' + C.t(S.level);
+    return prefs.p2name || C.t('player2');
+  }
+
+  // "A, B and C", for a lead shared by several players
+  function nameList(ps) {
+    var names = ps.map(pname), last = names.pop();
+    return names.length ? names.join(C.t('listSep')) + C.t('listAnd') + last : last;
+  }
+
+  function drawPlayers() {
+    playersRow.innerHTML = '';
+    playersRow.classList.toggle('dt-players--many', seatN() > 2);
+    for (var i = 1; i <= seatN(); i++) {
+      (function (p) {
+        var box = el('div', {
+          class: 'dt-player' + (S.turn === p && !S.done ? ' dt-player--on' : ''),
+          style: { '--pc': P[p].c }
+        }, [
+          el('div', { class: 'dt-player__dot' }),
+          el('div', { class: 'dt-player__name', text: pname(p) }),
+          el('div', { class: 'dt-player__score', text: C.num(S.scores[p]) })
+        ]);
+        if (p === 2 && S.mode === '2p' && !S.daily) {
+          box.classList.add('ch-tap');
+          box.addEventListener('click', renameP2);
+        }
+        if (S.turn === p && busy()) box.classList.add('dt-thinking');
+        playersRow.appendChild(box);
+      })(i);
+    }
+  }
+
+  /* ----------------------------------------------------------- حرکت */
+
+  function human(e) {
+    if (!S || S.done || !(e >= 0 && e < bd.E) || S.edges[e] || busy()) return;
+    doMove(e, true);
+  }
+
+  function doMove(e, byHuman) {
+    var before = S.owner.slice();
+    var got = E.applyEdge(bd, S, e);
+    S.lastEdge = e;
+    S.newBoxes = [];
+    for (var b = 0; b < bd.boxes; b++) if (!before[b] && S.owner[b]) S.newBoxes.push(b);
+    if (got > 0) {
+      C.audio.sfx(S.turnBoxes >= 3 ? 'chain' : 'pop');
+      C.haptic('success');
+      // awards stay two-player (#987)
+      if (S.turnBoxes >= 5 && S.turn === 1 && S.mode !== 'multi') C.achievements.unlock('dt-chain');
+    } else {
+      C.audio.sfx('place');
+      if (byHuman) C.haptic('tap');
+    }
+    repaint(false);
+    drawPlayers();
+    save();
+    if (E.legalMoves(bd, S.edges).length === 0) { finish(); return; }
+    maybeAi();
+  }
+
+  function maybeAi() {
+    stopAi();
+    if (S.done || !E.isBot(S, S.turn)) return;
+    repaint(false);
+    drawPlayers();
+    aiTimer = setTimeout(function () {
+      if (!S || S.done || !E.isBot(S, S.turn)) return;
+      var rnd = S.daily ? C.daily('dots', S.daily + '|' + S.history.length).rng : Math.random;
+      // the seats of a three- or four-player game are always the medium bot (#987)
+      var m = E.aiMove(bd, S.edges, S.owner, S.mode === 'multi' ? 'medium' : S.level, rnd);
+      if (m < 0) { finish(); return; }
+      doMove(m, false);
+    }, 380);
+  }
+  function stopAi() { if (aiTimer) { clearTimeout(aiTimer); aiTimer = null; } }
+
+  function undo() {
+    if (!S || S.done) return;
+    if (!S.history.length) { C.feedback('bad'); return; }
+    stopAi();
+    E.takeBack(bd, S);
+    S.lastEdge = -1;
+    C.feedback('tap');
+    repaint(true);
+    drawPlayers();
+    save();
+    // اگر تاریخچه ته کشید و نوبت روی حریف ماند — که در روزانه‌ی شروع‌شده با
+    // حریف پیش می‌آید — بدون این، بازی برای همیشه قفل می‌شد.
+    maybeAi();
+  }
+
+  function finish() {
+    S.done = true;
+    S.elapsed = Date.now() - S.startedAt;
+    stopAi();
+    repaint(true);
+    drawPlayers();
+    if (S.mode === 'multi') { finishMulti(); return; }
+    var s1 = S.scores[1], s2 = S.scores[2];
+    var won = s1 > s2;
+    var tie = s1 === s2;
+    var margin = s1 - s2;
+
+    // در دونفره سطح حریف معنا ندارد و نباید پاداش را تعیین کند
+    var base = S.mode === 'ai' ? ({ easy: 5, medium: 10, hard: 18 }[S.level] || 10) : 8;
+    var sizeK = S.size / 5;
+    var coins = Math.max(2, Math.round((won ? base : base * 0.35) * sizeK)) + (S.daily ? 8 : 0);
+    var points = Math.max(3, Math.round((won ? base * 4 : base * 1.2) * sizeK)) + (S.daily ? 25 : 0);
+
+    if (S.mode === 'ai' && won) {
+      C.achievements.unlock('dt-win');
+      if (S.level === 'hard') C.achievements.unlock('dt-hard');
+      if (s2 === 0) C.achievements.unlock('dt-shutout');
+    }
+    if (won) C.stats.best('dots', 'margin', margin, false);
+    if (S.daily) {
+      var firstDaily = C.stats.daily('dots', S.daily, {
+        label: C.num(s1) + ' - ' + C.num(s2), win: won, diff: margin
+      });
+      if (!firstDaily) { coins = Math.round(coins * 0.2); points = Math.round(points * 0.2); }
+    }
+    ctx.clearSave();
+
+    ctx.finish({
+      won: won,
+      title: tie ? C.t('draw')
+        : (S.mode === '2p' ? C.t('playerWon', { n: pname(s1 > s2 ? 1 : 2) })
+          : (won ? C.t('won') : C.t('lost'))),
+      timeMs: S.elapsed, coins: coins, points: points,
+      lines: [
+        { label: pname(1), value: C.num(s1) },
+        { label: pname(2), value: C.num(s2) },
+        { label: C.t('size'), value: C.num(S.size) + '×' + C.num(S.size) }
+      ],
+      shareText: 'چوگان · نقطه‌بازی ' + C.num(S.size) + '×' + C.num(S.size) +
+        (S.daily ? ('\nروزانه ' + S.daily) : '') +
+        '\n' + C.num(s1) + ' - ' + C.num(s2),
+      paint: cardPaint(),
+      onAgain: S.daily ? null : function () { newGame(S.size, S.mode, S.level); }
+    });
+  }
+
+  // Three or four players (#987): no awards, no best margin and no daily, which
+  // all stay two-player; a lead shared by some but not all reads as a tie of those.
+  function finishMulti() {
+    var n = seatN(), lead = E.leaders(S);
+    var won = lead.length === 1 && lead[0] === 1;
+    var sizeK = S.size / 5;
+    var coins = Math.max(2, Math.round((won ? 8 : 8 * 0.35) * sizeK));
+    var points = Math.max(3, Math.round((won ? 32 : 8 * 1.2) * sizeK));
+    var lines = [];
+    for (var p = 1; p <= n; p++) lines.push({ label: pname(p), value: C.num(S.scores[p]) });
+    lines.push({ label: C.t('size'), value: C.num(S.size) + '×' + C.num(S.size) });
+    ctx.clearSave();
+    ctx.finish({
+      won: won,
+      title: lead.length === n ? C.t('draw')
+        : (lead.length === 1 ? C.t('playerWon', { n: pname(lead[0]) }) : C.t('tiedN', { n: nameList(lead) })),
+      timeMs: S.elapsed, coins: coins, points: points, lines: lines,
+      shareText: 'چوگان · نقطه‌بازی ' + C.num(S.size) + '×' + C.num(S.size) +
+        '\n' + S.scores.slice(1).map(function (x) { return C.num(x); }).join(' - '),
+      paint: cardPaint(),
+      onAgain: function () { newGame(S.size, S.mode, S.level); }
+    });
+  }
+
+  /* --------------------------------------------------------- ذخیره */
+
+  ctx.autosave(function () {
+    if (!S || S.done || !S.history.length) return { inProgress: false };
+    return {
+      s: {
+        size: S.size, mode: S.mode, level: S.level, daily: S.daily, seats: S.seats || null,
+        edges: S.edges, owner: S.owner, edgeOwner: S.edgeOwner || {},
+        turn: S.turn, scores: S.scores, history: S.history,
+        turnBoxes: S.turnBoxes, elapsed: Date.now() - S.startedAt
+      },
+      prefs: prefs
+    };
+  });
+  function save() { ctx.save(); }
+
+  function askNew() {
+    var dd = S ? S.daily : null;
+    function go() {
+      // داخل روزانه باید همان دست روزانه دوباره ساخته شود، نه یک مسابقه‌ی عادی
+      if (dd) newGame(5, 'ai', 'hard', dd, C.daily('dots', dd).rng);
+      else newGame(S ? S.size : prefs.size, S ? S.mode : prefs.mode, S ? S.level : prefs.level);
+    }
+    if (!S || S.done || !S.history.length) { go(); return; }
+    C.ui.confirm({ title: C.t('newMatch'), body: C.t('resetWarn'), onOk: go });
+  }
+
+  function renameP2() {
+    var input = el('input', {
+      type: 'text', value: prefs.p2name, maxlength: '16', placeholder: C.t('player2'),
+      style: { font: 'inherit', width: '100%', padding: '10px 14px', 'border-radius': 'var(--r-md)',
+        border: '1px solid var(--c-line)', background: 'var(--c-surface-2)', color: 'var(--c-text)' }
+    });
+    C.ui.modal({
+      title: C.t('renameP2'), body: [input],
+      actions: [{ label: C.t('cancel') }, { label: C.t('done'), kind: 'primary', onClick: function () {
+        prefs.p2name = input.value.trim().slice(0, 16);
+        ctx.store.set('prefs', prefs);
+        drawPlayers();
+      } }]
+    });
+  }
+
+  function showHelp() {
+    C.ui.modal({
+      title: C.t('help'),
+      body: [
+        el('p', { class: 'ch-dim', text: C.t('tutText2') }),
+        el('h3', { style: { 'margin-top': 'var(--s-4)' }, text: C.t('keyboard') }),
+        el('div', { class: 'ch-list' }, [
+          kb('← ↑ → ↓', C.t('move')),
+          kb('Space / Enter', C.t('play')),
+          kb('U / Ctrl+Z', C.t('undoMove')),
+          kb('R / Tab', C.t('rotate'))
+        ])
+      ],
+      actions: [
+        { label: C.t('tutorial'), onClick: function () { ctx.showTutorial(TUT); } },
+        { label: C.t('done'), kind: 'primary' }
+      ]
+    });
+  }
+  function kb(k, what) {
+    return el('div', { class: 'ch-item' }, [
+      el('div', { class: 'ch-item__label', text: what }),
+      el('span', { class: 'ch-badge', text: k })
+    ]);
+  }
+
+  var TUT = [
+    { title: C.t('tutTitle1'), text: C.t('tutText1'),
+      art: '<svg viewBox="0 0 200 110" width="100%"><g fill="var(--c-text-dim)">' +
+        '<circle cx="70" cy="30" r="7"/><circle cx="130" cy="30" r="7"/><circle cx="70" cy="80" r="7"/><circle cx="130" cy="80" r="7"/></g>' +
+        '<path d="M70 30h60" stroke="var(--game)" stroke-width="8" stroke-linecap="round"/></svg>' },
+    { title: C.t('tutTitle2'), text: C.t('tutText2'),
+      art: '<svg viewBox="0 0 200 110" width="100%"><rect x="72" y="32" width="56" height="46" rx="6" fill="var(--game)" opacity=".25"/>' +
+        '<path d="M70 30h60M70 80h60M70 30v50M130 30v50" stroke="var(--game)" stroke-width="8" stroke-linecap="round"/>' +
+        '<g fill="var(--c-text-dim)"><circle cx="70" cy="30" r="7"/><circle cx="130" cy="30" r="7"/><circle cx="70" cy="80" r="7"/><circle cx="130" cy="80" r="7"/></g></svg>' },
+    { title: C.t('tutTitle3'), text: C.t('tutText3'),
+      art: '<svg viewBox="0 0 200 110" width="100%">' +
+        '<rect x="40" y="35" width="40" height="40" rx="5" fill="#E07A5F" opacity=".3"/>' +
+        '<rect x="82" y="35" width="40" height="40" rx="5" fill="#E07A5F" opacity=".3"/>' +
+        '<rect x="124" y="35" width="40" height="40" rx="5" fill="var(--game)" opacity=".3"/>' +
+        '<path d="M40 35h124M40 75h124M40 35v40M82 35v40M124 35v40M164 35v40" stroke="var(--c-text-dim)" stroke-width="5" stroke-linecap="round"/></svg>' }
+  ];
+
+  /* -------------------------------------------------------- کیبورد */
+
+  // نشانگر کیبورد به‌صورت هندسی نگه داشته می‌شود: افقی یا عمودی بودن خط
+  // به‌علاوه‌ی سطر و ستون. پیمایش روی شماره‌ی خام یال، جهت‌نماها را بی‌معنا
+  // می‌کرد چون شماره‌ها اول همه‌ی خط‌های افقی‌اند بعد همه‌ی عمودی‌ها.
+  var cur = { v: 0, r: 0, c: 0 };   // v=0 افقی، v=1 عمودی
+  function curEdge() {
+    var n = S.size;
+    return cur.v ? (bd.HC + cur.r * (n + 1) + cur.c) : (cur.r * n + cur.c);
+  }
+  function moveCur(dr, dc) {
+    var n = S.size;
+    var maxR = cur.v ? n - 1 : n;
+    var maxC = cur.v ? n : n - 1;
+    cur.r = C.clamp(cur.r + dr, 0, maxR);
+    cur.c = C.clamp(cur.c + dc, 0, maxC);
+  }
+  function flipCur() {
+    var n = S.size;
+    cur.v = cur.v ? 0 : 1;
+    cur.r = C.clamp(cur.r, 0, cur.v ? n - 1 : n);
+    cur.c = C.clamp(cur.c, 0, cur.v ? n : n - 1);
+  }
+  window.addEventListener('keydown', function (e) {
+    if (!S || S.done || busy()) return;
+    if (document.querySelector('.ch-scrim')) return;
+    var tg = e.target, tag = tg && tg.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (tg && tg.isContentEditable)) return;
+    if (tag === 'BUTTON' && (e.key === ' ' || e.key === 'Enter')) return;
+    var k = e.key;
+    if (C.undoKey(e)) { undo(); e.preventDefault(); return; }
+    if (C.keyIs(e, 'r') || k === 'Tab') { flipCur(); highlight(); e.preventDefault(); return; }
+    // تخته یک SVG با مختصات ثابت است و در راست‌چین آینه نمی‌شود، پس
+    // جهت‌نماها هم نباید برعکس شوند.
+    if (k === 'ArrowUp') { moveCur(-1, 0); highlight(); e.preventDefault(); return; }
+    if (k === 'ArrowDown') { moveCur(1, 0); highlight(); e.preventDefault(); return; }
+    if (k === 'ArrowLeft') { moveCur(0, -1); highlight(); e.preventDefault(); return; }
+    if (k === 'ArrowRight') { moveCur(0, 1); highlight(); e.preventDefault(); return; }
+    if (k === ' ' || k === 'Enter') {
+      var ed = curEdge();
+      if (!S.edges[ed]) human(ed);
+      e.preventDefault();
+    }
+  });
+  function highlight() {
+    var old = svg.querySelector('.dt-cursor');
+    if (old) old.remove();
+    var p = edgePos(curEdge());
+    var ln = document.createElementNS(NS, 'line');
+    ln.setAttribute('x1', p.x1); ln.setAttribute('y1', p.y1);
+    ln.setAttribute('x2', p.x2); ln.setAttribute('y2', p.y2);
+    ln.setAttribute('stroke', 'var(--game)');
+    ln.setAttribute('stroke-width', '13');
+    ln.setAttribute('stroke-linecap', 'round');
+    ln.setAttribute('opacity', '.45');
+    ln.setAttribute('class', 'dt-cursor');
+    S.g.lines.appendChild(ln);
+  }
+
+  C.onPause(function () { stopAi(); });
+  C.onResume(function () { if (S && !S.done) maybeAi(); });
+
+  /* ---------------------------------------------------------- شروع */
+
+  var saved = ctx.loadSave();
+  // هسته برای هر روز خانه‌ی ذخیره‌ی جدا دارد، ولی این بازی روزانه را همیشه از نو
+  // می‌ساخت و پیشرفت نیمه‌کاره‌ی همان روز گم می‌شد (#132). اول ذخیره‌ی همین روز.
+  var resume = saved && saved.s && saved.s.history && saved.s.history.length &&
+    (saved.s.daily || null) === (dailyDate || null);
+  if (resume) {
+    restoreSaved(saved);
+  } else if (dailyDate) {
+    var d = C.daily('dots', dailyDate);
+    newGame(5, 'ai', 'hard', dailyDate, d.rng);
+    if (C.stats.dailyDone('dots', dailyDate)) {
+      var rec = C.stats.dailyOf(dailyDate).dots;
+      C.ui.toast({ icon: 'check', title: C.t('dailyDone'), sub: rec.label });
+    }
+    ctx.tutorialIfNew(TUT);
+  } else {
+    newGame(prefs.size || 5, prefs.mode || 'ai', prefs.level || 'medium');
+    ctx.tutorialIfNew(TUT);
+  }
+
+  function restoreSaved(saved) {
+    if (saved.prefs && !saved.s.daily) { prefs = saved.prefs; normPrefs(); }
+    var v = saved.s;
+    bd = E.makeBoard(v.size, v.size);
+    // E.restore gives a save from before #987 (no seats) its two-seat game back
+    S = E.restore(v);
+    S.done = false; S.startedAt = Date.now() - (v.elapsed || 0); S.elapsed = 0; S.lastEdge = -1; S.newBoxes = [];
+    drawAll();
+    render();
+    maybeAi();
+  }
+})();
+</script>
+</body>
+</html>

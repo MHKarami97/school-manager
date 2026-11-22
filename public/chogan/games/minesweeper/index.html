@@ -1,0 +1,1280 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#FBF6EF">
+<title>مین‌روب — چوگان</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../lib/chogan.css">
+<script src="../../lib/early.js"></script>
+<style>
+  .ms-wrap { width: 100%; display: flex; flex-direction: column; gap: var(--s-3); align-items: center; max-width: 100%; }
+  .ms-top { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; justify-content: center; }
+  /* قاب ثابت می‌ماند و فقط داخلش اسکرول می‌شود، پس حاشیه هیچ‌وقت از دید خارج نمی‌شود */
+  .ms-frame {
+    max-width: 100%; background: var(--c-line);
+    border: 3px solid var(--c-line); border-radius: var(--r-md);
+    box-shadow: var(--sh-2); overflow: hidden;
+    --ms-inner-r: calc(var(--r-md) - 3px);
+    position: relative;
+  }
+  /* لبه‌ای که ستون پنهان دارد محو می‌شود و پیکان می‌گیرد (#101) */
+  .ms-frame::before, .ms-frame::after {
+    content: ''; position: absolute; top: 0; bottom: 0; width: 30px; z-index: 1;
+    pointer-events: none; opacity: 0; transition: opacity var(--t-fast) var(--ease);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px; font-weight: 800; color: var(--game);
+  }
+  .ms-frame::before { content: '‹'; left: 0; background: linear-gradient(to right, var(--c-line) 35%, transparent); }
+  .ms-frame::after { content: '›'; right: 0; background: linear-gradient(to left, var(--c-line) 35%, transparent); }
+  .ms-frame.ms-more-left::before, .ms-frame.ms-more-right::after { opacity: 1; }
+  .ms-scroll {
+    max-width: 100%; overflow: auto; overscroll-behavior: contain;
+    background: var(--c-line); border-radius: var(--ms-inner-r);
+    touch-action: pan-x pan-y;
+  }
+  /* as wide as its cells, not its frame: zoom keeps the point under the fingers by the board's box (#850) */
+  .ms-board { display: grid; grid-template-columns: repeat(var(--cols), var(--cs)); gap: 2px; width: max-content; }
+  .ms-cell {
+    width: var(--cs); height: var(--cs); border: 0; padding: 0; cursor: pointer;
+    background: var(--c-surface-3); border-radius: 4px;
+    font: inherit; font-weight: 800; font-size: calc(var(--cs) * .56);
+    display: grid; place-items: center; color: var(--c-text);
+    box-shadow: var(--sh-inset);
+    transition: background var(--t-fast) var(--ease);
+    -webkit-user-select: none; user-select: none; touch-action: manipulation;
+    -webkit-touch-callout: none;
+    font-variant-numeric: tabular-nums;
+  }
+  .ms-cell--open { background: var(--c-surface-2); box-shadow: none; }
+  .ms-cell--open.ms-pop { animation: ms-open var(--t-mid) var(--ease) backwards; }
+  @keyframes ms-open { from { transform: scale(.6); opacity: .2; } }
+  /* #398: a flag drops in; after a loss the other mines go off one by one, and
+     until its turn a mine still looks closed; a win sweeps a wave over the board */
+  .ms-cell--flag.ms-flagin svg { animation: ch-dropin 340ms var(--ease) backwards; animation-delay: inherit; }
+  .ms-cell--mine.ms-blow { animation: ms-blow 280ms var(--ease-back) backwards; }
+  .ms-cell--mine.ms-blow svg { animation: ms-blow-icon 280ms var(--ease-back) backwards; animation-delay: inherit; }
+  @keyframes ms-blow { from { background-color: var(--c-surface-3); transform: scale(.7); } }
+  @keyframes ms-blow-icon { from { transform: scale(0); } }
+  .ms-cell.ms-wave { animation: ms-wave 420ms var(--ease); }
+  @keyframes ms-wave { 40% { transform: scale(1.12); filter: brightness(1.12); } }
+  .ms-cell--flag { color: var(--c-bad); }
+  .ms-cell--mine { background: var(--c-bad); color: #fff; }
+  .ms-cell--wrong { background: var(--c-bad-soft); color: var(--c-bad); }
+  .ms-cell--hint { outline: 3px solid var(--c-good); outline-offset: -3px; }
+  .ms-cell--cursor { outline: 3px solid var(--game); outline-offset: -3px; }
+  /* the press lands on the button itself, so nothing inside it can be swapped out from under
+     a finger: Chrome sends no click when the element a press began on has gone (#750) */
+  .ms-cell svg { width: 68%; height: 68%; pointer-events: none; }
+  .ms-n1 { color: #4C7DBE; } .ms-n2 { color: #4A8A5C; } .ms-n3 { color: #C8574B; }
+  .ms-n4 { color: #6A4FA3; } .ms-n5 { color: #B06B2E; } .ms-n6 { color: #2D8C97; }
+  .ms-n7 { color: #6A6A6A; } .ms-n8 { color: #9A2F2F; }
+  .ms-tools { display: flex; gap: var(--s-2); align-items: center; justify-content: center; flex-wrap: wrap; }
+  .ms-flagbtn { min-width: 120px; }
+  .ms-custom { display: grid; grid-template-columns: 1fr auto; gap: var(--s-2); align-items: center; }
+  .ms-custom input {
+    font: inherit; width: 92px; text-align: center; padding: 9px; border-radius: var(--r-md);
+    border: 1px solid var(--c-line); background: var(--c-surface-2); color: var(--c-text);
+  }
+</style>
+</head>
+<body>
+<script src="../../version.js"></script>
+<script src="../../lib/chogan.js"></script>
+<script>
+/* ==== ENGINE START ==== */
+function MinesEngineFactory() {
+  'use strict';
+
+  function makeNeighbors(rows, cols) {
+    var nb = new Array(rows * cols);
+    for (var r = 0; r < rows; r++) {
+      for (var c = 0; c < cols; c++) {
+        var list = [];
+        for (var dr = -1; dr <= 1; dr++) {
+          for (var dc = -1; dc <= 1; dc++) {
+            if (!dr && !dc) continue;
+            var rr = r + dr, cc = c + dc;
+            if (rr < 0 || cc < 0 || rr >= rows || cc >= cols) continue;
+            list.push(rr * cols + cc);
+          }
+        }
+        nb[r * cols + c] = list;
+      }
+    }
+    return nb;
+  }
+
+  function layMines(rows, cols, mines, safe, nb, rnd) {
+    var n = rows * cols;
+    var banned = {};
+    banned[safe] = 1;
+    nb[safe].forEach(function (i) { banned[i] = 1; });
+    var pool = [];
+    for (var i = 0; i < n; i++) if (!banned[i]) pool.push(i);
+    for (var k = pool.length - 1; k > 0; k--) {
+      var j = Math.floor(rnd() * (k + 1));
+      var t = pool[k]; pool[k] = pool[j]; pool[j] = t;
+    }
+    var mine = new Uint8Array(n);
+    for (var m = 0; m < mines && m < pool.length; m++) mine[pool[m]] = 1;
+    return mine;
+  }
+
+  function counts(mine, nb) {
+    var num = new Uint8Array(mine.length);
+    for (var i = 0; i < mine.length; i++) {
+      if (mine[i]) { num[i] = 9; continue; }
+      var c = 0;
+      var list = nb[i];
+      for (var j = 0; j < list.length; j++) if (mine[list[j]]) c++;
+      num[i] = c;
+    }
+    return num;
+  }
+
+  function floodOpen(idx, mine, num, nb, revealed) {
+    var stack = [idx];
+    while (stack.length) {
+      var i = stack.pop();
+      if (revealed[i] || mine[i]) continue;
+      revealed[i] = 1;
+      if (num[i] === 0) {
+        var list = nb[i];
+        for (var j = 0; j < list.length; j++) if (!revealed[list[j]]) stack.push(list[j]);
+      }
+    }
+  }
+
+  /* حل‌کننده‌ی قطعی: فقط استنتاج، بدون حدس.
+     قانون‌ها: شمارش ساده، زیرمجموعه‌ی محدودیت‌ها، و شمارش کل مین‌های باقی‌مانده. */
+  function solvable(mine, num, nb, rows, cols, first) {
+    var n = rows * cols;
+    var revealed = new Uint8Array(n);
+    var flagged = new Uint8Array(n);
+    floodOpen(first, mine, num, nb, revealed);
+    var totalMines = 0;
+    for (var i = 0; i < n; i++) if (mine[i]) totalMines++;
+
+    for (;;) {
+      var progress = false;
+
+      // محدودیت‌های فعال
+      var cons = [];
+      for (var c = 0; c < n; c++) {
+        if (!revealed[c] || num[c] === 0) continue;
+        var hidden = [], fl = 0;
+        var list = nb[c];
+        for (var j = 0; j < list.length; j++) {
+          var x = list[j];
+          if (flagged[x]) fl++;
+          else if (!revealed[x]) hidden.push(x);
+        }
+        if (!hidden.length) continue;
+        cons.push({ cells: hidden, mines: num[c] - fl });
+      }
+
+      // قانون یک: همه امن یا همه مین
+      for (var k = 0; k < cons.length; k++) {
+        var q = cons[k];
+        if (q.mines === 0) {
+          for (var a = 0; a < q.cells.length; a++) {
+            if (!revealed[q.cells[a]]) { floodOpen(q.cells[a], mine, num, nb, revealed); progress = true; }
+          }
+        } else if (q.mines === q.cells.length) {
+          for (var b = 0; b < q.cells.length; b++) {
+            if (!flagged[q.cells[b]]) { flagged[q.cells[b]] = 1; progress = true; }
+          }
+        }
+      }
+      if (progress) continue;
+
+      // قانون دو: زیرمجموعه
+      for (var x1 = 0; x1 < cons.length && !progress; x1++) {
+        for (var x2 = 0; x2 < cons.length && !progress; x2++) {
+          if (x1 === x2) continue;
+          var A = cons[x1], B = cons[x2];
+          if (A.cells.length >= B.cells.length) continue;
+          var setB = {};
+          for (var s = 0; s < B.cells.length; s++) setB[B.cells[s]] = 1;
+          var sub = true;
+          for (var s2 = 0; s2 < A.cells.length; s2++) if (!setB[A.cells[s2]]) { sub = false; break; }
+          if (!sub) continue;
+          var diff = B.cells.filter(function (v) { return A.cells.indexOf(v) < 0; });
+          var dm = B.mines - A.mines;
+          if (dm === 0) {
+            for (var d1 = 0; d1 < diff.length; d1++) if (!revealed[diff[d1]]) { floodOpen(diff[d1], mine, num, nb, revealed); progress = true; }
+          } else if (dm === diff.length) {
+            for (var d2 = 0; d2 < diff.length; d2++) if (!flagged[diff[d2]]) { flagged[diff[d2]] = 1; progress = true; }
+          }
+        }
+      }
+      if (progress) continue;
+
+      // قانون سه: شمارش کل
+      var hiddenAll = [], flags = 0;
+      for (var h = 0; h < n; h++) {
+        if (flagged[h]) flags++;
+        else if (!revealed[h]) hiddenAll.push(h);
+      }
+      var left = totalMines - flags;
+      if (hiddenAll.length && left === 0) {
+        for (var z = 0; z < hiddenAll.length; z++) { floodOpen(hiddenAll[z], mine, num, nb, revealed); }
+        progress = true;
+      } else if (hiddenAll.length && left === hiddenAll.length) {
+        for (var z2 = 0; z2 < hiddenAll.length; z2++) flagged[hiddenAll[z2]] = 1;
+        progress = true;
+      }
+      if (!progress) break;
+    }
+
+    for (var f = 0; f < n; f++) if (!mine[f] && !revealed[f]) return false;
+    return true;
+  }
+
+  // تولید تخته. اگر noGuess باشد تا سقف زمانی و تعداد تلاش می‌کند
+  // و اگر نشد تخته‌ی معمولی می‌دهد و در خروجی می‌گوید.
+  function generate(opts) {
+    var rows = opts.rows, cols = opts.cols, mines = opts.mines;
+    var rnd = opts.rnd, safe = opts.safe;
+    var nb = opts.nb || makeNeighbors(rows, cols);
+    var noGuess = opts.noGuess !== false;
+    var budget = opts.budgetMs || 1200;
+    var maxTries = opts.maxTries || 400;
+    var t0 = Date.now();
+    var fallback = null;
+    for (var tries = 1; tries <= (noGuess ? maxTries : 1); tries++) {
+      var mine = layMines(rows, cols, mines, safe, nb, rnd);
+      var num = counts(mine, nb);
+      if (!noGuess) return { mine: mine, num: num, nb: nb, noGuess: false, tries: tries };
+      if (!fallback) fallback = { mine: mine, num: num };
+      if (solvable(mine, num, nb, rows, cols, safe)) {
+        return { mine: mine, num: num, nb: nb, noGuess: true, tries: tries, ms: Date.now() - t0 };
+      }
+      if (Date.now() - t0 > budget) break;
+    }
+    return { mine: fallback.mine, num: fallback.num, nb: nb, noGuess: false, failed: noGuess, ms: Date.now() - t0 };
+  }
+
+  // یک خانه‌ی امن و بسته برای راهنمایی؛ ترجیحاً کنار یک عدد باز
+  function safeHint(mine, revealed, flagged, nb, rnd) {
+    var edge = [], any = [];
+    for (var i = 0; i < mine.length; i++) {
+      if (revealed[i] || flagged[i] || mine[i]) continue;
+      any.push(i);
+      var list = nb[i];
+      for (var j = 0; j < list.length; j++) if (revealed[list[j]]) { edge.push(i); break; }
+    }
+    var pool = edge.length ? edge : any;
+    if (!pool.length) return -1;
+    return pool[Math.floor((rnd ? rnd() : Math.random()) * pool.length)];
+  }
+
+  // کدام لبه‌ی تخته ستون پنهان دارد. گوشی نوار اسکرول نمی‌کشد، پس بی نشانه
+  // ستون سیزدهمِ تخته‌ی ۱۶تایی آخرین ستون به نظر می‌آمد و عددهایش غلط (#101).
+  // در راست‌چین کروم scrollLeft از صفر به منفی می‌رود.
+  function scrollEdges(scrollLeft, scrollWidth, clientWidth, rtl) {
+    var max = scrollWidth - clientWidth;
+    if (max <= 1) return { left: false, right: false };
+    var pos = Math.min(max, Math.abs(scrollLeft));
+    var atStart = pos > 1, atEnd = pos < max - 1;
+    return rtl ? { left: atEnd, right: atStart } : { left: atStart, right: atEnd };
+  }
+
+  // Where an arrow key takes the cursor, or -1 for any other key. Left and right
+  // used to add ±1 and ran on into the next row at the board's edge (#328).
+  function step(cursor, key, rows, cols, rtl) {
+    var r = Math.floor(cursor / cols), c = cursor % cols;
+    if (key === 'ArrowUp') r = Math.max(0, r - 1);
+    else if (key === 'ArrowDown') r = Math.min(rows - 1, r + 1);
+    else if (key === 'ArrowLeft') c = Math.max(0, Math.min(cols - 1, c + (rtl ? 1 : -1)));
+    else if (key === 'ArrowRight') c = Math.max(0, Math.min(cols - 1, c + (rtl ? -1 : 1)));
+    else return -1;
+    return r * cols + c;
+  }
+
+  // Cell size for the room there is, width and height. Cells were sized by width alone, so a
+  // 16-row board at 38px ran off a 650px-high window, under a page that does not scroll, and
+  // its last rows could not be reached at all (#350). Below MIN a cell is too small to tap, so
+  // the board keeps MIN and scrolls inside its frame, limited to the height there is.
+  // Cells grow to 64px on a big screen; at 42 a laptop showed the board in half its height (#359)
+  var CELL_MIN = 26, CELL_MAX = 64, GAP = 2;
+  // A zoom over 1 grows the fitted cells, up to ZOOM_MAX times and ZOOM_CELL cells, and the
+  // board scrolls inside its frame as it already does when it is too big. A fitted board was
+  // too small to read or hit for a player with low vision, and the page's
+  // user-scalable=no left them no way to make it bigger (#850).
+  var ZOOM_MAX = 3, ZOOM_CELL = 160, ZOOM_STEPS = [1, 1.5, 2, 2.5, 3];
+  function fit(roomW, roomH, rows, cols, zoom) {
+    var byW = Math.floor((roomW - cols * GAP) / cols), byH = Math.floor((roomH - rows * GAP) / rows);
+    var cs = Math.max(CELL_MIN, Math.min(CELL_MAX, byW, byH > 0 ? byH : CELL_MAX));
+    var z = clampZoom(zoom);
+    if (z > 1) cs = Math.max(cs, Math.min(ZOOM_CELL, Math.round(cs * z)));
+    var h = rows * (cs + GAP);
+    return { cs: cs, maxH: h > roomH && roomH > 0 ? Math.max(roomH, 4 * (CELL_MIN + GAP)) : 0 };
+  }
+  function clampZoom(z) { return z > 1 ? Math.min(ZOOM_MAX, z) : 1; }
+  // The next zoom the + (dir 1) or − (dir -1) button goes to from z
+  function zoomStep(z, dir) {
+    var i;
+    if (dir > 0) {
+      for (i = 0; i < ZOOM_STEPS.length; i++) if (ZOOM_STEPS[i] > z + 0.01) return ZOOM_STEPS[i];
+      return ZOOM_MAX;
+    }
+    for (i = ZOOM_STEPS.length - 1; i >= 0; i--) if (ZOOM_STEPS[i] < z - 0.01) return ZOOM_STEPS[i];
+    return 1;
+  }
+
+  var api = {
+    makeNeighbors: makeNeighbors, layMines: layMines, counts: counts,
+    floodOpen: floodOpen, solvable: solvable, generate: generate, safeHint: safeHint,
+    scrollEdges: scrollEdges, step: step, fit: fit, clampZoom: clampZoom, zoomStep: zoomStep, ZOOM_MAX: ZOOM_MAX
+  };
+  if (typeof self !== 'undefined') self.MinesEngine = api;
+  return api;
+}
+if (typeof module !== 'undefined' && module.exports) module.exports = MinesEngineFactory;
+/* ==== ENGINE END ==== */
+</script>
+<script>
+(function () {
+  'use strict';
+  var C = window.Chogan, el = C.el;
+  var E = MinesEngineFactory();
+  var HINT_COST = 15;
+
+  var SIZES = {
+    small:  { rows: 9,  cols: 9,  mines: 10 },
+    medium: { rows: 16, cols: 16, mines: 40 },
+    large:  { rows: 16, cols: 30, mines: 99 }
+  };
+
+  C.boot({});
+  var ctx = C.game({
+    id: 'minesweeper',
+    name: { fa: 'مین‌روب', en: 'Minesweeper', zh: '扫雷', de: 'Minesweeper', es: 'Buscaminas', pl: 'Saper', fr: 'Démineur', ar: 'كاسحة الألغام', hi: 'माइनस्वीपर' },
+    accent: '#E4A853',
+    mood: 'minesweeper',
+    strings: {
+      fa: {
+        small: 'کوچک', medium: 'متوسط', large: 'بزرگ', custom: 'سفارشی',
+        minesLeft: 'مین', flagMode: 'حالت پرچم', flagCell: 'پرچم روی خانه', noGuess: 'بدون حدس',
+        guessy: 'این زمین ممکن است حدس بخواهد', boom: 'روی مین رفتی',
+        rows: 'سطر', cols: 'ستون', mineCount: 'تعداد مین', newBoard: 'بازی تازه',
+        chordHint: 'روی عدد باز بزن تا خانه‌های اطرافش باز شوند', move: 'جابه‌جایی',
+        longPress: 'لمس طولانی برای پرچم', holdFlag: 'نگه داشتن برای پرچم', safeShown: 'یک خانه‌ی امن نشان داده شد',
+        dailyMines: 'مین‌روب روزانه',
+        zoomIn: 'بزرگ‌نمایی', zoomOut: 'کوچک‌نمایی', pinchZoom: 'با دو انگشت بزرگ و کوچک کن، با یک انگشت جابه‌جا کن',
+        tutTitle1: 'هدف', tutText1: 'همه‌ی خانه‌های بدون مین را باز کن. هر عدد می‌گوید چند مین دور تا دورش هست.',
+        tutTitle2: 'پرچم', tutText2: 'روی خانه‌ای که مطمئنی مین است پرچم بگذار: دکمه‌ی حالت پرچم یا لمس طولانی.',
+        tutTitle3: 'بدون حدس', tutText3: 'زمین‌ها طوری ساخته می‌شوند که همیشه با استدلال حل شوند. لازم نیست شانسی بزنی.'
+      },
+      en: {
+        small: 'Small', medium: 'Medium', large: 'Large', custom: 'Custom',
+        minesLeft: 'Mines', flagMode: 'Flag mode', flagCell: 'Flag a cell', noGuess: 'No guessing',
+        guessy: 'This board may require a guess', boom: 'You hit a mine',
+        rows: 'Rows', cols: 'Columns', mineCount: 'Mines', newBoard: 'New board',
+        chordHint: 'Tap an open number to clear around it', move: 'Move',
+        longPress: 'Long press to flag', holdFlag: 'Hold to flag', safeShown: 'A safe cell was revealed',
+        dailyMines: 'Daily minesweeper',
+        zoomIn: 'Zoom in', zoomOut: 'Zoom out', pinchZoom: 'Pinch with two fingers to zoom, drag with one to move',
+        tutTitle1: 'The goal', tutText1: 'Open every cell without a mine. Each number tells you how many mines touch that cell.',
+        tutTitle2: 'Flags', tutText2: 'Mark a cell you are sure about: use flag mode or a long press.',
+        tutTitle3: 'No guessing', tutText3: 'Boards are generated so they are always solvable by reasoning alone.'
+      },
+      pl: {
+        small: 'Mała', medium: 'Średnia', large: 'Duża', custom: 'Niestandardowa',
+        minesLeft: 'Min', flagMode: 'Tryb flagi', flagCell: 'Oznacz pole flagą', noGuess: 'Bez zgadywania',
+        guessy: 'Ta plansza może wymagać zgadywania', boom: 'Trafiłeś na minę',
+        rows: 'Wiersze', cols: 'Kolumny', mineCount: 'Miny', newBoard: 'Nowa plansza',
+        chordHint: 'Dotknij odkrytej cyfry, aby odsłonić pola wokół niej', move: 'Przemieść',
+        longPress: 'Naciśnij i przytrzymaj, aby oflagować', holdFlag: 'Przytrzymaj, aby oflagować', safeShown: 'Odsłonięto bezpieczne pole',
+        dailyMines: 'Codzienny Saper',
+        zoomIn: 'Powiększ', zoomOut: 'Pomniejsz', pinchZoom: 'Rozsuń dwa palce, aby powiększyć, przeciągnij jednym, aby przesunąć',
+        tutTitle1: 'Cel gry', tutText1: 'Odkryj każde pole, na którym nie ma miny. Każda cyfra informuje, ile min styka się z tym polem.',
+        tutTitle2: 'Flagi', tutText2: 'Oznacz pole, którego jesteś pewien: użyj trybu flagi lub naciśnij i przytrzymaj.',
+        tutTitle3: 'Bez zgadywania', tutText3: 'Plansze są generowane w taki sposób, że zawsze można je rozwiązać za pomocą samego logicznego myślenia.'
+      },
+      fr: {
+        small: 'Petit', medium: 'Moyen', large: 'Grand', custom: 'Perso',
+        minesLeft: 'Mines', flagMode: 'Mode drapeau', flagCell: 'Poser un drapeau', noGuess: 'Sans hasard',
+        guessy: 'Cette grille peut demander de deviner', boom: 'Tu as touché une mine',
+        rows: 'Lignes', cols: 'Colonnes', mineCount: 'Mines', newBoard: 'Nouvelle grille',
+        chordHint: 'Touche un nombre ouvert pour dégager autour', move: 'Déplacer',
+        longPress: 'Appui long pour un drapeau', holdFlag: 'Maintiens pour un drapeau', safeShown: 'Une case sûre a été révélée',
+        dailyMines: 'Démineur du jour',
+        zoomIn: 'Zoomer', zoomOut: 'Dézoomer', pinchZoom: 'Pince à deux doigts pour zoomer, glisse d’un doigt pour te déplacer',
+        tutTitle1: 'Le but', tutText1: 'Ouvre toutes les cases sans mine. Chaque nombre indique combien de mines touchent cette case.',
+        tutTitle2: 'Drapeaux', tutText2: 'Marque une case dont tu es sûr : avec le mode drapeau ou un appui long.',
+        tutTitle3: 'Sans hasard', tutText3: 'Les grilles sont créées pour toujours se résoudre par la seule logique.'
+      },
+      ar: {
+        small: 'صغيرة', medium: 'متوسطة', large: 'كبيرة', custom: 'مخصصة',
+        minesLeft: 'الألغام', flagMode: 'وضع العلم', flagCell: 'ضع علمًا', noGuess: 'بلا تخمين',
+        guessy: 'قد تتطلب هذه اللوحة تخمينًا', boom: 'أصبت لغمًا',
+        rows: 'الصفوف', cols: 'الأعمدة', mineCount: 'الألغام', newBoard: 'لوحة جديدة',
+        chordHint: 'انقر رقمًا مكشوفًا لفتح ما حوله', move: 'تحريك',
+        longPress: 'اضغط مطولًا لوضع علم', holdFlag: 'اضغط مطولًا للعلم', safeShown: 'كُشفت خانة آمنة',
+        dailyMines: 'كاسحة الألغام اليومية',
+        zoomIn: 'تكبير', zoomOut: 'تصغير', pinchZoom: 'باعد إصبعين أو قرّبهما للتكبير، واسحب بإصبع واحد للتحريك',
+        tutTitle1: 'الهدف', tutText1: 'افتح كل خانة لا لغم فيها. كل رقم يخبرك بعدد الألغام الملاصقة لتلك الخانة.',
+        tutTitle2: 'الأعلام', tutText2: 'علّم الخانة التي أنت متأكد منها: استخدم وضع العلم أو الضغط المطوّل.',
+        tutTitle3: 'بلا تخمين', tutText3: 'تُولَّد اللوحات بحيث يمكن حلها دائمًا بالاستنتاج وحده.'
+      },
+      hi: {
+        small: 'छोटा', medium: 'मध्यम', large: 'बड़ा', custom: 'अपना',
+        minesLeft: 'माइन', flagMode: 'झंडा मोड', flagCell: 'खाने पर झंडा', noGuess: 'अंदाज़ा नहीं',
+        guessy: 'इस बोर्ड में अंदाज़ा लगाना पड़ सकता है', boom: 'आपका पैर माइन पर पड़ा',
+        rows: 'पंक्तियाँ', cols: 'स्तंभ', mineCount: 'माइन', newBoard: 'नया बोर्ड',
+        chordHint: 'आसपास खोलने के लिए खुली संख्या को छुएँ', move: 'चलें',
+        longPress: 'झंडे के लिए देर तक दबाएँ', holdFlag: 'झंडे के लिए दबाए रखें', safeShown: 'एक सुरक्षित खाना दिखाया गया',
+        dailyMines: 'रोज़ का माइनस्वीपर',
+        zoomIn: 'बड़ा करें', zoomOut: 'छोटा करें', pinchZoom: 'दो उँगलियों से बड़ा-छोटा करें, एक उँगली से खिसकाएँ',
+        tutTitle1: 'लक्ष्य', tutText1: 'बिना माइन वाला हर खाना खोलें। हर संख्या बताती है कि उस खाने को कितनी माइन छूती हैं।',
+        tutTitle2: 'झंडे', tutText2: 'जिस खाने के बारे में आपको पक्का यक़ीन हो, उस पर निशान लगाएँ: झंडा मोड या देर तक दबाकर।',
+        tutTitle3: 'अंदाज़ा नहीं', tutText3: 'बोर्ड ऐसे बनाए जाते हैं कि वे हमेशा सिर्फ़ तर्क से हल हो सकें।'
+      },
+      zh: {
+        small: '小', medium: '中', large: '大', custom: '自定义',
+        minesLeft: '地雷', flagMode: '旗帜模式', flagCell: '插旗', noGuess: '无需猜测',
+        guessy: '这个棋盘可能需要猜', boom: '你踩到地雷了',
+        rows: '行', cols: '列', mineCount: '地雷数', newBoard: '新棋盘',
+        chordHint: '点击已翻开的数字可打开周围格子', move: '移动',
+        longPress: '长按插旗', holdFlag: '按住插旗', safeShown: '已显示一个安全格',
+        dailyMines: '每日扫雷',
+        zoomIn: '放大', zoomOut: '缩小', pinchZoom: '双指捏合缩放，单指拖动移动',
+        tutTitle1: '目标', tutText1: '翻开所有没有地雷的格子。每个数字表示它周围有几颗雷。',
+        tutTitle2: '旗帜', tutText2: '确定是雷的格子插上旗：用旗帜模式或长按。',
+        tutTitle3: '无需猜测', tutText3: '棋盘保证可以完全靠推理解开，不用碰运气。'
+      },
+      de: {
+        small: 'Klein', medium: 'Mittel', large: 'Groß', custom: 'Eigenes',
+        minesLeft: 'Minen', flagMode: 'Flaggen', flagCell: 'Feld markieren', noGuess: 'Ohne Raten',
+        guessy: 'Dieses Brett braucht evtl. Raten', boom: 'Du hast eine Mine erwischt',
+        rows: 'Zeilen', cols: 'Spalten', mineCount: 'Minen', newBoard: 'Neues Brett',
+        chordHint: 'Tippe auf eine offene Zahl, um ringsum aufzudecken', move: 'Bewegen',
+        longPress: 'Lange drücken für Flagge', holdFlag: 'Halten für Flagge', safeShown: 'Ein sicheres Feld wurde aufgedeckt',
+        dailyMines: 'Tages-Minesweeper',
+        zoomIn: 'Vergrößern', zoomOut: 'Verkleinern', pinchZoom: 'Mit zwei Fingern zoomen, mit einem verschieben',
+        tutTitle1: 'Das Ziel', tutText1: 'Deck alle Felder ohne Mine auf. Jede Zahl sagt dir, wie viele Minen das Feld berühren.',
+        tutTitle2: 'Flaggen', tutText2: 'Markier ein Feld, bei dem du sicher bist: mit dem Flaggenmodus oder lange drücken.',
+        tutTitle3: 'Ohne Raten', tutText3: 'Die Bretter sind so erzeugt, dass sie immer allein durch Logik lösbar sind.'
+      },
+      es: {
+        small: 'Pequeño', medium: 'Mediano', large: 'Grande', custom: 'Personal',
+        minesLeft: 'Minas', flagMode: 'Banderas', flagCell: 'Poner bandera', noGuess: 'Sin adivinar',
+        guessy: 'Este tablero puede requerir adivinar', boom: 'Pisaste una mina',
+        rows: 'Filas', cols: 'Columnas', mineCount: 'Minas', newBoard: 'Nuevo tablero',
+        chordHint: 'Toca un número abierto para despejar a su alrededor', move: 'Mover',
+        longPress: 'Mantén pulsado para poner bandera', holdFlag: 'Mantén pulsado para bandera', safeShown: 'Se reveló una casilla segura',
+        dailyMines: 'Buscaminas diario',
+        zoomIn: 'Acercar', zoomOut: 'Alejar', pinchZoom: 'Pellizca con dos dedos para hacer zoom y arrastra con uno para moverte',
+        tutTitle1: 'El objetivo', tutText1: 'Abre todas las casillas sin mina. Cada número indica cuántas minas tocan esa casilla.',
+        tutTitle2: 'Banderas', tutText2: 'Marca una casilla de la que estés seguro: con el modo bandera o manteniendo pulsado.',
+        tutTitle3: 'Sin adivinar', tutText3: 'Los tableros se generan para que siempre se puedan resolver solo con lógica.'
+      }
+    }
+  });
+
+  var params = new URLSearchParams(location.search);
+  var dailyDate = params.get('daily');
+  var prefs = ctx.store.get('prefs', { size: 'small', custom: { rows: 12, cols: 12, mines: 24 } });
+
+  var S = null, cells = [], timerId = null, flagMode = false, cursor = 0, lastAt = -1;
+  // what each cell shows now, so paint() can leave an unchanged cell alone (#750)
+  var shownCls = [], shownBody = [];
+  // how long a press must last to flag, on the screen and on Space or Enter alike (#346)
+  var LONG_MS = 420, keyHold = null;
+  // the board's zoom over its fitted size, and how many pinches have begun (#850); this
+  // session only, never saved: the next visit starts at the size that fits
+  var zoom = 1, pinches = 0;
+
+  var board = el('div', { class: 'ms-board', role: 'grid' });
+  var scroll = el('div', { class: 'ms-scroll' }, [board]);
+  var frame = el('div', { class: 'ms-frame' }, [scroll]);
+  var top = el('div', { class: 'ms-top' });
+  var tools = el('div', { class: 'ms-tools' });
+  var wrap = el('div', { class: 'ms-wrap' }, [top, frame, tools]);
+
+  var flagBtn = el('button', { class: 'ch-btn ch-btn--soft ms-flagbtn', type: 'button' },
+    [C.icon('flag', 20), el('span', { text: C.t('flagMode') })]);
+  flagBtn.setAttribute('aria-pressed', 'false');
+  flagBtn.addEventListener('click', function () {
+    flagMode = !flagMode;
+    flagBtn.setAttribute('aria-pressed', flagMode ? 'true' : 'false');
+    flagBtn.className = 'ch-btn ms-flagbtn ' + (flagMode ? 'ch-btn--primary' : 'ch-btn--soft');
+    C.feedback('select');
+  });
+  var hintBtn = el('button', { class: 'ch-btn ch-btn--soft', type: 'button' },
+    [C.icon('bulb', 20), el('span', { text: C.t('hint') }), el('span', { class: 'ch-badge ch-badge--gold', text: C.num(HINT_COST) })]);
+  hintBtn.addEventListener('click', function () { hint(); });
+  // Buttons as well as the pinch: a player who finds a pinch hard can still zoom (#850)
+  var zoomOutBtn = el('button', { class: 'ch-btn ch-btn--soft ms-zoombtn', type: 'button', 'aria-label': C.t('zoomOut'), title: C.t('zoomOut') },
+    [C.icon('minus', 20)]);
+  var zoomInBtn = el('button', { class: 'ch-btn ch-btn--soft ms-zoombtn', type: 'button', 'aria-label': C.t('zoomIn'), title: C.t('zoomIn') },
+    [C.icon('plus', 20)]);
+  zoomOutBtn.addEventListener('click', function () { zoomBy(-1); });
+  zoomInBtn.addEventListener('click', function () { zoomBy(1); });
+  tools.appendChild(flagBtn);
+  tools.appendChild(hintBtn);
+  tools.appendChild(zoomOutBtn);
+  tools.appendChild(zoomInBtn);
+
+  ctx.stat('mines', C.t('minesLeft'));
+  ctx.stat('time', C.t('time'));
+  ctx.button({ icon: 'help', label: C.t('help'), onClick: showHelp });
+  ctx.button({ icon: 'refresh', label: C.t('newBoard'), onClick: askNew });
+  ctx.main.appendChild(wrap);
+  ctx.mount();
+
+  /* ------------------------------------------------------------ ساخت */
+
+  function spec() {
+    if (S && S.spec) return S.spec;
+    if (prefs.size === 'custom') return prefs.custom;
+    return SIZES[prefs.size] || SIZES.small;
+  }
+
+  function newGame(sizeKey, seedRng, daily) {
+    var sp = sizeKey === 'custom' ? prefs.custom : (SIZES[sizeKey] || SIZES.small);
+    S = {
+      sizeKey: sizeKey, spec: { rows: sp.rows, cols: sp.cols, mines: sp.mines },
+      daily: daily || null,
+      seed: null,
+      started: false, done: false, won: false,
+      elapsed: 0, flags: 0, hints: 0, noGuess: null,
+      mine: null, num: null,
+      revealed: [], flagged: [],
+    };
+    S.nbRows = sp.rows; S.nbCols = sp.cols;
+    cursor = 0; lastAt = -1;
+    S.revealed = new Array(sp.rows * sp.cols).fill(0);
+    S.flagged = new Array(sp.rows * sp.cols).fill(0);
+    S.pendingRng = seedRng || null;
+    buildBoard();
+    render();
+    stopTimer();
+    ctx.setStat('time', C.time(0));
+    save();
+  }
+
+  function firstClick(idx) {
+    var sp = S.spec;
+    var nb = E.makeNeighbors(sp.rows, sp.cols);
+    var rnd = S.pendingRng || function () { return Math.random(); };
+    var g = E.generate({
+      rows: sp.rows, cols: sp.cols, mines: sp.mines, rnd: rnd, safe: idx, nb: nb,
+      noGuess: true, budgetMs: 1500, maxTries: 500
+    });
+    S.mine = Array.prototype.slice.call(g.mine);
+    S.num = Array.prototype.slice.call(g.num);
+    S.noGuess = !!g.noGuess;
+    S.started = true;
+    S.startedAt = Date.now();
+    if (!S.noGuess) C.ui.toast({ icon: 'info', title: C.t('guessy'), ms: 2600 });
+    startTimer();
+    render();   // نشان «بدون حدس» تا حالا فقط بعد از بارگذاری دوباره می‌آمد
+  }
+
+  function neighbors(i) {
+    var sp = S.spec, r = (i / sp.cols) | 0, c = i % sp.cols, out = [];
+    for (var dr = -1; dr <= 1; dr++) {
+      for (var dc = -1; dc <= 1; dc++) {
+        if (!dr && !dc) continue;
+        var rr = r + dr, cc = c + dc;
+        if (rr < 0 || cc < 0 || rr >= sp.rows || cc >= sp.cols) continue;
+        out.push(rr * sp.cols + cc);
+      }
+    }
+    return out;
+  }
+
+  /* ------------------------------------------------------------ رابط */
+
+  function buildBoard() {
+    var sp = S.spec;
+    board.innerHTML = '';
+    cells = [];
+    shownCls = [];
+    shownBody = [];
+    board.style.setProperty('--cols', sp.cols);
+    sizeCells();
+    for (var i = 0; i < sp.rows * sp.cols; i++) {
+      (function (idx) {
+        // Each cell has its own press. With one shared timer a second finger overwrote the
+        // first press's timer, which then could not be cancelled and flagged its cell
+        // a moment later, unasked (#750).
+        var pressTimer = null, longFired = false, pressAt = -1;
+        var b = el('button', { class: 'ms-cell', type: 'button', role: 'gridcell' });
+        // A pinch starts with a finger on a cell, often two: those presses must neither
+        // flag on their timer nor open on their click (#850). pinches counts pinches
+        // begun, so a press from before the latest one is known without a time window.
+        var pinchedSince = function () { return pressAt >= 0 && pressAt !== pinches; };
+        // Tab and the arrows used to select two different cells, and Enter opened the
+        // tabbed one (#331): focus and the cursor are now always the same cell
+        b.addEventListener('focus', function () {
+          if (cursor !== idx) { cursor = idx; paint(); }
+        });
+        b.addEventListener('pointerdown', function (e) {
+          longFired = false;
+          pressAt = pinches;
+          clearTimeout(pressTimer);
+          if (e.pointerType !== 'mouse') {
+            pressTimer = setTimeout(function () { if (!pinchedSince()) { longFired = true; toggleFlag(idx); } }, LONG_MS);
+          }
+        });
+        b.addEventListener('pointerup', function () { clearTimeout(pressTimer); });
+        b.addEventListener('pointercancel', function () { clearTimeout(pressTimer); });
+        b.addEventListener('pointerleave', function () { clearTimeout(pressTimer); });
+        b.addEventListener('contextmenu', function (e) {
+          e.preventDefault();
+          clearTimeout(pressTimer);
+          // روی اندروید لمس طولانی هم تایمر ما را می‌زند هم contextmenu مرورگر را.
+          // محافظ را اینجا صفر نمی‌کنیم: click بعدی هم باید مسدود بماند، وگرنه
+          // برداشتن پرچم با لمس طولانی همان خانه را هم باز می‌کرد.
+          // longFired در هر pointerdown خودش صفر می‌شود.
+          if (longFired || pinchedSince()) return;
+          toggleFlag(idx);
+        });
+        b.addEventListener('click', function () {
+          if (longFired) { longFired = false; return; }
+          var pinched = pinchedSince();
+          pressAt = -1;
+          if (pinched) return;
+          cursor = idx;
+          if (flagMode && !S.revealed[idx]) toggleFlag(idx);
+          else tap(idx);
+        });
+        cells.push(b);
+        board.appendChild(b);
+      })(i);
+    }
+    roundCorners();    // sizeCells پیش از ساختن خانه‌ها اجرا می‌شود و تخته‌ی خالی را می‌سنجد
+    markEdges();
+  }
+
+  // شعاع گوشه‌های بیرونی روی چهار خانه‌ی گوشه، هم‌مرکز با قاب.
+  // ابعاد تخته متغیر است پس nth-child ثابت جواب نمی‌دهد.
+  // خاصیت‌های منطقی تا در راست‌به‌چپ گوشه‌ی درست گرد شود.
+  function roundCorners() {
+    var sp = S.spec, r = 'var(--ms-inner-r)';
+    var map = [
+      [0, 'border-start-start-radius'],
+      [sp.cols - 1, 'border-start-end-radius'],
+      [(sp.rows - 1) * sp.cols, 'border-end-start-radius'],
+      [sp.rows * sp.cols - 1, 'border-end-end-radius']
+    ];
+    for (var k = 0; k < map.length; k++) {
+      var c = cells[map[k][0]];
+      if (c) c.style.setProperty(map[k][1], r);
+    }
+  }
+
+  // The height left for the board: the game area less its padding and everything in the
+  // column that is not the board (the size picker, the tools, the gaps between them)
+  function roomH() {
+    var cs = getComputedStyle(ctx.main);
+    var inner = ctx.main.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    return Math.floor(inner - (wrap.offsetHeight - scroll.offsetHeight) - 6);
+  }
+  // and the width: the game area's, less its padding, not a fixed 640px (#359)
+  function roomW() {
+    var cs = getComputedStyle(ctx.main);
+    return Math.floor(ctx.main.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 6);
+  }
+  function sizeCells() {
+    var sp = S.spec;
+    var f = E.fit(roomW(), roomH(), sp.rows, sp.cols, zoom);
+    board.style.setProperty('--cs', f.cs + 'px');
+    scroll.style.maxHeight = f.maxH ? f.maxH + 'px' : '';
+    zoomOutBtn.disabled = zoom <= 1;
+    zoomInBtn.disabled = zoom >= E.ZOOM_MAX || E.fit(roomW(), roomH(), sp.rows, sp.cols, E.ZOOM_MAX).cs <= f.cs;
+    markEdges();
+  }
+  window.addEventListener('resize', function () { if (S) sizeCells(); });
+
+  /* ------------------------------------------------- zoom (#850) */
+  // The cells themselves grow, and the frame scrolls as it does for a board too big to fit,
+  // so one finger pans natively and the arrow keys' focus() still brings a cell into view.
+  // The board point at fx, fy (fractions of its size) is kept under the client point at.
+  function zoomTo(z, at, fx, fy) {
+    var r = board.getBoundingClientRect();
+    if (fx === undefined) { fx = r.width ? (at.x - r.left) / r.width : 0.5; fy = r.height ? (at.y - r.top) / r.height : 0.5; }
+    zoom = E.clampZoom(z);
+    sizeCells();
+    var n = board.getBoundingClientRect();
+    scroll.scrollLeft += n.left + fx * n.width - at.x;
+    scroll.scrollTop += n.top + fy * n.height - at.y;
+    markEdges();
+  }
+  function frameMid() {
+    var r = scroll.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }
+  function zoomBy(dir) {
+    zoomTo(E.zoomStep(zoom, dir), frameMid());
+    C.feedback('select');
+  }
+  var pinch0 = null;
+  C.ui.pinch(scroll, {
+    start: function (m) {
+      pinches++;
+      var r = board.getBoundingClientRect();
+      pinch0 = { z: zoom, fx: r.width ? (m.x - r.left) / r.width : 0.5, fy: r.height ? (m.y - r.top) / r.height : 0.5 };
+    },
+    // the board point that was under the fingers follows them, so a pinch also pans
+    move: function (k, m) { if (pinch0) zoomTo(pinch0.z * k, m, pinch0.fx, pinch0.fy); },
+    end: function () { pinch0 = null; }
+  });
+
+  function markEdges() {
+    var rtl = getComputedStyle(scroll).direction === 'rtl';
+    var e = E.scrollEdges(scroll.scrollLeft, scroll.scrollWidth, scroll.clientWidth, rtl);
+    frame.classList.toggle('ms-more-left', e.left);
+    frame.classList.toggle('ms-more-right', e.right);
+  }
+  scroll.addEventListener('scroll', markEdges, { passive: true });
+
+  function render() {
+    top.innerHTML = '';
+    if (S.daily) {
+      top.appendChild(el('span', { class: 'ch-badge ch-badge--accent' },
+        [C.icon('calendar', 14), el('span', { text: C.t('dailyMines') + ' — ' + C.num(S.daily) })]));
+    } else {
+      top.appendChild(C.ui.segmented(
+        ['small', 'medium', 'large', 'custom'].map(function (k) { return { value: k, label: C.t(k) }; }),
+        S.sizeKey,
+        function (v) {
+          if (v === S.sizeKey && v !== 'custom') return;
+          var go = function () {
+            prefs.size = v; ctx.store.set('prefs', prefs);
+            if (v === 'custom') customModal(); else newGame(v);
+          };
+          // تخته‌ی شروع‌شده نباید بی‌هشدار برود
+          if (S.started && !S.done) {
+            C.ui.confirm({ title: C.t('newBoard'), body: C.t('resetWarn'), onOk: go, onCancel: function () { render(); } });
+            render();
+            return;
+          }
+          go();
+        }
+      ));
+    }
+    if (S.noGuess === true) top.appendChild(el('span', { class: 'ch-badge ch-badge--good', text: C.t('noGuess') }));
+    paint();
+  }
+
+  // Writes only what changed. It used to rebuild every cell, up to 480 of them on each tap,
+  // and focus moving to a new cell repainted too, so tapping a flag beside the last cell
+  // replaced that flag mid-tap and the click was lost (#750).
+  function paint() {
+    var sp = S.spec;
+    for (var i = 0; i < sp.rows * sp.cols; i++) {
+      var b = cells[i];
+      if (!b) continue;
+      var cls = 'ms-cell', body = '';
+      if (S.revealed[i]) {
+        cls += ' ms-cell--open';
+        var v = S.num ? S.num[i] : 0;
+        if (v > 0 && v < 9) { cls += ' ms-n' + v; body = C.num(v); }
+        if (S.mine && S.mine[i]) { cls += ' ms-cell--mine'; body = 'mine'; }
+      } else if (S.flagged[i]) {
+        cls += ' ms-cell--flag';
+        body = 'flag';
+        if (S.done && S.mine && !S.mine[i]) cls += ' ms-cell--wrong';
+      }
+      if (i === cursor && document.documentElement.dataset.kb === '1') cls += ' ms-cell--cursor';
+      if (body !== shownBody[i]) {
+        shownBody[i] = body;
+        if (body === 'mine' || body === 'flag') {
+          b.textContent = '';
+          b.appendChild(C.icon(body, 18));
+        } else {
+          b.textContent = body;
+        }
+      }
+      if (cls !== shownCls[i]) { shownCls[i] = cls; b.className = cls; }
+      if ((b.tabIndex === 0) !== (i === cursor)) b.tabIndex = i === cursor ? 0 : -1;
+    }
+    ctx.setStat('mines', Math.max(0, sp.mines - S.flags));
+  }
+
+  /* ----------------------------------------------------------- حرکت */
+
+  function tap(idx) {
+    if (S.done) return;
+    // خانه‌ی پرچم‌دار نباید اولین کلیک حساب شود: تخته ساخته و زمان‌سنج
+    // روشن می‌شد بدون اینکه چیزی باز شود.
+    if (S.flagged[idx]) return;
+    if (!S.started) { firstClick(idx); }
+    if (S.revealed[idx]) { chord(idx); return; }
+    if (S.mine[idx]) { lose(idx); return; }
+    lastAt = idx;
+    var order = openFrom(idx);
+    animate(order);
+    C.feedback('tap');
+    C.audio.sfx('dig');
+    checkWin();
+    save();
+  }
+
+  function openFrom(idx) {
+    var order = [], stack = [idx];
+    while (stack.length) {
+      var i = stack.shift();
+      if (S.revealed[i] || S.flagged[i] || S.mine[i]) continue;
+      S.revealed[i] = 1;
+      order.push(i);
+      if (S.num[i] === 0) neighbors(i).forEach(function (n) { if (!S.revealed[n]) stack.push(n); });
+    }
+    return order;
+  }
+
+  // Only the cells around the finger pop; the rest of a big opening just fades open. Every
+  // cell of it animating at once took about a second of main-thread time on a slowed phone
+  // (#750), and past this many the stagger had already run out, so they only popped together.
+  var MAX_POP = 48;
+  function animate(order) {
+    paint();
+    if (C.ui.reduceMotion() || order.length < 2) return;
+    var popped = [];
+    for (var k = 0; k < order.length && k < MAX_POP; k++) {
+      var b = cells[order[k]];
+      if (!b) continue;
+      b.classList.add('ms-pop');
+      b.style.animationDelay = k * 9 + 'ms';
+      popped.push(b);
+    }
+    setTimeout(function () {
+      popped.forEach(function (node) { node.classList.remove('ms-pop'); node.style.animationDelay = ''; });
+    }, 700);
+  }
+
+  function chord(idx) {
+    if (!S.num || S.num[idx] <= 0 || S.num[idx] > 8) return;
+    var nb = neighbors(idx);
+    var flags = 0, hidden = [];
+    nb.forEach(function (n) { if (S.flagged[n]) flags++; else if (!S.revealed[n]) hidden.push(n); });
+    if (flags !== S.num[idx] || !hidden.length) { C.audio.sfx('tap'); return; }
+    var hitMine = -1;
+    var order = [];
+    hidden.forEach(function (n) {
+      if (S.mine[n]) { hitMine = n; return; }
+      order = order.concat(openFrom(n));
+    });
+    if (hitMine >= 0) { lose(hitMine); return; }
+    lastAt = idx;
+    animate(order);
+    C.feedback('tap');
+    checkWin();
+    save();
+  }
+
+  function toggleFlag(idx) {
+    if (S.done || S.revealed[idx]) return;
+    S.flagged[idx] = S.flagged[idx] ? 0 : 1;
+    S.flags += S.flagged[idx] ? 1 : -1;
+    C.audio.sfx('flag');
+    C.haptic('select');
+    paint();
+    if (S.flagged[idx] && cells[idx]) cells[idx].classList.add('ms-flagin');
+    save();
+  }
+
+  function hint() {
+    if (!S || S.done) return;
+    if (!S.started) { C.ui.toast({ icon: 'info', title: C.t('chordHint') }); return; }
+    if (!C.coins.can(HINT_COST)) {
+      C.feedback('bad');
+      C.ui.toast({ icon: 'coin', title: C.t('notEnoughCoins'), sub: C.t('playToEarn') });
+      return;
+    }
+    var i = E.safeHint(S.mine, S.revealed, S.flagged, neighborsArray(), null);
+    if (i < 0) return;
+    C.coins.spend(HINT_COST);
+    S.hints++;
+    lastAt = i;
+    var order = openFrom(i);
+    animate(order);
+    if (cells[i]) {
+      cells[i].classList.add('ms-cell--hint');
+      setTimeout(function () { if (cells[i]) cells[i].classList.remove('ms-cell--hint'); }, 1400);
+    }
+    C.feedback('coin');
+    C.ui.toast({ icon: 'bulb', title: C.t('safeShown') });
+    checkWin();
+    save();
+  }
+  function neighborsArray() {
+    var sp = S.spec, out = [];
+    for (var i = 0; i < sp.rows * sp.cols; i++) out.push(neighbors(i));
+    return out;
+  }
+
+  function lose(idx) {
+    S.done = true; S.won = false;
+    stopTimer();
+    // عکس وضعیت همین دور، چون پنجره ۶۲۰ میلی‌ثانیه بعد باز می‌شود و تا آن
+    // موقع ممکن است تخته‌ی تازه‌ای ساخته شده باشد.
+    var snap = { elapsed: S.elapsed, sizeKey: S.sizeKey, daily: S.daily };
+    for (var i = 0; i < S.mine.length; i++) if (S.mine[i]) S.revealed[i] = 1;
+    paint();
+    var spent = blowUp(idx);
+    snap.board = boardSnap();
+    C.ui.shake(frame);
+    C.audio.sfx('boom');
+    C.haptic('error');
+    ctx.clearSave();
+    setTimeout(function () {
+      ctx.finish({
+        won: false, title: C.t('boom'), timeMs: snap.elapsed,
+        coins: 2, points: 4,
+        lines: [
+          { label: C.t('time'), value: C.time(snap.elapsed) },
+          { label: C.t('difficulty'), value: C.t(snap.sizeKey) }
+        ],
+        paint: cardPaint(snap.board),
+        shareText: 'چوگان · مین‌روب ' + C.t(snap.sizeKey) + (snap.daily ? ('\nروزانه ' + snap.daily) : '') +
+          '\nروی مین رفتم · زمان ' + C.time(snap.elapsed),
+        onAgain: snap.daily ? null : function () { newGame(snap.sizeKey); }
+      });
+    }, 620 + Math.max(0, spent - 300));
+  }
+
+  // The mine that was hit goes off, then the others, nearest first (#398).
+  // Returns how long the chain runs, so the result waits for it.
+  function blowUp(idx) {
+    C.ui.burst(cells[idx], { count: 28, speed: 320, ring: 28, colors: ['#F2B84B', '#E07A5F', '#6B5A4E', '#FFF1C9'] });
+    if (C.ui.reduceMotion()) return 0;
+    var cols = S.spec.cols, r0 = Math.floor(idx / cols), c0 = idx % cols, list = [];
+    for (var i = 0; i < S.mine.length; i++) if (S.mine[i] && i !== idx) list.push(i);
+    var dist = function (i) { var dr = Math.floor(i / cols) - r0, dc = i % cols - c0; return dr * dr + dc * dc; };
+    list.sort(function (a, b) { return dist(a) - dist(b); });
+    var gap = list.length ? Math.min(70, 900 / list.length) : 0;
+    list.forEach(function (i, k) {
+      var b = cells[i];
+      if (!b) return;
+      var at = Math.round(160 + k * gap);
+      b.classList.add('ms-blow');
+      b.style.animationDelay = at + 'ms';
+      if (k < 10) setTimeout(function () { if (cells[i] === b && S.done) C.ui.burst(b, { count: 8, speed: 170, size: 2.5 }); }, at);
+    });
+    return Math.round(160 + list.length * gap);
+  }
+
+  // A cleared board answers with a wave from the last cell opened, the mines
+  // turning into flags as it passes (#398). Returns how long it runs.
+  function sweep() {
+    if (C.ui.reduceMotion()) return 0;
+    var cols = S.spec.cols, at = lastAt >= 0 ? lastAt : 0, r0 = Math.floor(at / cols), c0 = at % cols, far = 0;
+    for (var i = 0; i < cells.length; i++) {
+      var b = cells[i];
+      if (!b) continue;
+      var d = Math.min(16, Math.max(Math.abs(Math.floor(i / cols) - r0), Math.abs(i % cols - c0)));
+      far = Math.max(far, d);
+      b.classList.add(S.mine[i] ? 'ms-flagin' : 'ms-wave');
+      b.style.animationDelay = d * 40 + 'ms';
+    }
+    return far * 40 + 420;
+  }
+
+  function checkWin() {
+    var sp = S.spec, total = sp.rows * sp.cols;
+    for (var i = 0; i < total; i++) if (!S.mine[i] && !S.revealed[i]) return;
+    S.done = true; S.won = true;
+    stopTimer();
+    for (var j = 0; j < total; j++) if (S.mine[j] && !S.flagged[j]) { S.flagged[j] = 1; S.flags++; }
+    paint();
+    var wave = sweep();
+
+    var secs = Math.round(S.elapsed / 1000);
+    var base = { small: 8, medium: 16, large: 28, custom: 12 }[S.sizeKey] || 10;
+    var speed = C.clamp(1.7 - secs / 420, 0.6, 1.7);
+    var coins = Math.round(base * speed) + (S.daily ? 8 : 0);
+    var points = Math.round(base * 4 * speed) + (S.daily ? 25 : 0);
+
+    var isBest = C.stats.best('minesweeper', 'time-' + S.sizeKey, S.elapsed, true);
+    C.achievements.unlock('ms-win');
+    if (S.sizeKey === 'large') C.achievements.unlock('ms-large');
+    if (S.sizeKey === 'small' && S.elapsed < 30000) C.achievements.unlock('ms-fast');
+    if (S.daily) {
+      var firstDaily = C.stats.daily('minesweeper', S.daily, { label: C.time(S.elapsed), ms: S.elapsed, size: S.sizeKey });
+      if (!firstDaily) { coins = Math.round(coins * 0.2); points = Math.round(points * 0.2); }
+    }
+    ctx.clearSave();
+
+    var sizeKey = S.sizeKey, daily = S.daily;
+    var result = {
+      won: true, timeMs: S.elapsed, coins: coins, points: points,
+      note: isBest ? C.t('best') + '!' : null,
+      lines: [
+        { label: C.t('time'), value: C.time(S.elapsed) },
+        { label: C.t('difficulty'), value: C.t(S.sizeKey) },
+        { label: C.t('hints'), value: C.num(S.hints) }
+      ],
+      shareText: 'چوگان · مین‌روب ' + C.t(S.sizeKey) + (S.daily ? ('\nروزانه ' + S.daily) : '') +
+        '\nزمان ' + C.time(S.elapsed) + ' · راهنمایی ' + C.num(S.hints),
+      paint: cardPaint(boardSnap()),
+      onAgain: daily ? null : function () { newGame(sizeKey); }
+    };
+    // the result waits for the wave; everything it shows is fixed already
+    if (wave) setTimeout(function () { ctx.finish(result); }, wave); else ctx.finish(result);
+  }
+
+
+  /* ------------------------------------------------- تخته روی کارت نتیجه */
+  // مدل را همین‌جا کپی می‌کنیم: پنجره‌ی نتیجه می‌تواند بعد از ساخته شدن
+  // تخته‌ی تازه هنوز باز باشد و کارت باید همان دور را نشان بدهد.
+  var NUMC = ['', '#4C7DBE', '#4A8A5C', '#C8574B', '#6A4FA3', '#B06B2E', '#2D8C97', '#8A5A44', '#7A6A57'];
+
+  function boardSnap() {
+    var sp = S.spec;
+    return {
+      rows: sp.rows, cols: sp.cols,
+      mine: S.mine ? S.mine.slice() : [],
+      num: S.num ? S.num.slice() : [],
+      revealed: S.revealed.slice(),
+      flagged: S.flagged.slice()
+    };
+  }
+
+  function cardPaint(b) {
+    return function (g, W, H, col) {
+      var rtl = document.documentElement.dir === 'rtl';
+      var cs = Math.min((W - 24) / b.cols, (H - 24) / b.rows);
+      var bw = cs * b.cols, bh = cs * b.rows;
+      var ox = (W - bw) / 2, oy = (H - bh) / 2;
+      var pad = Math.max(0.5, cs * 0.05), rad = Math.max(1.5, cs * 0.16);
+      C.rrect(g, ox - 8, oy - 8, bw + 16, bh + 16, rad + 8);
+      g.fillStyle = col.line; g.fill();
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      for (var i = 0; i < b.rows * b.cols; i++) {
+        var r = (i / b.cols) | 0, c = i % b.cols;
+        var x = ox + (rtl ? (b.cols - 1 - c) : c) * cs, y = oy + r * cs;
+        var open = b.revealed[i], mine = b.mine[i];
+        g.fillStyle = open ? (mine ? '#C8574B' : col.surface2) : col.surface3;
+        C.rrect(g, x + pad, y + pad, cs - pad * 2, cs - pad * 2, rad);
+        g.fill();
+        var mx = x + cs / 2, my = y + cs / 2;
+        if (open && mine) {
+          g.fillStyle = '#fff';
+          g.beginPath(); g.arc(mx, my, cs * 0.2, 0, Math.PI * 2); g.fill();
+          g.strokeStyle = '#fff'; g.lineWidth = Math.max(1, cs * 0.06);
+          for (var k = 0; k < 4; k++) {
+            var a = k * Math.PI / 4;
+            g.beginPath();
+            g.moveTo(mx - Math.cos(a) * cs * 0.33, my - Math.sin(a) * cs * 0.33);
+            g.lineTo(mx + Math.cos(a) * cs * 0.33, my + Math.sin(a) * cs * 0.33);
+            g.stroke();
+          }
+        } else if (open && b.num[i] > 0 && b.num[i] < 9) {
+          g.fillStyle = NUMC[b.num[i]];
+          g.font = '800 ' + Math.round(cs * 0.56) + 'px Vazirmatn, system-ui, sans-serif';
+          g.fillText(C.num(b.num[i]), mx, my + cs * 0.03);
+        } else if (!open && b.flagged[i]) {
+          g.fillStyle = '#C8574B';
+          g.fillRect(mx - cs * 0.03, my - cs * 0.26, cs * 0.06, cs * 0.52);
+          g.beginPath();
+          g.moveTo(mx, my - cs * 0.26);
+          g.lineTo(mx + cs * 0.26, my - cs * 0.12);
+          g.lineTo(mx, my + 0.02 * cs);
+          g.closePath(); g.fill();
+        }
+      }
+    };
+  }
+
+  /* --------------------------------------------------------- زمان‌سنج */
+
+  function startTimer() {
+    stopTimer();
+    var last = Date.now();
+    timerId = setInterval(function () {
+      var n = Date.now();
+      if (S && !S.done && S.started) { S.elapsed += n - last; ctx.setStat('time', C.time(S.elapsed)); }
+      last = n;
+    }, 250);
+  }
+  function stopTimer() { if (timerId) { clearInterval(timerId); timerId = null; } }
+  C.onPause(function () { stopTimer(); });
+  C.onResume(function () { if (S && !S.done && S.started) startTimer(); });
+
+  /* --------------------------------------------------------- ذخیره */
+
+  ctx.autosave(function () {
+    if (!S || S.done || !S.started) return { inProgress: false };
+    return { s: S, prefs: prefs };
+  });
+  function save() { ctx.save(); }
+
+  function askNew() {
+    if (!S || S.done || !S.started) { newGame(S ? S.sizeKey : prefs.size); return; }
+    C.ui.confirm({ title: C.t('newBoard'), body: C.t('resetWarn'), onOk: function () { newGame(S.sizeKey); } });
+  }
+
+  function customModal() {
+    var r = el('input', { type: 'number', min: '5', max: '24', value: prefs.custom.rows });
+    var c = el('input', { type: 'number', min: '5', max: '30', value: prefs.custom.cols });
+    var m = el('input', { type: 'number', min: '3', max: '400', value: prefs.custom.mines });
+    C.ui.modal({
+      title: C.t('custom'),
+      body: [
+        el('div', { class: 'ms-custom' }, [el('span', { text: C.t('rows') }), r]),
+        el('div', { class: 'ms-custom' }, [el('span', { text: C.t('cols') }), c]),
+        el('div', { class: 'ms-custom' }, [el('span', { text: C.t('mineCount') }), m])
+      ],
+      actions: [
+        { label: C.t('cancel') },
+        { label: C.t('start'), kind: 'primary', onClick: function () {
+          var rows = C.clamp(parseInt(r.value, 10) || 12, 5, 24);
+          var cols = C.clamp(parseInt(c.value, 10) || 12, 5, 30);
+          var maxM = rows * cols - 10;
+          var mines = C.clamp(parseInt(m.value, 10) || 20, 3, maxM);
+          prefs.custom = { rows: rows, cols: cols, mines: mines };
+          prefs.size = 'custom';
+          ctx.store.set('prefs', prefs);
+          newGame('custom');
+        } }
+      ]
+    });
+  }
+
+  function showHelp() {
+    C.ui.modal({
+      title: C.t('help'),
+      body: [
+        el('p', { class: 'ch-dim', text: C.t('tutText1') }),
+        el('div', { class: 'ch-list' }, [
+          row(C.t('longPress'), C.t('flagMode')),
+          row(C.t('chordHint'), ''),
+          row(C.t('pinchZoom'), '')
+        ]),
+        el('h3', { style: { 'margin-top': 'var(--s-4)' }, text: C.t('keyboard') }),
+        el('div', { class: 'ch-list' }, [
+          row(C.t('play'), 'Space / Enter'),
+          row(C.t('flagCell'), 'F'),
+          row(C.t('holdFlag'), 'Space / Enter'),
+          row(C.t('hint'), 'H'),
+          row(C.t('move'), '← ↑ → ↓'),
+          row(C.t('zoomIn'), '+'),
+          row(C.t('zoomOut'), '−')
+        ])
+      ],
+      actions: [
+        { label: C.t('tutorial'), onClick: function () { ctx.showTutorial(TUT); } },
+        { label: C.t('done'), kind: 'primary' }
+      ]
+    });
+  }
+  function row(what, key) {
+    return el('div', { class: 'ch-item' }, [
+      el('div', { class: 'ch-item__label', text: what }),
+      key ? el('span', { class: 'ch-badge', text: key }) : null
+    ]);
+  }
+
+  var TUT = [
+    { title: C.t('tutTitle1'), text: C.t('tutText1'),
+      art: '<svg viewBox="0 0 200 110" width="100%"><g>' +
+        '<rect x="40" y="20" width="34" height="34" rx="5" fill="var(--c-surface-2)"/>' +
+        '<rect x="78" y="20" width="34" height="34" rx="5" fill="var(--c-surface-3)"/>' +
+        '<rect x="116" y="20" width="34" height="34" rx="5" fill="var(--c-surface-3)"/>' +
+        '<rect x="40" y="58" width="34" height="34" rx="5" fill="var(--c-surface-2)"/>' +
+        '<rect x="78" y="58" width="34" height="34" rx="5" fill="var(--c-surface-2)"/>' +
+        '<rect x="116" y="58" width="34" height="34" rx="5" fill="var(--c-surface-3)"/>' +
+        '<text x="57" y="45" font-size="20" font-weight="800" fill="#4C7DBE" text-anchor="middle" font-family="sans-serif">' + C.num(1) + '</text>' +
+        '<text x="95" y="83" font-size="20" font-weight="800" fill="#4A8A5C" text-anchor="middle" font-family="sans-serif">' + C.num(2) + '</text>' +
+        '</g></svg>' },
+    { title: C.t('tutTitle2'), text: C.t('tutText2'),
+      art: '<svg viewBox="0 0 200 110" width="100%">' +
+        '<rect x="70" y="25" width="60" height="60" rx="8" fill="var(--c-surface-3)"/>' +
+        '<path d="M88 72V38M88 40h22l-7 6 7 6H88" fill="none" stroke="var(--c-bad)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>' },
+    { title: C.t('tutTitle3'), text: C.t('tutText3'),
+      art: '<svg viewBox="0 0 200 110" width="100%">' +
+        '<circle cx="100" cy="55" r="34" fill="var(--c-good-soft)"/>' +
+        '<path d="M84 56l11 11 22-24" fill="none" stroke="var(--c-good)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>' }
+  ];
+
+  /* --------------------------------------------------------- کیبورد */
+
+  window.addEventListener('keydown', function (e) {
+    if (!S || S.done) return;
+    // با دیالوگ باز، کلید مال دیالوگ است نه تخته‌ی پشتش. بدون این، H پشت
+    // پنجره‌ی راهنما سکه خرج می‌کرد و Space روی دکمه‌ها دو کار می‌کرد.
+    if (document.querySelector('.ch-scrim')) return;
+    var tg = e.target, tag = tg && tg.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (tg && tg.isContentEditable)) return;
+    // Holding Space or Enter flags, like a long press on the screen (#346). The cell acts
+    // when the key is let go, so a short press still opens it and a held one is not opened
+    // first; the button's own click is held back, or Enter would open it at once.
+    var onCell = !!(tg && tg.classList && tg.classList.contains('ms-cell'));
+    if ((e.key === ' ' || e.key === 'Enter') && (onCell || tag !== 'BUTTON')) {
+      e.preventDefault();
+      if (e.repeat || keyHold) return;
+      var at = onCell ? cells.indexOf(tg) : cursor;
+      cursor = C.clamp(at < 0 ? cursor : at, 0, S.spec.rows * S.spec.cols - 1);
+      var hold = { key: e.key, at: cursor, fired: false };
+      hold.timer = setTimeout(function () { hold.fired = true; if (S && !S.done) toggleFlag(hold.at); }, LONG_MS);
+      keyHold = hold;
+      return;
+    }
+    // دکمه‌های بیرون تخته باید Enter و Space خودشان را نگه دارند
+    if (tag === 'BUTTON' && (e.key === ' ' || e.key === 'Enter')) return;
+    var sp = S.spec, k = e.key;
+    cursor = C.clamp(cursor, 0, sp.rows * sp.cols - 1);
+    document.documentElement.dataset.kb = '1';
+    var to = E.step(cursor, k, sp.rows, sp.cols, document.documentElement.dir === 'rtl');
+    if (to >= 0) { cursor = to; paint(); cells[cursor].focus(); e.preventDefault(); return; }
+    if (C.keyIs(e, 'f')) { toggleFlag(cursor); e.preventDefault(); }
+    else if (C.keyIs(e, 'h')) { hint(); e.preventDefault(); }
+    else if ((e.key === '+' || e.key === '=') && !e.ctrlKey && !e.metaKey) { zoomBy(1); e.preventDefault(); }
+    else if (e.key === '-' && !e.ctrlKey && !e.metaKey) { zoomBy(-1); e.preventDefault(); }
+  });
+  window.addEventListener('keyup', function (e) {
+    if (!keyHold || e.key !== keyHold.key) return;
+    var h = keyHold;
+    keyHold = null;
+    clearTimeout(h.timer);
+    e.preventDefault();
+    if (h.fired || !S || S.done || document.querySelector('.ch-scrim')) return;
+    if (flagMode && !S.revealed[h.at]) toggleFlag(h.at);
+    else tap(h.at);
+  });
+  // a key held while the window loses focus never sends its keyup
+  window.addEventListener('blur', function () { if (keyHold) { clearTimeout(keyHold.timer); keyHold = null; } });
+
+  /* ----------------------------------------------------------- شروع */
+
+  var saved = ctx.loadSave();
+  // هسته برای هر روز خانه‌ی ذخیره‌ی جدا دارد، ولی این بازی روزانه را همیشه از نو
+  // می‌ساخت و پیشرفت نیمه‌کاره‌ی همان روز گم می‌شد (#132). اول ذخیره‌ی همین روز.
+  var resume = saved && saved.s && saved.s.started && !saved.s.done &&
+    (saved.s.daily || null) === (dailyDate || null);
+  if (resume) {
+    if (saved.prefs && !dailyDate) prefs = saved.prefs;
+    S = saved.s;
+    buildBoard();
+    render();
+    startTimer();
+  } else if (dailyDate) {
+    var d = C.daily('minesweeper', dailyDate);
+    newGame('medium', d.rng, dailyDate);
+    // در حالت روزانه خانه‌ی اولین کلیک هم از بذر می‌آید، وگرنه تخته‌ی هر بازیکن
+    // با تخته‌ی بقیه فرق می‌کرد و «یک پازل یکسان برای همه» معنا نداشت.
+    var startCell = d.rng.int(S.spec.rows * S.spec.cols);
+    firstClick(startCell);
+    animate(openFrom(startCell));
+    save();
+    if (C.stats.dailyDone('minesweeper', dailyDate)) {
+      var rec = C.stats.dailyOf(dailyDate).minesweeper;
+      C.ui.toast({ icon: 'check', title: C.t('dailyDone'), sub: rec.label });
+    }
+    ctx.tutorialIfNew(TUT);
+  } else {
+    newGame(prefs.size || 'small');
+    ctx.tutorialIfNew(TUT);
+  }
+})();
+</script>
+</body>
+</html>

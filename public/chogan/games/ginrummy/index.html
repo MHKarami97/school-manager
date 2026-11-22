@@ -1,0 +1,877 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#FBF6EF">
+<title>جین رامی — چوگان</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../lib/chogan.css">
+<script src="../../lib/early.js"></script>
+<style>
+  :root { --ch-pface: var(--c-surface); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --ch-pface: var(--c-surface-3); } }
+  :root[data-theme="dark"] { --ch-pface: var(--c-surface-3); }
+  /* cards grow with the game area (#359); eleven of them share one row */
+  .gr-wrap { --cw: clamp(40px, min(13cqw, (100cqh - 360px) / 2.4), 96px); margin-block: auto; width: 100%; max-width: max(560px, calc(var(--cw) * 9)); display: flex; flex-direction: column; align-items: center; gap: var(--s-3); }
+  .gr-top { display: flex; flex-wrap: wrap; gap: var(--s-2); justify-content: center; align-items: center; }
+  .gr-bot { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 14px; background: var(--c-surface); border-radius: var(--r-md); box-shadow: var(--sh-1);
+    border: 2px solid transparent; font-size: var(--fs-sm); font-weight: 700; color: var(--c-text-dim); }
+  .gr-bot--on { border-color: var(--game); }
+  .gr-fan { direction: ltr; display: flex; height: 28px; align-items: center; }
+  .gr-fan .ch-pback { width: 18px; border-width: 1px; border-radius: 3px; margin-inline-start: -11px; box-shadow: none; }
+  .gr-fan .ch-pback:first-child { margin-inline-start: 0; }
+  /* the table is a physical thing: stock on the left, the discard on the right */
+  .gr-table { direction: ltr; display: flex; align-items: center; justify-content: center; gap: var(--s-4); margin-bottom: 14px; }
+  .gr-stock { position: relative; padding: 0; border: 0; background: none; cursor: pointer; border-radius: 8px; }
+  .gr-stock .ch-pback { width: var(--cw); box-shadow: 2px 2px 0 -1px #FBF5E6, 3px 3px 0 -1px var(--c-line), 4px 4px 0 -1px #FBF5E6; }
+  .gr-stock:disabled, .gr-pile:disabled { cursor: default; }
+  .gr-left { position: absolute; bottom: -20px; left: 0; right: 0; text-align: center; font-size: var(--fs-xs, 12px); font-weight: 700; color: var(--c-text-dim); }
+  .gr-pile { position: relative; width: var(--cw); aspect-ratio: 5 / 7; padding: 0; border: 2px dashed var(--c-line); border-radius: 8px; background: none; cursor: pointer; }
+  .gr-pile .ch-pcard { --pw: var(--cw); position: absolute; top: -2px; right: -2px; bottom: -2px; left: -2px; }
+  .gr-hint .ch-pback, .gr-hint.gr-pile { outline: 3px solid var(--game); outline-offset: 3px; }
+  .gr-status { min-height: 1.5em; font-weight: 700; font-size: var(--fs-sm); color: var(--c-text-dim); text-align: center; }
+  .gr-dw { font-variant-numeric: tabular-nums; }
+  /* your hand in your own order; drag a card sideways to move it */
+  .gr-hand { direction: ltr; width: 100%; display: flex; justify-content: center; min-height: calc(var(--cw) * 1.4 + 18px); padding-top: 14px; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+  .gr-hand .ch-pcard { --pw: var(--cw); flex: 0 0 auto; transition: transform var(--t-fast) var(--ease); }
+  /* eleven overlapping cards on a phone showed only their ranks: the suit sits in the
+     corner under the rank, so the visible strip of every card says what it is */
+  .gr-hand .ch-pcard__s, .gr-hand .ch-pcard__mini { left: 4px; right: auto; bottom: auto; top: calc(5px + var(--pw) * .3); width: auto; text-align: left; font-size: calc(var(--pw) * .27); }
+  .gr-hand .gr-sel { transform: translateY(-12px); box-shadow: var(--sh-2), 0 0 0 2px var(--game); }
+  .gr-hand .gr-drag { transition: none; z-index: 5; opacity: .9; will-change: transform; }
+  /* cards in a meld carry its colour underneath; deadwood carries none */
+  .gr-hand .gr-m0 { border-bottom: 4px solid #4F8A5B; } .gr-hand .gr-m1 { border-bottom: 4px solid #3B7AA8; } .gr-hand .gr-m2 { border-bottom: 4px solid #B07A2A; } .gr-hand .gr-m3 { border-bottom: 4px solid #8A5BA8; }
+  .gr-actions { display: flex; gap: var(--s-2); justify-content: center; flex-wrap: wrap; min-height: 44px; }
+  .gr-show { display: flex; flex-direction: column; gap: var(--s-2); }
+  .gr-show__who { font-weight: 800; font-size: var(--fs-sm); }
+  .gr-row { direction: ltr; display: flex; flex-wrap: wrap; gap: 6px; }
+  .gr-meld { display: flex; }
+  .gr-meld .ch-pcard { --pw: 34px; margin-inline-start: -12px; cursor: default; }
+  .gr-meld .ch-pcard:first-child { margin-inline-start: 0; }
+  .gr-meld--dead .ch-pcard { opacity: .6; }
+  .gr-meld .gr-off { box-shadow: 0 0 0 2px var(--game); }
+</style>
+</head>
+<body>
+<script src="../../version.js"></script>
+<script src="../../lib/chogan.js"></script>
+<script>
+/* ==== ENGINE START ==== */
+function GinRummyEngineFactory() {
+  'use strict';
+
+  // A card is rank * 4 + suit, as in Chogan.cards (A..K = 0..12). Aces are low: A-2-3 is a
+  // run, Q-K-A is not.
+  var TARGET = 100, GIN = 25, UNDERCUT = 25, KNOCK = 10, HAND = 10;
+  function rank(c) { return c >> 2; }
+  function suit(c) { return c & 3; }
+  function value(c) { var r = rank(c); return r >= 9 ? 10 : r + 1; }
+
+  function shuffled(rnd) {
+    var d = [];
+    for (var i = 0; i < 52; i++) d.push(i);
+    for (var j = 51; j > 0; j--) { var k = Math.floor(rnd() * (j + 1)), t = d[j]; d[j] = d[k]; d[k] = t; }
+    return d;
+  }
+
+  // Every meld a hand could make: sets of three or four of a rank (each three of a four
+  // too), and runs of three or more in a suit (every sub-run too)
+  function allMelds(h) {
+    var out = [], byRank = {}, bySuit = [[], [], [], []], i, j, k;
+    for (i = 0; i < h.length; i++) { (byRank[rank(h[i])] = byRank[rank(h[i])] || []).push(h[i]); bySuit[suit(h[i])].push(h[i]); }
+    for (var r in byRank) {
+      var g = byRank[r];
+      if (g.length === 4) { out.push(g.slice()); for (i = 0; i < 4; i++) out.push(g.filter(function (_, x) { return x !== i; })); }
+      else if (g.length === 3) out.push(g.slice());
+    }
+    for (var s = 0; s < 4; s++) {
+      var cs = bySuit[s].slice().sort(function (a, b) { return a - b; });
+      for (i = 0; i < cs.length; i++) {
+        var run = [cs[i]];
+        for (j = i + 1; j < cs.length && rank(cs[j]) === rank(run[run.length - 1]) + 1; j++) {
+          run.push(cs[j]);
+          if (run.length >= 3) out.push(run.slice());
+        }
+      }
+    }
+    return out;
+  }
+
+  // The arrangement with the least deadwood: { melds, dead, points }
+  function best(h) {
+    var ms = allMelds(h), bestM = [], bestV = -1;
+    var used = {};
+    function rec(start, chosen, v) {
+      if (v > bestV) { bestV = v; bestM = chosen.slice(); }
+      for (var m = start; m < ms.length; m++) {
+        var ok = true;
+        for (var q = 0; q < ms[m].length; q++) if (used[ms[m][q]]) { ok = false; break; }
+        if (!ok) continue;
+        var mv = 0;
+        for (q = 0; q < ms[m].length; q++) { used[ms[m][q]] = 1; mv += value(ms[m][q]); }
+        chosen.push(ms[m]);
+        rec(m + 1, chosen, v + mv);
+        chosen.pop();
+        for (q = 0; q < ms[m].length; q++) used[ms[m][q]] = 0;
+      }
+    }
+    rec(0, [], 0);
+    var inM = {};
+    bestM.forEach(function (m) { m.forEach(function (c) { inM[c] = 1; }); });
+    var dead = h.filter(function (c) { return !inM[c]; });
+    var pts = 0;
+    dead.forEach(function (c) { pts += value(c); });
+    return { melds: bestM.map(function (m) { return m.slice(); }), dead: dead, points: pts };
+  }
+  function deadwood(h) { return best(h).points; }
+
+  // A hand: { hands: [you, bot], stock, discard, turn, phase: 'draw' | 'discard' | 'over',
+  // took: the card just taken from the discard (it can't go straight back), first: true
+  // until the first draw (the upcard may be taken then) }
+  function newHand(rnd, dealer) {
+    var d = shuffled(rnd), H = { hands: [[], []], stock: [], discard: [], turn: 1 - (dealer || 0), phase: 'draw', took: -1, result: null, dealer: dealer || 0, seen: [[], []] };
+    for (var i = 0; i < HAND; i++) { H.hands[0].push(d.pop()); H.hands[1].push(d.pop()); }
+    H.discard.push(d.pop());
+    H.stock = d;
+    return H;
+  }
+  function top(H) { return H.discard.length ? H.discard[H.discard.length - 1] : -1; }
+
+  // draw from 'stock' or 'discard'; the hand is a draw when the stock is down to two
+  function draw(H, from) {
+    if (H.phase !== 'draw') return -1;
+    var c;
+    if (from === 'discard') {
+      if (!H.discard.length) return -1;
+      c = H.discard.pop(); H.took = c;
+      H.seen[H.turn].push(c);
+    } else {
+      if (H.stock.length <= 2) return -1;
+      c = H.stock.pop(); H.took = -1;
+    }
+    H.hands[H.turn].push(c);
+    H.phase = 'discard';
+    return c;
+  }
+  function stockDead(H) { return H.phase === 'draw' && H.stock.length <= 2; }
+
+  // discard card c; knock: also end the hand (allowed at 10 or less deadwood after the discard)
+  function canDiscard(H, c) { return H.phase === 'discard' && H.hands[H.turn].indexOf(c) >= 0 && c !== H.took; }
+  function canKnock(H, c) {
+    if (!canDiscard(H, c)) return false;
+    var rest = H.hands[H.turn].filter(function (x) { return x !== c; });
+    return deadwood(rest) <= KNOCK;
+  }
+  function discard(H, c, knock) {
+    if (!canDiscard(H, c) || (knock && !canKnock(H, c))) return false;
+    var h = H.hands[H.turn];
+    h.splice(h.indexOf(c), 1);
+    H.discard.push(c);
+    H.took = -1;
+    if (knock) { settle(H, H.turn); return true; }
+    H.turn = 1 - H.turn;
+    H.phase = 'draw';
+    if (stockDead(H)) { H.phase = 'over'; H.result = { draw: true, points: 0, winner: -1 }; }
+    return true;
+  }
+
+  // Cards of the defender that can be laid off on the knocker's melds, run ends and sets
+  // of three, again and again until nothing more fits
+  function layOff(melds, dead) {
+    var ms = melds.map(function (m) { return m.slice(); }), left = dead.slice(), off = [], moved = true;
+    while (moved) {
+      moved = false;
+      for (var i = 0; i < left.length; i++) {
+        var c = left[i];
+        for (var k = 0; k < ms.length; k++) {
+          var m = ms[k], fits = false;
+          if (rank(m[0]) === rank(m[1])) fits = m.length < 4 && rank(c) === rank(m[0]);
+          else {
+            var lo = Math.min.apply(null, m), hi = Math.max.apply(null, m);
+            fits = suit(c) === suit(m[0]) && (rank(c) === rank(lo) - 1 || rank(c) === rank(hi) + 1);
+          }
+          if (fits) { m.push(c); off.push(c); left.splice(i, 1); i--; moved = true; break; }
+        }
+      }
+    }
+    return { melds: ms, left: left, off: off };
+  }
+
+  // The showdown. Gin: 25 plus the defender's deadwood, no lay-offs. A knock: the defender
+  // lays off, then the lower deadwood takes the difference; a defender as low or lower
+  // undercuts and takes the difference plus 25.
+  function settle(H, k) {
+    var d = 1 - k, kb = best(H.hands[k]), db = best(H.hands[d]);
+    var r = { knocker: k, gin: kb.points === 0, kMelds: kb.melds, kDead: kb.dead, kPts: kb.points, dMelds: db.melds, dDead: db.dead, off: [] };
+    var dPts = db.points;
+    if (!r.gin) {
+      var lo = layOff(kb.melds, db.dead);
+      r.off = lo.off; r.kMelds = lo.melds;
+      dPts = 0; lo.left.forEach(function (c) { dPts += value(c); });
+      r.dDead = lo.left;
+    }
+    r.dPts = dPts;
+    if (r.gin) { r.winner = k; r.points = GIN + dPts; }
+    else if (dPts <= kb.points) { r.winner = d; r.points = kb.points - dPts + UNDERCUT; r.undercut = true; }
+    else { r.winner = k; r.points = dPts - kb.points; }
+    H.phase = 'over';
+    H.result = r;
+    return r;
+  }
+
+  /* Bots. Easy takes the upcard only to complete a meld, discards its highest deadwood
+     card and knocks as soon as it may. Medium judges every discard by the deadwood it
+     leaves and keeps cards that are one away from a meld. Hard also remembers what you
+     took from the discard pile and holds back cards you could use, and with a lot of
+     stock left it waits for a lower knock. */
+  function nearValue(h, c) {
+    // how much a card helps toward melds: pairs and suit neighbours
+    var n = 0;
+    for (var i = 0; i < h.length; i++) {
+      if (h[i] === c) continue;
+      if (rank(h[i]) === rank(c)) n += 2;
+      else if (suit(h[i]) === suit(c) && Math.abs(rank(h[i]) - rank(c)) <= 2) n += Math.abs(rank(h[i]) - rank(c)) === 1 ? 2 : 1;
+    }
+    return n;
+  }
+  function wantedBy(seen, c) {
+    for (var i = 0; i < seen.length; i++) {
+      var x = seen[i];
+      if (rank(x) === rank(c) || (suit(x) === suit(c) && Math.abs(rank(x) - rank(c)) <= 1)) return true;
+    }
+    return false;
+  }
+  function botDraw(H, level) {
+    var h = H.hands[H.turn], t = top(H);
+    if (t < 0) return 'stock';
+    var before = deadwood(h), after = best(h.concat([t]));
+    // take it if it lands in a meld (and, above easy, if it is close to one and low)
+    var inMeld = after.dead.indexOf(t) < 0;
+    if (inMeld && after.points < before + value(t)) return 'discard';
+    if (level !== 'easy' && value(t) <= 3 && nearValue(h, t) >= 2) return 'discard';
+    return H.stock.length > 2 ? 'stock' : 'discard';
+  }
+  function botDiscard(H, level, rnd) {
+    rnd = rnd || Math.random;
+    var h = H.hands[H.turn], opp = H.seen[1 - H.turn], options = [];
+    if (level === 'easy') {
+      // any deadwood card at random, and it only knocks once the deadwood is down to 5
+      var dead = best(h).dead.filter(function (x) { return x !== H.took; });
+      if (!dead.length) dead = h.filter(function (x) { return x !== H.took; });
+      var c0 = dead[Math.floor(rnd() * dead.length)], dw0 = deadwood(h.filter(function (x) { return x !== c0; }));
+      return { c: c0, knock: dw0 <= 5 };
+    }
+    for (var i = 0; i < h.length; i++) {
+      var c = h[i];
+      if (c === H.took) continue;
+      var rest = h.filter(function (x) { return x !== c; }), b = best(rest);
+      // the deadwood left first; then keep cards one away from a meld
+      var score = b.points * 10 + nearValue(h, c) * 4;
+      // hard: a card next to what you took from the pile helps you, so it is kept back
+      if (level === 'hard' && wantedBy(opp, c)) score += 6;
+      options.push({ c: c, s: score, dw: b.points });
+    }
+    options.sort(function (a, b) { return a.s - b.s || a.c - b.c; });
+    return { c: options[0].c, knock: options[0].dw <= KNOCK };
+  }
+
+  function score(c) { return value(c); }
+
+  function validHand(v) {
+    if (!v || !Array.isArray(v.hands) || v.hands.length !== 2 || !Array.isArray(v.stock) || !Array.isArray(v.discard)) return false;
+    var seen = {}, n = 0, ok = true;
+    var add = function (c) { if (typeof c !== 'number' || c < 0 || c > 51 || seen[c]) ok = false; seen[c] = 1; n++; };
+    v.hands.forEach(function (h) { if (!Array.isArray(h)) ok = false; else h.forEach(add); });
+    v.stock.forEach(add); v.discard.forEach(add);
+    return ok && n === 52 && (v.turn === 0 || v.turn === 1) && ['draw', 'discard', 'over'].indexOf(v.phase) >= 0;
+  }
+
+  return {
+    TARGET: TARGET, GIN: GIN, UNDERCUT: UNDERCUT, KNOCK: KNOCK, rank: rank, suit: suit, value: value, score: score,
+    allMelds: allMelds, best: best, deadwood: deadwood, newHand: newHand, top: top, draw: draw, stockDead: stockDead,
+    canDiscard: canDiscard, canKnock: canKnock, discard: discard, layOff: layOff, settle: settle,
+    botDraw: botDraw, botDiscard: botDiscard, validHand: validHand
+  };
+}
+if (typeof module !== 'undefined' && module.exports) module.exports = GinRummyEngineFactory;
+/* ==== ENGINE END ==== */
+</script>
+<script>
+(function () {
+  'use strict';
+  var C = window.Chogan, el = C.el;
+  var E = GinRummyEngineFactory();
+  var LEVELS = ['easy', 'medium', 'hard'];
+
+  C.boot({});
+  var ctx = C.game({
+    id: 'ginrummy',
+    name: { fa: 'جین رامی', en: 'Gin Rummy', zh: '金拉米', de: 'Gin Rommé', es: 'Gin Rummy', pl: 'Gin Rummy', fr: 'Gin rami', ar: 'جين رامي', hi: 'जिन रमी' },
+    accent: '#A45C54',
+    mood: 'menu',
+    cardSpeed: true,
+    scroll: true,
+    strings: {
+      fa: {
+        you: 'تو', bot: 'حریف', handN: 'دست {n}', toN: 'تا {n} امتیاز', dailyGr: 'جین رامی روزانه', deadwood: 'کارت آزاد: {n}',
+        drawHint: 'از دسته یا کارت رو یکی بردار', discardHint: 'یک کارت را بزن و دور بینداز', arrange: 'مرتب کن', discardBtn: 'دور انداختن', knock: 'ناک ({n})', gin: 'جین!',
+        notTook: 'کارتی را که همین حالا از زمین برداشتی نمی‌شود فوراً دور انداخت', pickFirst: 'اول یک کارت از دستت انتخاب کن', thinking: 'حریف فکر می‌کند…',
+        botTookUp: 'حریف کارت رو را برداشت', botTookStock: 'حریف از دسته برداشت', youKnock: 'تو ناک کردی', botKnock: 'حریف ناک کرد', youGin: 'جین کردی!', botGin: 'حریف جین کرد',
+        undercut: 'آندرکات! دست پایین‌تر برد', handDraw: 'دسته تمام شد؛ این دست مساوی است', wonHand: 'این دست مال تو: +{n}', lostHand: 'این دست مال حریف: +{n}',
+        melds: 'دسته‌ها', layoff: 'چسباندن به دسته‌ی حریف', nextHand: 'دست بعد', matchWon: 'مسابقه را بردی!', matchLost: 'حریف مسابقه را برد', level: 'سطح', optNote: 'از مسابقه‌ی بعد اعمال می‌شود.',
+        newMatch: 'مسابقه‌ی تازه', hands: 'دست‌ها', points: 'امتیاز',
+        kbCards: 'رفتن بین کارت‌ها', kbPick: 'انتخاب کارت', kbStock: 'برداشتن از دسته', kbPile: 'برداشتن کارت رو', kbDiscard: 'دور انداختن', kbKnock: 'ناک یا جین', kbArrange: 'مرتب کردن',
+        rules: 'هر نفر ده کارت دارد. در نوبتت یک کارت از دسته یا کارت روی زمین برمی‌داری و یکی را دور می‌اندازی. سه یا چهار کارت هم‌عدد، یا سه کارت پشت سر هم یا بیشتر از یک خال، یک دسته‌اند؛ بقیه کارت‌های آزادند. آس یک است، صورت‌ها ده و بقیه همان عددشان. وقتی جمع کارت‌های آزادت ۱۰ یا کمتر شد می‌توانی با دور انداختن ناک کنی؛ حریف کارت‌های آزادش را تا جایی که بشود به دسته‌های تو می‌چسباند و تفاوت آزادها مال کسی است که کمتر دارد. اگر حریف کمتر یا مساوی داشت آندرکات کرده و ۲۵ هم جایزه می‌گیرد. بدون هیچ کارت آزاد یعنی جین: ۲۵ به‌علاوه‌ی آزادهای حریف، بدون چسباندن. اولین کسی که به ۱۰۰ برسد مسابقه را می‌برد. کارت‌ها را با کشیدن جابه‌جا کن یا دکمه‌ی «مرتب کن» را بزن.',
+        tutTitle1: 'دسته بساز', tutText1: 'سه یا چهار کارت هم‌عدد، یا سه کارت پشت سر هم از یک خال، یک دسته‌اند.',
+        tutTitle2: 'بردار، بینداز', tutText2: 'در نوبتت یکی برمی‌داری و یکی را دور می‌اندازی. کارت‌های بی‌دسته را کم کن.',
+        tutTitle3: 'ناک یا جین', tutText3: 'با ۱۰ امتیاز آزاد یا کمتر ناک کن. بدون هیچ کارت آزاد، جین است و جایزه دارد.'
+      },
+      en: {
+        you: 'You', bot: 'Rival', handN: 'Hand {n}', toN: 'To {n} points', dailyGr: 'Daily Gin Rummy', deadwood: 'Deadwood: {n}',
+        drawHint: 'Draw from the stock or take the upcard', discardHint: 'Pick a card and discard it', arrange: 'Arrange', discardBtn: 'Discard', knock: 'Knock ({n})', gin: 'Gin!',
+        notTook: 'The card you just took from the pile can\'t go straight back', pickFirst: 'Pick a card in your hand first', thinking: 'Rival is thinking…',
+        botTookUp: 'Rival took the upcard', botTookStock: 'Rival drew from the stock', youKnock: 'You knocked', botKnock: 'Rival knocked', youGin: 'Gin!', botGin: 'Rival went gin',
+        undercut: 'Undercut! The lower hand wins', handDraw: 'The stock ran out; this hand is a draw', wonHand: 'Your hand: +{n}', lostHand: 'Rival\'s hand: +{n}',
+        melds: 'Melds', layoff: 'Laid off on the knocker\'s melds', nextHand: 'Next hand', matchWon: 'You won the match!', matchLost: 'Rival won the match', level: 'Level', optNote: 'Applies from the next match.',
+        newMatch: 'New match', hands: 'Hands', points: 'Points',
+        kbCards: 'Move between cards', kbPick: 'Pick a card', kbStock: 'Draw from the stock', kbPile: 'Take the upcard', kbDiscard: 'Discard', kbKnock: 'Knock or gin', kbArrange: 'Arrange',
+        rules: 'Each player has ten cards. On your turn draw from the stock or take the upcard, then discard one. Three or four of a rank, or three or more in a row of one suit, make a meld; the rest is deadwood. Aces count 1, court cards 10, the rest their number. With 10 or less deadwood you may knock as you discard; the other player lays off what deadwood they can on your melds, and the lower deadwood scores the difference. If the defender has as little or less, that is an undercut and scores 25 more. No deadwood at all is gin: 25 plus the other\'s deadwood, with no laying off. The first to 100 wins the match. Drag cards to reorder them, or tap Arrange.',
+        tutTitle1: 'Make melds', tutText1: 'Three or four of a rank, or three in a row of one suit, make a meld.',
+        tutTitle2: 'Draw, discard', tutText2: 'Each turn, draw one and discard one. Bring your deadwood down.',
+        tutTitle3: 'Knock or gin', tutText3: 'Knock with 10 or less deadwood. With none at all it is gin, and a bonus.'
+      },
+      pl: {
+        you: 'Ty', bot: 'Rywal', handN: 'Rozdanie {n}', toN: 'Do {n} punktów', dailyGr: 'Codzienny Gin Rummy', deadwood: 'Deadwood: {n}',
+        drawHint: 'Dobierz ze stosu lub weź odkrytą kartę', discardHint: 'Wybierz kartę i odrzuć ją', arrange: 'Uporządkuj', discardBtn: 'Odrzuć', knock: 'Pukaj ({n})', gin: 'Gin!',
+        notTook: 'Karta, którą właśnie wziąłeś ze stosu, nie może od razu tam wrócić', pickFirst: 'Najpierw wybierz kartę ze swojej ręki', thinking: 'Rywal myśli…',
+        botTookUp: 'Rywal wziął odkrytą kartę', botTookStock: 'Rywal dobrał ze stosu', youKnock: 'Zapukałeś', botKnock: 'Rywal zapukał', youGin: 'Gin!', botGin: 'Rywal zdobył gina',
+        undercut: 'Undercut! Wygrywa ręka z niższą liczbą punktów', handDraw: 'Karty na stosie skończyły się; to rozdanie to remis', wonHand: 'Twoja ręka: +{n}', lostHand: 'Ręka rywala: +{n}',
+        melds: 'Układy', layoff: 'Karty dołożone do układów pukającego', nextHand: 'Następne rozdanie', matchWon: 'Wygrałeś mecz!', matchLost: 'Rywal wygrał mecz', level: 'Poziom', optNote: 'Obowiązuje od następnego meczu.',
+        newMatch: 'Nowy mecz', hands: 'Rozdania', points: 'Punkty',
+        kbCards: 'Ruch między kartami', kbPick: 'Wybierz kartę', kbStock: 'Dobierz ze stosu', kbPile: 'Weź odkrytą kartę', kbDiscard: 'Odrzuć', kbKnock: 'Pukanie lub gin', kbArrange: 'Uporządkuj',
+        rules: 'Każdy gracz ma dziesięć kart. W swojej turze dobierz ze stosu lub weź odkrytą kartę, a następnie odrzuć jedną. Trzy lub cztery karty tej samej wartości, albo trzy lub więcej w sekwencji jednego koloru tworzą układ (meld); reszta to karty niesparowane (deadwood). Asy liczą się jako 1, figury jako 10, a pozostałe według ich wartości. Mając 10 lub mniej punktów w deadwood, możesz zapukać (knock) podczas odrzucania karty; drugi gracz dokłada wtedy swoje niesparowane karty do Twoich układów, jeśli to możliwe, a gracz z niższą wartością deadwood zdobywa różnicę punktów. Jeśli broniący się ma tyle samo lub mniej punktów, jest to undercut i daje dodatkowe 25 punktów. Brak jakichkolwiek niesparowanych kart to gin: daje 25 punktów plus wartość deadwood przeciwnika, bez możliwości dokładania kart. Kto pierwszy zdobędzie 100 punktów, wygrywa mecz. Przeciągaj karty, aby zmienić ich kolejność, lub stuknij Uporządkuj.',
+        tutTitle1: 'Twórz układy', tutText1: 'Trzy lub cztery karty tej samej wartości, albo trzy w sekwencji jednego koloru tworzą układ.',
+        tutTitle2: 'Dobieraj i odrzucaj', tutText2: 'W każdej turze dobierz jedną kartę i jedną odrzuć. Zmniejszaj liczbę punktów w deadwood.',
+        tutTitle3: 'Pukanie lub gin', tutText3: 'Zapukaj, mając 10 lub mniej punktów w deadwood. Brak niesparowanych kart to gin i dodatkowa premia.'
+      },
+      fr: {
+        you: 'Toi', bot: 'Rival', handN: 'Manche {n}', toN: 'En {n} points', dailyGr: 'Gin Rummy du jour', deadwood: 'Points morts : {n}',
+        drawHint: 'Pioche dans le talon ou prends la carte visible', discardHint: 'Choisis une carte et défausse-la', arrange: 'Ranger', discardBtn: 'Défausser', knock: 'Frapper ({n})', gin: 'Gin !',
+        notTook: 'La carte que tu viens de prendre à la défausse ne peut pas y retourner tout de suite', pickFirst: 'Choisis d’abord une carte de ta main', thinking: 'Le rival réfléchit…',
+        botTookUp: 'Le rival a pris la carte visible', botTookStock: 'Le rival a pioché dans le talon', youKnock: 'Tu as frappé', botKnock: 'Le rival a frappé', youGin: 'Gin !', botGin: 'Le rival a fait gin',
+        undercut: 'Contre ! La main la plus basse gagne', handDraw: 'Le talon est vide ; manche nulle', wonHand: 'Ta main : +{n}', lostHand: 'Main du rival : +{n}',
+        melds: 'Combinaisons', layoff: 'Posées sur les combinaisons de celui qui frappe', nextHand: 'Manche suivante', matchWon: 'Tu gagnes la partie !', matchLost: 'Le rival gagne la partie', level: 'Niveau', optNote: 'S’applique dès la prochaine partie.',
+        newMatch: 'Nouvelle partie', hands: 'Manches', points: 'Points',
+        kbCards: 'Passer d’une carte à l’autre', kbPick: 'Choisir une carte', kbStock: 'Piocher dans le talon', kbPile: 'Prendre la carte visible', kbDiscard: 'Défausser', kbKnock: 'Frapper ou gin', kbArrange: 'Ranger',
+        rules: 'Chaque joueur a dix cartes. À ton tour, pioche dans le talon ou prends la carte visible, puis défausse une carte. Trois ou quatre cartes du même rang, ou trois cartes ou plus qui se suivent dans une couleur, forment une combinaison ; le reste, ce sont les points morts. L’as vaut 1, les figures 10, les autres leur valeur. Avec 10 points morts ou moins, tu peux frapper en défaussant ; l’autre joueur pose ce qu’il peut de ses points morts sur tes combinaisons, et le plus petit total marque la différence. Si le défenseur a autant ou moins, c’est un contre, qui rapporte 25 de plus. Aucun point mort, c’est gin : 25 plus les points morts de l’autre, sans pose. Le premier à 100 gagne la partie. Glisse les cartes pour les réordonner, ou touche Ranger.',
+        tutTitle1: 'Fais des combinaisons', tutText1: 'Trois ou quatre cartes du même rang, ou trois qui se suivent dans une couleur, forment une combinaison.',
+        tutTitle2: 'Pioche, défausse', tutText2: 'À chaque tour, pioche une carte et défausses-en une. Réduis tes points morts.',
+        tutTitle3: 'Frapper ou gin', tutText3: 'Frappe avec 10 points morts ou moins. Avec zéro, c’est gin, avec un bonus.'
+      },
+      ar: {
+        you: 'أنت', bot: 'الخصم', handN: 'اليد {n}', toN: 'حتى {n} نقطة', dailyGr: 'جين رامي اليومية', deadwood: 'الأوراق الميتة: {n}',
+        drawHint: 'اسحب من الكومة أو خذ الورقة المكشوفة', discardHint: 'اختر ورقة وارمها', arrange: 'رتّب', discardBtn: 'ارمِ', knock: 'اطرق ({n})', gin: 'جين!',
+        notTook: 'لا يمكن إعادة الورقة التي أخذتها للتو من الكومة المكشوفة فورًا', pickFirst: 'اختر ورقة من يدك أولًا', thinking: 'الخصم يفكر…',
+        botTookUp: 'أخذ الخصم الورقة المكشوفة', botTookStock: 'سحب الخصم من الكومة', youKnock: 'طرقت', botKnock: 'طرق الخصم', youGin: 'جين!', botGin: 'حقق الخصم جين',
+        undercut: 'قطع مضاد! تفوز اليد الأقل', handDraw: 'نفدت الكومة؛ هذه اليد تعادل', wonHand: 'يدك: +{n}', lostHand: 'يد الخصم: +{n}',
+        melds: 'المجموعات', layoff: 'أُلحقت بمجموعات من طرق', nextHand: 'اليد التالية', matchWon: 'فزت بالمباراة!', matchLost: 'فاز الخصم بالمباراة', level: 'المستوى', optNote: 'يُطبَّق من المباراة التالية.',
+        newMatch: 'مباراة جديدة', hands: 'الأيدي', points: 'النقاط',
+        kbCards: 'التنقل بين الأوراق', kbPick: 'اختيار ورقة', kbStock: 'السحب من الكومة', kbPile: 'أخذ الورقة المكشوفة', kbDiscard: 'رمي', kbKnock: 'طرق أو جين', kbArrange: 'ترتيب',
+        rules: 'لكل لاعب عشر أوراق. في دورك اسحب من الكومة أو خذ الورقة المكشوفة، ثم ارمِ ورقة. ثلاث أو أربع أوراق من الرقم نفسه، أو ثلاث أوراق متتالية أو أكثر من الشكل نفسه، تشكّل مجموعة؛ والباقي أوراق ميتة. الآس بنقطة واحدة، والصور بـ 10، والباقي بقيمة رقمه. إن كانت أوراقك الميتة 10 أو أقل يمكنك أن تطرق وأنت ترمي؛ فيُلحق اللاعب الآخر ما يستطيع من أوراقه الميتة بمجموعاتك، ويكسب صاحب الأوراق الميتة الأقل الفرق. إن كان لدى المدافع مثلها أو أقل فهذا قطع مضاد ويكسب 25 إضافية. إن لم تبقَ أي ورقة ميتة فهذا جين: 25 مع أوراق الآخر الميتة، بلا إلحاق. أول من يصل إلى 100 يفوز بالمباراة. اسحب الأوراق لإعادة ترتيبها، أو انقر «رتّب».',
+        tutTitle1: 'كوّن مجموعات', tutText1: 'ثلاث أو أربع أوراق من الرقم نفسه، أو ثلاث متتالية من الشكل نفسه، تشكّل مجموعة.',
+        tutTitle2: 'اسحب وارمِ', tutText2: 'في كل دور اسحب ورقة وارمِ ورقة. قلّل أوراقك الميتة.',
+        tutTitle3: 'اطرق أو جين', tutText3: 'اطرق إن كانت أوراقك الميتة 10 أو أقل. وإن لم يبقَ شيء فهذا جين مع مكافأة.'
+      },
+      hi: {
+        you: 'आप', bot: 'विरोधी', handN: 'बाज़ी {n}', toN: '{n} अंकों तक', dailyGr: 'रोज़ की जिन रमी', deadwood: 'बचे पत्ते: {n}',
+        drawHint: 'गड्डी से पत्ता उठाएँ या खुला पत्ता लें', discardHint: 'एक पत्ता चुनें और फेंकें', arrange: 'जमाएँ', discardBtn: 'फेंकें', knock: 'नॉक ({n})', gin: 'जिन!',
+        notTook: 'ढेर से अभी उठाया पत्ता तुरंत वापस नहीं फेंका जा सकता', pickFirst: 'पहले अपने हाथ से एक पत्ता चुनें', thinking: 'विरोधी सोच रहा है…',
+        botTookUp: 'विरोधी ने खुला पत्ता लिया', botTookStock: 'विरोधी ने गड्डी से पत्ता उठाया', youKnock: 'आपने नॉक किया', botKnock: 'विरोधी ने नॉक किया', youGin: 'जिन!', botGin: 'विरोधी ने जिन किया',
+        undercut: 'अंडरकट! कम अंक वाला हाथ जीता', handDraw: 'गड्डी ख़त्म हो गई; यह बाज़ी बराबरी पर रही', wonHand: 'आपकी बाज़ी: +{n}', lostHand: 'विरोधी की बाज़ी: +{n}',
+        melds: 'सेट', layoff: 'नॉक करने वाले के सेट में जोड़े गए', nextHand: 'अगली बाज़ी', matchWon: 'आप मुक़ाबला जीत गए!', matchLost: 'विरोधी मुक़ाबला जीत गया', level: 'स्तर', optNote: 'अगले मुक़ाबले से लागू होगा।',
+        newMatch: 'नया मुक़ाबला', hands: 'बाज़ियाँ', points: 'अंक',
+        kbCards: 'पत्तों के बीच जाएँ', kbPick: 'पत्ता चुनें', kbStock: 'गड्डी से उठाएँ', kbPile: 'खुला पत्ता लें', kbDiscard: 'फेंकें', kbKnock: 'नॉक या जिन', kbArrange: 'जमाएँ',
+        rules: 'हर खिलाड़ी के पास दस पत्ते होते हैं। अपनी बारी में गड्डी से पत्ता उठाएँ या खुला पत्ता लें, फिर एक पत्ता फेंकें। एक ही दर्जे के तीन या चार पत्ते, या एक ही रंग के लगातार तीन या ज़्यादा पत्ते, सेट बनाते हैं; बाक़ी बचे पत्ते हैं। इक्का 1 गिना जाता है, तस्वीर वाले पत्ते 10, बाक़ी अपने अंक के बराबर। बचे पत्ते 10 या कम हों तो पत्ता फेंकते समय नॉक कर सकते हैं; तब दूसरा खिलाड़ी अपने जितने बचे पत्ते हो सकें आपके सेट में जोड़ता है, और जिसके बचे पत्ते कम हों उसे अंतर के अंक मिलते हैं। अगर बचाव करने वाले के बचे पत्ते बराबर या कम हों, तो यह अंडरकट है और उसे 25 अंक और मिलते हैं। एक भी बचा पत्ता न हो तो जिन है: 25 अंक और दूसरे के बचे पत्ते, बिना जोड़ने के। जो पहले 100 तक पहुँचे वह मुक़ाबला जीतता है। पत्तों का क्रम बदलने के लिए उन्हें खींचें, या «जमाएँ» छुएँ।',
+        tutTitle1: 'सेट बनाएँ', tutText1: 'एक ही दर्जे के तीन या चार पत्ते, या एक रंग के लगातार तीन पत्ते, सेट बनाते हैं।',
+        tutTitle2: 'उठाएँ, फेंकें', tutText2: 'हर बारी में एक पत्ता उठाएँ और एक फेंकें। अपने बचे पत्ते घटाएँ।',
+        tutTitle3: 'नॉक या जिन', tutText3: 'बचे पत्ते 10 या कम हों तो नॉक करें। एक भी न बचे तो जिन है, और बोनस मिलता है।'
+      },
+      zh: {
+        you: '你', bot: '对手', handN: '第 {n} 手', toN: '先到 {n} 分', dailyGr: '每日金拉米', deadwood: '散牌：{n}',
+        drawHint: '从牌堆摸牌或拿弃牌', discardHint: '选一张牌弃掉', arrange: '整理', discardBtn: '弃牌', knock: '敲牌（{n}）', gin: '金！',
+        notTook: '刚从弃牌堆拿的牌不能马上弃掉', pickFirst: '先从手牌中选一张', thinking: '对手正在思考…',
+        botTookUp: '对手拿了弃牌', botTookStock: '对手从牌堆摸牌', youKnock: '你敲牌了', botKnock: '对手敲牌了', youGin: '金！', botGin: '对手达成金',
+        undercut: '反超！散牌更少的一方获胜', handDraw: '牌堆用完，这一手和局', wonHand: '这一手归你：+{n}', lostHand: '这一手归对手：+{n}',
+        melds: '组合', layoff: '贴到敲牌方的组合上', nextHand: '下一手', matchWon: '你赢了比赛！', matchLost: '对手赢了比赛', level: '难度', optNote: '从下一场比赛开始生效。',
+        newMatch: '新比赛', hands: '手数', points: '分数',
+        kbCards: '在手牌间移动', kbPick: '选牌', kbStock: '从牌堆摸牌', kbPile: '拿弃牌', kbDiscard: '弃牌', kbKnock: '敲牌或金', kbArrange: '整理',
+        rules: '每人十张牌。轮到你时，从牌堆摸一张或拿走弃牌堆顶的牌，再弃一张。三或四张同点数，或同花色连续三张以上，组成组合；其余是散牌。A算1，人头牌算10，其余按点数。散牌合计10或以下时，可以在弃牌时敲牌；对方把能贴的散牌贴到你的组合上，散牌少的一方得到差值。防守方散牌相等或更少即为反超，另加25分。完全没有散牌就是金：25分加上对方的散牌，对方不能贴牌。先到100分者赢得比赛。拖动手牌可以调整顺序，或点“整理”。',
+        tutTitle1: '组成组合', tutText1: '三或四张同点数，或同花色连续三张，组成组合。',
+        tutTitle2: '摸牌、弃牌', tutText2: '每回合摸一张、弃一张。让散牌越来越少。',
+        tutTitle3: '敲牌或金', tutText3: '散牌10或以下可以敲牌。完全没有散牌就是金，还有奖励。'
+      },
+      de: {
+        you: 'Du', bot: 'Gegner', handN: 'Spiel {n}', toN: 'Bis {n} Punkte', dailyGr: 'Tägliches Gin Rommé', deadwood: 'Restpunkte: {n}',
+        drawHint: 'Zieh vom Stapel oder nimm die offene Karte', discardHint: 'Wähle eine Karte und wirf sie ab', arrange: 'Ordnen', discardBtn: 'Abwerfen', knock: 'Klopfen ({n})', gin: 'Gin!',
+        notTook: 'Die eben aufgenommene Karte darf nicht gleich wieder ab', pickFirst: 'Wähle zuerst eine Karte', thinking: 'Gegner überlegt…',
+        botTookUp: 'Gegner: offene Karte genommen', botTookStock: 'Gegner: vom Stapel gezogen', youKnock: 'Du hast geklopft', botKnock: 'Gegner: geklopft', youGin: 'Gin!', botGin: 'Gegner: Gin',
+        undercut: 'Unterboten! Die kleinere Hand gewinnt', handDraw: 'Der Stapel ist leer; dieses Spiel ist unentschieden', wonHand: 'Spiel für dich: +{n}', lostHand: 'Spiel für den Gegner: +{n}',
+        melds: 'Kombinationen', layoff: 'An die Kombinationen des Klopfenden angelegt', nextHand: 'Nächstes Spiel', matchWon: 'Du gewinnst das Match!', matchLost: 'Matchsieg: Gegner', level: 'Stufe', optNote: 'Gilt ab dem nächsten Match.',
+        newMatch: 'Neues Match', hands: 'Spiele', points: 'Punkte',
+        kbCards: 'Zwischen Karten wechseln', kbPick: 'Karte wählen', kbStock: 'Vom Stapel ziehen', kbPile: 'Offene Karte nehmen', kbDiscard: 'Abwerfen', kbKnock: 'Klopfen oder Gin', kbArrange: 'Ordnen',
+        rules: 'Jeder hat zehn Karten. Zieh in deinem Zug vom Stapel oder nimm die offene Karte, dann wirf eine ab. Drei oder vier gleiche Werte oder mindestens drei aufeinanderfolgende Karten einer Farbe bilden eine Kombination; der Rest sind Restkarten. Asse zählen 1, Bilder 10, die übrigen ihren Wert. Mit 10 Restpunkten oder weniger darfst du beim Abwerfen klopfen; der andere legt an deine Kombinationen an, was er kann, und die kleineren Restpunkte bekommen die Differenz. Hat der Verteidiger gleich viel oder weniger, ist das Unterbieten und bringt 25 extra. Gar keine Restkarten ist Gin: 25 plus die Restpunkte des anderen, ohne Anlegen. Wer zuerst 100 hat, gewinnt das Match. Zieh Karten, um sie umzusortieren, oder tippe auf Ordnen.',
+        tutTitle1: 'Kombinationen', tutText1: 'Drei oder vier gleiche Werte oder drei Karten einer Farbe in Folge bilden eine Kombination.',
+        tutTitle2: 'Ziehen, abwerfen', tutText2: 'Jeder Zug: eine ziehen, eine abwerfen. Bring die Restpunkte herunter.',
+        tutTitle3: 'Klopfen oder Gin', tutText3: 'Mit 10 Restpunkten oder weniger klopfen. Ganz ohne ist es Gin, mit Bonus.'
+      },
+      es: {
+        you: 'Tú', bot: 'Rival', handN: 'Mano {n}', toN: 'A {n} puntos', dailyGr: 'Gin Rummy diario', deadwood: 'Sueltas: {n}',
+        drawHint: 'Roba del mazo o toma la carta descubierta', discardHint: 'Elige una carta y descártala', arrange: 'Ordenar', discardBtn: 'Descartar', knock: 'Cerrar ({n})', gin: '¡Gin!',
+        notTook: 'La carta que acabas de tomar del pozo no puede volver enseguida', pickFirst: 'Elige primero una carta de tu mano', thinking: 'El rival está pensando…',
+        botTookUp: 'El rival tomó la carta descubierta', botTookStock: 'El rival robó del mazo', youKnock: 'Cerraste', botKnock: 'El rival cerró', youGin: '¡Gin!', botGin: 'El rival hizo gin',
+        undercut: '¡Contragolpe! Gana la mano más baja', handDraw: 'Se acabó el mazo; esta mano es empate', wonHand: 'Mano para ti: +{n}', lostHand: 'Mano para el rival: +{n}',
+        melds: 'Combinaciones', layoff: 'Añadidas a las combinaciones de quien cerró', nextHand: 'Siguiente mano', matchWon: '¡Ganaste la partida!', matchLost: 'El rival ganó la partida', level: 'Nivel', optNote: 'Se aplica desde la próxima partida.',
+        newMatch: 'Nueva partida', hands: 'Manos', points: 'Puntos',
+        kbCards: 'Moverse entre cartas', kbPick: 'Elegir carta', kbStock: 'Robar del mazo', kbPile: 'Tomar la descubierta', kbDiscard: 'Descartar', kbKnock: 'Cerrar o gin', kbArrange: 'Ordenar',
+        rules: 'Cada jugador tiene diez cartas. En tu turno roba del mazo o toma la carta descubierta y luego descarta una. Tres o cuatro del mismo número, o tres o más seguidas del mismo palo, forman una combinación; el resto son cartas sueltas. Los ases valen 1, las figuras 10 y el resto su número. Con 10 o menos en sueltas puedes cerrar al descartar; el otro añade a tus combinaciones lo que pueda y quien tenga menos sueltas se lleva la diferencia. Si quien defiende tiene lo mismo o menos, es un contragolpe y suma 25 más. Sin ninguna suelta es gin: 25 más las sueltas del otro, sin añadir. Quien llega primero a 100 gana la partida. Arrastra las cartas para ordenarlas o toca Ordenar.',
+        tutTitle1: 'Combina', tutText1: 'Tres o cuatro del mismo número, o tres seguidas del mismo palo, forman una combinación.',
+        tutTitle2: 'Roba y descarta', tutText2: 'Cada turno robas una y descartas una. Baja tus cartas sueltas.',
+        tutTitle3: 'Cerrar o gin', tutText3: 'Cierra con 10 o menos en sueltas. Sin ninguna es gin, con premio.'
+      }
+    }
+  });
+
+  var params = new URLSearchParams(location.search);
+  var dailyDate = params.get('daily');
+  var prefs = ctx.store.get('prefs', { level: 'medium' });
+  if (LEVELS.indexOf(prefs.level) < 0) prefs.level = 'medium';
+
+  var BOT_MS = 650;
+  var M = null, botTimer = null, sel = -1, kf = -1, msg = '', pausedAt = 0, botRnd = Math.random, press = null;
+
+  var top = el('div', { class: 'gr-top' });
+  var botBox = el('div', { class: 'gr-bot' });
+  var stockBtn = el('button', { class: 'gr-stock', type: 'button', 'aria-label': C.t('kbStock') });
+  var pileBtn = el('button', { class: 'gr-pile', type: 'button', 'aria-label': C.t('kbPile') });
+  var table = el('div', { class: 'gr-table' }, [stockBtn, pileBtn]);
+  var status = el('div', { class: 'gr-status', role: 'status', 'aria-live': 'polite' });
+  var hand = el('div', { class: 'gr-hand' });
+  var actions = el('div', { class: 'gr-actions' });
+  var wrap = el('div', { class: 'gr-wrap' }, [top, botBox, table, status, hand, actions]);
+  stockBtn.addEventListener('click', function () { humanDraw('stock'); });
+  pileBtn.addEventListener('click', function () { humanDraw('discard'); });
+
+  ctx.button({ icon: 'help', label: C.t('help'), onClick: showHelp });
+  ctx.button({ icon: 'refresh', label: C.t('newMatch'), onClick: askNew });
+  ctx.main.appendChild(wrap);
+  ctx.mount();
+
+  function H() { return M && M.H; }
+  function mine() { return H() && H().turn === 0 && H().phase !== 'over'; }
+
+  /* ------------------------------------------------------------ start */
+
+  function newMatch(daily) {
+    stopBot();
+    M = { level: daily ? 'hard' : prefs.level, scores: [0, 0], hand: 0, daily: daily || null, startedAt: Date.now(), gins: 0, undercuts: 0, H: null, order: [] };
+    newHand();
+  }
+  function newHand() {
+    stopBot();
+    M.hand++;
+    var rnd = M.daily ? C.daily('ginrummy', M.daily).rng : Math.random;
+    botRnd = M.daily ? C.daily('ginrummy', M.daily + '|bot').rng : Math.random;
+    // the dealer alternates; the other player moves first
+    M.H = E.newHand(rnd, M.daily ? 1 : (M.hand + 1) % 2);
+    M.order = arranged(M.H.hands[0]);
+    sel = -1; kf = -1; msg = '';
+    render();
+    dealIn();
+    save();
+    maybeBot();
+  }
+  function resume(v) {
+    M = v;
+    // closed after a knock: the showdown (and its points) comes first
+    if (M.H.phase === 'over') { M.startedAt = Date.now() - (v.elapsed || 0); if (M.H.scored) newHand(); else { render(); showdown(); } return; }
+    botRnd = M.daily ? C.daily('ginrummy', M.daily + '|bot|' + M.H.stock.length).rng : Math.random;
+    M.startedAt = Date.now() - (v.elapsed || 0);
+    sel = -1; msg = '';
+    syncOrder();
+    render();
+    maybeBot();
+  }
+
+  // melds first, each in order, then the deadwood by suit and rank
+  function arranged(h) {
+    var b = E.best(h), out = [];
+    b.melds.forEach(function (m) { m.slice().sort(function (a, c) { return a - c; }).forEach(function (c) { out.push(c); }); });
+    b.dead.slice().sort(function (a, c) { return E.suit(a) - E.suit(c) || E.rank(a) - E.rank(c); }).forEach(function (c) { out.push(c); });
+    return out;
+  }
+  // keep the player's own order, dropping cards that left and adding new ones at the end
+  function syncOrder() {
+    var h = M.H.hands[0];
+    M.order = (M.order || []).filter(function (c) { return h.indexOf(c) >= 0; });
+    h.forEach(function (c) { if (M.order.indexOf(c) < 0) M.order.push(c); });
+  }
+
+  /* ------------------------------------------------------------- draw */
+
+  function renderTop() {
+    top.innerHTML = '';
+    if (M.daily) top.appendChild(el('span', { class: 'ch-badge ch-badge--accent' }, [C.icon('calendar', 14), el('span', { text: C.t('dailyGr') + ' — ' + C.num(M.daily) })]));
+    else {
+      top.appendChild(el('span', { class: 'ch-badge', text: C.t('handN', { n: C.num(M.hand) }) }));
+      top.appendChild(el('span', { class: 'ch-badge', text: C.t('you') + ' ' + C.num(M.scores[0]) + ' · ' + C.t('bot') + ' ' + C.num(M.scores[1]) }));
+    }
+    top.appendChild(C.cards.backPicker());
+    // options behind a gear in the top row, never in «?» (#409)
+    var gear = el('button', { class: 'ch-iconbtn', type: 'button', 'aria-label': C.t('settings'), title: C.t('settings') }, [C.icon('gear', 20)]);
+    gear.addEventListener('click', showSettings);
+    top.appendChild(gear);
+  }
+
+  function render() {
+    var h = H();
+    syncOrder();
+    renderTop();
+    botBox.className = 'gr-bot' + (h.turn === 1 && h.phase !== 'over' ? ' gr-bot--on' : '');
+    botBox.innerHTML = '';
+    var fan = el('div', { class: 'gr-fan', 'aria-hidden': 'true' });
+    for (var i = 0; i < h.hands[1].length; i++) fan.appendChild(C.cards.back());
+    botBox.appendChild(el('span', { text: C.t('bot') + ' · ' + C.t(M.level) }));
+    botBox.appendChild(fan);
+    var canDraw = mine() && h.phase === 'draw';
+    stockBtn.innerHTML = '';
+    stockBtn.appendChild(C.cards.back());
+    stockBtn.appendChild(el('span', { class: 'gr-left', text: C.num(h.stock.length) }));
+    stockBtn.disabled = !canDraw || h.stock.length <= 2;
+    stockBtn.classList.toggle('gr-hint', canDraw);
+    pileBtn.innerHTML = '';
+    var t = E.top(h);
+    if (t >= 0) { var tc = C.cards.el(t); tc.tabIndex = -1; pileBtn.appendChild(tc); }
+    pileBtn.disabled = !canDraw || t < 0;
+    pileBtn.classList.toggle('gr-hint', canDraw && t >= 0);
+    renderHand();
+    renderActions();
+    var st = msg;
+    if (!st && h.phase !== 'over') st = h.turn === 1 ? C.t('thinking') : (h.phase === 'draw' ? C.t('drawHint') : C.t('discardHint'));
+    status.textContent = st;
+  }
+
+  function renderHand() {
+    var h = H(), b = E.best(h.hands[0]), meldOf = {};
+    b.melds.forEach(function (m, k) { m.forEach(function (c) { meldOf[c] = k % 4; }); });
+    hand.innerHTML = '';
+    var cw = parseFloat(getComputedStyle(wrap).getPropertyValue('--cw')) || 56;
+    var n = M.order.length, room = hand.clientWidth || 360;
+    var over = n > 1 ? Math.min(-4, (room - cw * n) / (n - 1)) : 0;
+    over = Math.max(over, -cw * 0.66);
+    M.order.forEach(function (c, i) {
+      var cls = (c === sel ? 'gr-sel' : '') + (meldOf[c] !== undefined ? ' gr-m' + meldOf[c] : '');
+      var node = C.cards.el(c, cls.trim());
+      node._c = c;
+      if (i) node.style.marginInlineStart = over + 'px';
+      if (kf === i) node.style.outline = '3px solid var(--game)';
+      hand.appendChild(node);
+    });
+  }
+
+  function renderActions() {
+    var h = H();
+    actions.innerHTML = '';
+    var ar = el('button', { class: 'ch-btn ch-btn--soft', type: 'button', text: C.t('arrange') });
+    ar.addEventListener('click', function () { M.order = arranged(h.hands[0]); C.feedback('tap'); renderHand(); save(); });
+    actions.appendChild(ar);
+    actions.appendChild(el('span', { class: 'ch-badge gr-dw', text: C.t('deadwood', { n: C.num(E.deadwood(h.hands[0].length > 10 && sel >= 0 ? h.hands[0].filter(function (x) { return x !== sel; }) : h.hands[0])) }) }));
+    if (!mine() || h.phase !== 'discard') return;
+    var db = el('button', { class: 'ch-btn ch-btn--soft', type: 'button', text: C.t('discardBtn') });
+    db.disabled = sel < 0;
+    db.addEventListener('click', function () { humanDiscard(false); });
+    actions.appendChild(db);
+    if (sel >= 0 && E.canKnock(h, sel)) {
+      var dw = E.deadwood(h.hands[0].filter(function (x) { return x !== sel; }));
+      var kb2 = el('button', { class: 'ch-btn ch-btn--primary', type: 'button', text: dw === 0 ? C.t('gin') : C.t('knock', { n: C.num(dw) }) });
+      kb2.addEventListener('click', function () { humanDiscard(true); });
+      actions.appendChild(kb2);
+    }
+  }
+
+  // a new hand: your ten cards fly in from the stock, turning over (#398)
+  function dealIn() {
+    if (C.ui.reduceMotion()) return;
+    var from = stockBtn.getBoundingClientRect();
+    for (var i = 0; i < hand.children.length; i++) C.ui.fly(hand.children[i], from, { ms: 220, delay: i * 40, flip: true });
+  }
+  function handNode(c) { for (var i = 0; i < hand.children.length; i++) if (hand.children[i]._c === c) return hand.children[i]; return null; }
+
+  /* ------------------------------------------------------------ moves */
+
+  function humanDraw(from) {
+    var h = H();
+    if (!mine() || h.phase !== 'draw' || document.querySelector('.ch-scrim')) return;
+    var rect = (from === 'stock' ? stockBtn : pileBtn).getBoundingClientRect();
+    var c = E.draw(h, from);
+    if (c < 0) { C.feedback('bad'); return; }
+    C.audio.sfx('flip');
+    sel = -1; msg = '';
+    render();
+    var n = handNode(c);
+    if (n) C.ui.fly(n, rect, { ms: 220, flip: from === 'stock' });
+    save();
+  }
+
+  function tapCard(c, node) {
+    var h = H();
+    if (!mine() || document.querySelector('.ch-scrim')) return;
+    if (h.phase !== 'discard') { C.feedback('bad'); msg = C.t('drawHint'); render(); msg = ''; return; }
+    if (c === h.took) { C.feedback('bad'); C.ui.shake(node); msg = C.t('notTook'); render(); msg = ''; return; }
+    // a second tap on the chosen card discards it
+    if (sel === c) { humanDiscard(false); return; }
+    sel = c;
+    C.feedback('select');
+    render();
+  }
+
+  function humanDiscard(knock) {
+    var h = H();
+    if (!mine() || h.phase !== 'discard') return;
+    if (sel < 0) { C.feedback('bad'); msg = C.t('pickFirst'); render(); msg = ''; return; }
+    var node = handNode(sel), rect = node ? node.getBoundingClientRect() : null, c = sel;
+    if (!E.discard(h, c, knock)) { C.feedback('bad'); return; }
+    C.audio.sfx('place'); C.haptic('tap');
+    sel = -1;
+    if (knock) msg = h.result && h.result.gin ? C.t('youGin') : C.t('youKnock');
+    after(rect, false);
+  }
+
+  function after(rect, flip) {
+    render();
+    if (rect && pileBtn.firstChild) C.ui.fly(pileBtn.firstChild, rect, { ms: 240, flip: !!flip });
+    save();
+    if (H().phase === 'over') { setTimeout(showdown, C.cards.pace(700)); return; }
+    maybeBot();
+  }
+
+  function maybeBot() {
+    stopBot();
+    var h = H();
+    if (h.phase === 'over' || h.turn !== 1) return;
+    botTimer = setTimeout(function () {
+      botTimer = null;
+      if (H() !== h || h.turn !== 1 || h.phase === 'over') return;
+      if (h.phase === 'draw') {
+        var from = E.botDraw(h, M.level);
+        if (E.draw(h, from) < 0 && E.draw(h, from === 'stock' ? 'discard' : 'stock') < 0) { h.phase = 'over'; h.result = { draw: true, points: 0, winner: -1 }; after(null); return; }
+        msg = from === 'discard' ? C.t('botTookUp') : C.t('botTookStock');
+        C.audio.sfx('flip');
+        render(); save(); maybeBot();
+        return;
+      }
+      var m = E.botDiscard(h, M.level, botRnd), rect = botBox.getBoundingClientRect();
+      E.discard(h, m.c, m.knock);
+      C.audio.sfx('place');
+      msg = m.knock ? (h.result && h.result.gin ? C.t('botGin') : C.t('botKnock')) : '';
+      after(rect, true);
+    }, C.cards.pace(C.ui.reduceMotion() ? 300 : BOT_MS));
+  }
+  function stopBot() { if (botTimer) { clearTimeout(botTimer); botTimer = null; } }
+
+  /* ---------------------------------------------------------- showdown */
+
+  function meldRow(cards, off, dead) {
+    var r = el('div', { class: 'gr-meld' + (dead ? ' gr-meld--dead' : '') });
+    cards.slice().sort(function (a, b) { return a - b; }).forEach(function (c) { var n = C.cards.el(c, off && off.indexOf(c) >= 0 ? 'gr-off' : ''); n.disabled = true; r.appendChild(n); });
+    return r;
+  }
+  function showdown() {
+    var h = H(), r = h.result;
+    if (!r || h.scored) return;
+    h.scored = true;
+    if (r.draw) {
+      msg = C.t('handDraw');
+      return nextOrEnd(C.t('handDraw'), [el('p', { class: 'ch-dim', text: C.t('handDraw') })]);
+    }
+    M.scores[r.winner] += r.points;
+    if (r.winner === 0 && r.gin) { M.gins++; C.achievements.unlock('gr-gin'); }
+    if (r.winner === 0 && r.undercut) { M.undercuts++; C.achievements.unlock('gr-under'); }
+    var k = r.knocker, who = function (p) { return p === 0 ? C.t('you') : C.t('bot'); };
+    var side = function (p) {
+      var melds = p === k ? r.kMelds : r.dMelds, dead = p === k ? r.kDead : r.dDead, row = el('div', { class: 'gr-row' });
+      melds.forEach(function (m) { row.appendChild(meldRow(m, p === k ? r.off : null, false)); });
+      if (dead.length) row.appendChild(meldRow(dead, null, true));
+      return el('div', { class: 'gr-show' }, [el('div', { class: 'gr-show__who', text: who(p) + ' · ' + C.t('deadwood', { n: C.num(p === k ? r.kPts : r.dPts) }) }), row]);
+    };
+    var title = r.winner === 0 ? C.t('wonHand', { n: C.num(r.points) }) : C.t('lostHand', { n: C.num(r.points) });
+    var note = r.gin ? (k === 0 ? C.t('youGin') : C.t('botGin')) : (r.undercut ? C.t('undercut') : (k === 0 ? C.t('youKnock') : C.t('botKnock')));
+    var body = [el('p', { class: 'ch-dim', text: note + (r.off.length ? ' · ' + C.t('layoff') : '') }), side(k), side(1 - k)];
+    if (r.winner === 0 && pileBtn.firstChild) C.ui.burst(pileBtn, { count: 20, speed: 230, ring: 28, colors: ['#F2B84B', '#A45C54', '#FFF1C9'] });
+    nextOrEnd(title, body);
+  }
+  function nextOrEnd(title, body) {
+    save();
+    var over = M.daily || M.scores[0] >= E.TARGET || M.scores[1] >= E.TARGET;
+    var h = H();
+    C.ui.modal({
+      title: title,
+      body: body,
+      actions: [{ label: over ? C.t('done') : C.t('nextHand'), kind: 'primary', onClick: function () { if (over) finish(); else newHand(); } }],
+      onClose: function () { if (H() === h) { if (over) finish(); else newHand(); } }
+    });
+  }
+
+  function finish() {
+    if (!M || M.done) return;
+    M.done = true;
+    var ms = Date.now() - M.startedAt, r = H().result || {};
+    var won = M.daily ? r.winner === 0 : M.scores[0] > M.scores[1];
+    var base = { easy: 6, medium: 12, hard: 20 }[M.level] || 12;
+    var coins = won ? base + (M.daily ? 8 : 0) : Math.max(2, Math.round(base * 0.3));
+    var points = won ? base * 4 + (M.daily ? 25 : 0) : Math.round(base * 1.2);
+    if (won && !M.daily) C.achievements.unlock('gr-win');
+    if (M.daily) {
+      var first = C.stats.daily('ginrummy', M.daily, { label: won ? C.t('wonHand', { n: C.num(r.points || 0) }) : C.t('handDraw'), win: won });
+      if (!first) { coins = Math.round(coins * 0.2); points = Math.round(points * 0.2); }
+    }
+    ctx.clearSave();
+    ctx.finish({
+      won: won,
+      title: won ? C.t('matchWon') : C.t('matchLost'),
+      timeMs: ms, coins: coins, points: points,
+      lines: [
+        { label: C.t('you'), value: C.num(M.scores[0]) },
+        { label: C.t('bot'), value: C.num(M.scores[1]) },
+        { label: C.t('hands'), value: C.num(M.hand) }
+      ],
+      shareText: 'چوگان · جین رامی' + (M.daily ? ('\nروزانه ' + M.daily) : '') + '\n' + C.num(M.scores[0]) + ' - ' + C.num(M.scores[1]),
+      onAgain: M.daily ? null : function () { newMatch(null); }
+    });
+  }
+
+  /* ------------------------------------------------------------ input */
+
+  // A tap picks (or, a second time, discards) a card; dragging it sideways moves it in your hand
+  hand.addEventListener('pointerdown', function (e) {
+    var n = e.target.closest ? e.target.closest('.ch-pcard') : null;
+    if (!n || n._c === undefined || !M || H().phase === 'over') return;
+    press = { id: e.pointerId, c: n._c, node: n, x0: e.clientX, y0: e.clientY, drag: false };
+    try { hand.setPointerCapture(e.pointerId); } catch (err) { /* older WebViews */ }
+  });
+  hand.addEventListener('pointermove', function (e) {
+    if (!press || press.id !== e.pointerId) return;
+    var dx = e.clientX - press.x0;
+    if (!press.drag && Math.abs(dx) < 10) return;
+    press.drag = true;
+    press.node.classList.add('gr-drag');
+    press.node.style.transform = 'translate(' + dx + 'px, -6px)';
+    press.x = e.clientX;
+  });
+  function endPress(e, cancelled) {
+    if (!press || press.id !== e.pointerId) return;
+    var p = press;
+    press = null;
+    if (cancelled) { renderHand(); return; }
+    if (!p.drag) { tapCard(p.c, p.node); return; }
+    // the new place is where the card's centre landed among the others
+    var kids = [].slice.call(hand.children).filter(function (k) { return k !== p.node; }), at = kids.length;
+    for (var i = 0; i < kids.length; i++) { var r = kids[i].getBoundingClientRect(); if (p.x < r.left + r.width / 2) { at = i; break; } }
+    var order = M.order.filter(function (c) { return c !== p.c; });
+    order.splice(at, 0, p.c);
+    M.order = order;
+    renderHand();
+    save();
+  }
+  hand.addEventListener('pointerup', function (e) { endPress(e, false); });
+  hand.addEventListener('pointercancel', function (e) { endPress(e, true); });
+
+  window.addEventListener('keydown', function (e) {
+    if (!M || document.querySelector('.ch-scrim')) return;
+    var tg = e.target, tag = tg && tg.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || (tag === 'BUTTON' && (e.key === ' ' || e.key === 'Enter'))) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    var n = M.order.length, k = e.key;
+    if (k === 'ArrowLeft' || k === 'ArrowRight') { kf = kf < 0 ? 0 : (kf + (k === 'ArrowRight' ? 1 : n - 1)) % n; renderHand(); e.preventDefault(); return; }
+    if (k === 'Enter' && kf >= 0 && hand.children[kf]) { tapCard(M.order[kf], hand.children[kf]); e.preventDefault(); return; }
+    if (C.keyIs(e, 's')) { humanDraw('stock'); e.preventDefault(); return; }
+    if (C.keyIs(e, 'p')) { humanDraw('discard'); e.preventDefault(); return; }
+    if (C.keyIs(e, 'd')) { humanDiscard(false); e.preventDefault(); return; }
+    if (C.keyIs(e, 'k')) { if (sel >= 0 && E.canKnock(H(), sel)) humanDiscard(true); else C.feedback('bad'); e.preventDefault(); return; }
+    if (C.keyIs(e, 'a')) { M.order = arranged(H().hands[0]); renderHand(); e.preventDefault(); }
+  });
+
+  /* ----------------------------------------------------------- dialogs */
+
+  function showSettings() {
+    var seg = C.ui.segmented(LEVELS.map(function (l) { return { value: l, label: C.t(l) }; }), prefs.level, function (v) { prefs.level = v; ctx.store.set('prefs', prefs); });
+    C.ui.modal({
+      title: C.t('settings'),
+      body: [el('div', { class: 'ch-list' }, [el('div', { class: 'ch-item' }, [el('div', { class: 'ch-item__label', text: C.t('level') }), seg]), C.cards.speedRow()]), el('p', { class: 'ch-dim', text: C.t('optNote') })],
+      actions: [{ label: C.t('done'), kind: 'primary' }]
+    });
+  }
+  function askNew() {
+    if (document.querySelector('.ch-scrim')) return;
+    var dd = M ? M.daily : null;
+    var started = M && (M.hand > 1 || M.H.stock.length !== 31);
+    if (!started) { newMatch(dd); return; }
+    C.ui.confirm({ title: C.t('newMatch'), body: C.t('resetWarn'), onOk: function () { newMatch(dd); } });
+  }
+  function showHelp() {
+    C.ui.modal({
+      title: C.t('help'),
+      body: [
+        el('p', { class: 'ch-dim', text: C.t('rules') }),
+        el('h3', { style: { 'margin-top': 'var(--s-4)' }, text: C.t('keyboard') }),
+        el('div', { class: 'ch-list' }, [kb('← →', C.t('kbCards')), kb('Enter', C.t('kbPick')), kb('S', C.t('kbStock')), kb('P', C.t('kbPile')), kb('D', C.t('kbDiscard')), kb('K', C.t('kbKnock')), kb('A', C.t('kbArrange'))])
+      ],
+      actions: [{ label: C.t('tutorial'), onClick: function () { ctx.showTutorial(TUT); } }, { label: C.t('done'), kind: 'primary' }]
+    });
+  }
+  function kb(k, what) { return el('div', { class: 'ch-item' }, [el('div', { class: 'ch-item__label', text: what }), el('span', { class: 'ch-badge', text: k })]); }
+
+  function svgCard(x, y, label, red) {
+    return '<rect x="' + x + '" y="' + y + '" width="30" height="42" rx="4" fill="var(--c-surface)" stroke="var(--c-line)"/>' +
+      '<text x="' + (x + 4) + '" y="' + (y + 14) + '" font-size="12" font-weight="800" fill="' + (red ? 'var(--c-bad)' : 'var(--c-text)') + '">' + label + '</text>';
+  }
+  var TUT = [
+    { title: C.t('tutTitle1'), text: C.t('tutText1'), art: '<svg viewBox="0 0 200 110" width="100%" direction="ltr">' + svgCard(10, 34, '7♣︎', false) + svgCard(34, 34, '7♦︎', true) + svgCard(58, 34, '7♠︎', false) +
+      svgCard(110, 34, '4♥︎', true) + svgCard(134, 34, '5♥︎', true) + svgCard(158, 34, '6♥︎', true) + '</svg>' },
+    { title: C.t('tutTitle2'), text: C.t('tutText2'), art: '<svg viewBox="0 0 200 110" width="100%" direction="ltr"><rect x="40" y="34" width="30" height="42" rx="4" fill="#1F3A93" stroke="#FBF5E6" stroke-width="2"/>' +
+      '<path d="M78 55 H 112" stroke="var(--game)" stroke-width="4" stroke-linecap="round"/><path d="M104 47 l 9 8 -9 8" stroke="var(--game)" stroke-width="4" fill="none" stroke-linecap="round"/>' + svgCard(124, 34, 'K♠︎', false) + '</svg>' },
+    { title: C.t('tutTitle3'), text: C.t('tutText3'), art: '<svg viewBox="0 0 200 110" width="100%" direction="ltr">' + svgCard(30, 34, '2♣︎', false) + svgCard(54, 34, '3♣︎', false) + svgCard(78, 34, 'A♦︎', true) +
+      '<text x="150" y="64" font-size="22" font-weight="800" text-anchor="middle" fill="var(--game)">≤10</text></svg>' }
+  ];
+
+  /* ------------------------------------------------------------ save */
+
+  ctx.autosave(function () {
+    if (!M || !M.H || M.done) return { inProgress: false };
+    var v = JSON.parse(JSON.stringify(M));
+    v.elapsed = (pausedAt || Date.now()) - M.startedAt;
+    return { m: v };
+  });
+  function save() { ctx.save(); }
+  C.onPause(function () { stopBot(); if (!pausedAt) pausedAt = Date.now(); });
+  C.onResume(function () { if (pausedAt && M) M.startedAt += Date.now() - pausedAt; pausedAt = 0; if (M) maybeBot(); });
+  window.addEventListener('resize', function () { if (M) renderHand(); });
+
+  /* ------------------------------------------------------------ start */
+
+  var saved = ctx.loadSave();
+  var sv = saved && saved.m && saved.m.H && E.validHand(saved.m.H) ? saved.m : null;
+  if (dailyDate) {
+    if (sv && sv.daily === dailyDate) resume(sv);
+    else newMatch(dailyDate);
+    if (C.stats.dailyDone('ginrummy', dailyDate)) {
+      var rec = C.stats.dailyOf(dailyDate).ginrummy;
+      C.ui.toast({ icon: 'check', title: C.t('dailyDone'), sub: rec && rec.label });
+    }
+  } else if (sv && !sv.daily) resume(sv);
+  else newMatch(null);
+  ctx.tutorialIfNew(TUT);
+})();
+</script>
+</body>
+</html>

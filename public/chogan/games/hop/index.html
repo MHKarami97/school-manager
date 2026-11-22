@@ -1,0 +1,660 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#FBF6EF">
+<title>جهش — چوگان</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../lib/chogan.css">
+<script src="../../lib/early.js"></script>
+<style>
+  .hp-wrap > .ch-fit { --fit-ar: calc(360 / 640); }
+  .ch-fit > .hp-box { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
+  /* left is left in every language: the halves of the screen steer */
+  .hp-canvas { display: block; touch-action: none; border-radius: var(--r-lg); direction: ltr; user-select: none; -webkit-user-select: none; }
+  .hp-top { display: flex; justify-content: center; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
+  .hp-status { min-height: 1.6em; font-weight: 700; color: var(--c-text-dim); text-align: center; font-size: var(--fs-sm); }
+  .hp-gear .ch-icon { pointer-events: none; }
+</style>
+</head>
+<body>
+<script src="../../version.js"></script>
+<script src="../../lib/chogan.js"></script>
+<script>
+/* ==== ENGINE START ==== */
+function HopEngineFactory() {
+  'use strict';
+
+  // The world is 360 units wide and wraps at the sides; y is height, up. The view shows
+  // 640 units. Fixed steps keep a climb the same on every device.
+  var W = 360, VIEW = 640, GRAV = 1400, JUMP = 820, SPRING = 1.6, RUN = 300, ACCEL = 2400, DT = 1 / 60;
+  var R = 14, PW = 64, PH = 12;
+  // the highest a normal jump reaches: v² / 2g
+  var REACH = JUMP * JUMP / (2 * GRAV);
+
+  // How hard the climb is at a height, 0 at the start, 1 from 15,000 units up
+  function hard(h) { return Math.max(0, Math.min(1, h / 15000)); }
+  // The gap from one platform you can stand on to the next. The top of the range stays
+  // below 85 % of a jump's reach at every height, so the climb can always go on.
+  function gapRange(h) { var d = hard(h); return [40 + 50 * d, Math.min(REACH * 0.85, 90 + 110 * d)]; }
+
+  // The course draws from rnd as it grows; the draws are counted, so a saved run can
+  // start the same generator again, skip as many, and lay the same platforms on
+  function counted(S, rnd) { S.rnd = function () { S.draws++; return rnd(); }; }
+  function newGame(rnd, summit) {
+    var S = { x: W / 2, y: PH, vx: 0, vy: JUMP, cam: 0, best: 0, over: false, won: false, t: 0, plats: [], top: 0, summit: summit || 0, squash: 0, face: 1, landed: 0, floor: 0, floorPlat: null, draws: 0 };
+    counted(S, rnd);
+    S.plats.push({ x: W / 2, y: 0, w: W, kind: 'base', vx: 0 });
+    S.floorPlat = S.plats[0];
+    grow(S, VIEW * 2);
+    return S;
+  }
+
+  // Lays platforms up to height `to`: a chain of ones you can stand on, each within
+  // reach of the last, with crumbling decoys between them that never carry the chain
+  function grow(S, to) {
+    var rnd = S.rnd;
+    while (S.top < to) {
+      var g = gapRange(S.top), y = S.top + g[0] + rnd() * (g[1] - g[0]);
+      // a plain platform level with the summit caught every landing first (seen in one
+      // seeded climb in sixty), so nothing is laid within 60 units below it
+      if (S.summit && y >= S.summit - 60) {
+        // the summit is a step of the chain too: if it is out of reach, one more halfway
+        if (S.summit - S.top > g[1]) { S.top = (S.top + S.summit) / 2; S.plats.push({ x: PW / 2 + rnd() * (W - PW), y: S.top, w: PW, kind: 'normal', vx: 0 }); continue; }
+        if (!S.plats.some(function (p) { return p.kind === 'summit'; })) S.plats.push({ x: W / 2, y: S.summit, w: W * 0.7, kind: 'summit', vx: 0 });
+        S.top = S.summit + VIEW * 2;
+        break;
+      }
+      var d = hard(y), r = rnd(), kind = 'normal', vx = 0;
+      if (r < 0.1 + 0.3 * d) { kind = 'moving'; vx = (rnd() < 0.5 ? -1 : 1) * (40 + 80 * d); }
+      else if (r < 0.1 + 0.3 * d + 0.08 - 0.04 * d) kind = 'spring';
+      S.plats.push({ x: PW / 2 + rnd() * (W - PW), y: y, w: PW, kind: kind, vx: vx });
+      if (rnd() < 0.15 + 0.2 * d) S.plats.push({ x: PW / 2 + rnd() * (W - PW), y: S.top + (y - S.top) * (0.3 + rnd() * 0.4), w: PW, kind: 'crumble', vx: 0 });
+      S.top = y;
+    }
+  }
+
+  // One fixed step. steer: -1 (left) .. 1 (right). Returns the events of the step.
+  function step(S, steer) {
+    if (S.over || S.won) return [];
+    var ev = [];
+    S.t += DT;
+    var want = Math.max(-1, Math.min(1, steer || 0)) * RUN;
+    if (S.vx < want) S.vx = Math.min(want, S.vx + ACCEL * DT); else if (S.vx > want) S.vx = Math.max(want, S.vx - ACCEL * DT);
+    if (S.vx > 5) S.face = 1; else if (S.vx < -5) S.face = -1;
+    var prevY = S.y;
+    S.vy -= GRAV * DT;
+    S.x = ((S.x + S.vx * DT) % W + W) % W;
+    S.y += S.vy * DT;
+    S.squash = Math.max(0, S.squash - DT * 5);
+    for (var i = 0; i < S.plats.length; i++) {
+      var p = S.plats[i];
+      if (p.vx) { p.x += p.vx * DT; if (p.x < p.w / 2) { p.x = p.w / 2; p.vx = -p.vx; } else if (p.x > W - p.w / 2) { p.x = W - p.w / 2; p.vx = -p.vx; } }
+    }
+    // only a fall lands; a jump goes up through platforms
+    if (S.vy < 0) {
+      for (var j = 0; j < S.plats.length; j++) {
+        var q = S.plats[j];
+        if (q.broken || prevY < q.y || S.y > q.y) continue;
+        var dx = Math.abs(S.x - q.x);
+        dx = Math.min(dx, W - dx);
+        if (dx > q.w / 2 + R * 0.6) continue;
+        // a brown platform carries one jump, then breaks (#597: breaking on contact made
+        // it useless, nobody ever stood on one)
+        if (q.kind === 'crumble') { q.broken = true; ev.push('crumble'); }
+        S.y = q.y;
+        S.vy = q.kind === 'spring' ? JUMP * SPRING : JUMP;
+        S.squash = 1;
+        S.landed++;
+        S.floor = q.y; S.floorPlat = q.broken ? null : q;
+        ev.push(q.kind === 'spring' ? 'spring' : 'jump');
+        if (q.kind === 'summit') { S.won = true; ev.push('summit'); }
+        break;
+      }
+    }
+    if (S.y > S.best) S.best = S.y;
+    // the view only ever goes up
+    S.cam = Math.max(S.cam, S.y - VIEW * 0.45);
+    // a spring just below the summit carried the view past it, and the summit fell out of
+    // view under the player; the view stops where the summit stays on screen
+    if (S.summit) S.cam = Math.min(S.cam, S.summit - 80);
+    if (S.y < S.cam - 40) { S.over = true; ev.push('fall'); }
+    if (!S.won) {
+      grow(S, S.cam + VIEW * 2);
+      // what has fallen out of view is forgotten
+      if (S.plats.length > 80) S.plats = S.plats.filter(function (p) { return p.y > S.cam - 60; });
+    }
+    return ev;
+  }
+
+  var KEEP = ['x', 'y', 'vx', 'vy', 'cam', 'best', 't', 'top', 'summit', 'face', 'landed', 'floor', 'draws'];
+  function snapshot(S) {
+    var o = { plats: S.plats.map(function (p) { return { x: p.x, y: p.y, w: p.w, kind: p.kind, vx: p.vx, broken: !!p.broken }; }) };
+    KEEP.forEach(function (k) { o[k] = S[k]; });
+    return o;
+  }
+  // rnd: the same generator, fresh; it is advanced past the draws already made
+  function restore(v, rnd) {
+    if (!v || !Array.isArray(v.plats) || !v.plats.length || KEEP.some(function (k) { return typeof v[k] !== 'number' || !isFinite(v[k]); })) return null;
+    if (v.x < 0 || v.x > W || v.y < v.cam - 40 || v.draws < 0 || v.draws > 1e6) return null;
+    var S = { plats: v.plats.map(function (p) { return { x: +p.x, y: +p.y, w: +p.w, kind: String(p.kind), vx: +p.vx || 0, broken: !!p.broken }; }), over: false, won: false, squash: 0 };
+    KEEP.forEach(function (k) { S[k] = v[k]; });
+    for (var i = 0; i < v.draws; i++) rnd();
+    counted(S, rnd);
+    S.floorPlat = null;
+    for (var j = 0; j < S.plats.length; j++) if (Math.abs(S.plats[j].y - S.floor) < 1e-6) S.floorPlat = S.plats[j];
+    return S;
+  }
+
+  // Metres shown to the player: ten units a metre
+  function metres(h) { return Math.max(0, Math.floor(h / 10)); }
+
+  /* A steady climber for the tests, the proof that a course can be climbed: it picks
+     the lowest platform above the one it last stood on that this jump can still reach,
+     both up (the apex, v² / 2g) and across (the time left before it falls past it), and
+     steers there; with none, it comes back down on the platform it left. */
+  function botSteer(S) {
+    var apex = S.y + Math.max(0, S.vy) * Math.max(0, S.vy) / (2 * GRAV), best = null, bestX = 0;
+    // the view follows the apex up, so a platform far below it will be out of view, and
+    // falling out of view ends the run (a spring made the first version of this aim there)
+    var camAt = Math.max(S.cam, apex - VIEW * 0.45);
+    if (S.summit) camAt = Math.min(camAt, S.summit - 80);
+    var floorSeen = camAt - 30;
+    for (var i = 0; i < S.plats.length; i++) {
+      var p = S.plats[i];
+      if (p.broken || p.kind === 'crumble' || p.y <= S.floor + 1 || p.y > apex - 4 || p.y < floorSeen) continue;
+      var disc = S.vy * S.vy - 2 * GRAV * (p.y - S.y);
+      if (disc < 0) continue;
+      var t = (S.vy + Math.sqrt(disc)) / GRAV, px = ahead(p, t), dx = Math.abs(wrapDx(px - S.x));
+      if (dx > RUN * t * 0.85 + p.w / 2) continue;
+      if (!best || p.y < best.y) { best = p; bestX = px; }
+    }
+    var aim = best || (S.floorPlat && S.floorPlat.y >= floorSeen ? S.floorPlat : null);
+    // nothing in view to aim at yet (just after a spring): the nearest platform in view
+    if (!aim) for (var k = 0; k < S.plats.length; k++) { var q = S.plats[k]; if (!q.broken && q.kind !== 'crumble' && q.y >= floorSeen && q.y <= apex && (!aim || q.y < aim.y)) aim = q; }
+    if (!aim) return 0;
+    if (aim !== best) bestX = aim.x;
+    var d = wrapDx(bestX - S.x);
+    return Math.abs(d) < 4 ? 0 : Math.max(-1, Math.min(1, d / 30));
+  }
+  // where a moving platform will be in t seconds, bouncing off the sides as it does
+  function ahead(p, t) {
+    if (!p.vx) return p.x;
+    var lo = p.w / 2, span = W - p.w, u = p.x - lo + p.vx * t, m = ((u % (2 * span)) + 2 * span) % (2 * span);
+    return lo + (m <= span ? m : 2 * span - m);
+  }
+  function wrapDx(d) { return d > W / 2 ? d - W : d < -W / 2 ? d + W : d; }
+
+  return { W: W, VIEW: VIEW, R: R, PW: PW, PH: PH, REACH: REACH, DT: DT, gapRange: gapRange, newGame: newGame, grow: grow, step: step, snapshot: snapshot, restore: restore, metres: metres, botSteer: botSteer };
+}
+if (typeof module !== 'undefined' && module.exports) module.exports = HopEngineFactory;
+/* ==== ENGINE END ==== */
+</script>
+<script>
+(function () {
+  'use strict';
+  var C = window.Chogan, el = C.el;
+  var E = HopEngineFactory();
+  // the daily climb's summit, in units (2,000 m)
+  var SUMMIT = 20000;
+
+  C.boot({});
+  var ctx = C.game({
+    id: 'hop',
+    name: { fa: 'جهش', en: 'Hop', zh: '跳跳', de: 'Hüpf', es: 'Salto', pl: 'Hop', fr: 'Hop', ar: 'القفزة', hi: 'उछाल' },
+    accent: '#1971C2',
+    mood: 'dots',
+    strings: {
+      fa: {
+        tapGo: 'برای ادامه صفحه را لمس کن.', sky: 'آسمان و سکوها', heightM: '{n} متر', bestM: 'بهترین: {n} متر', summitM: 'قله: {n} متر', dailyHp: 'جهش روزانه', newRun: 'از نو',
+        control: 'کنترل', ctlTouch: 'لمس', ctlTilt: 'کج کردن گوشی', howTouch: 'نیمه‌ی چپ یا راست صفحه را نگه دار.', howTilt: 'گوشی را به چپ یا راست کج کن.',
+        noTilt: 'این دستگاه حسگر شیب نمی‌فرستد؛ کنترل لمسی روشن ماند.', fell: 'افتادی!', summit: 'به قله رسیدی!', height: 'ارتفاع', best: 'بهترین', tries: 'تلاش‌ها',
+        kSteer: 'به چپ یا راست', kAgain: 'از نو', paused: 'مکث',
+        rules: 'جهش خودش می‌پرد؛ تو فقط به چپ یا راست می‌بریش تا روی سکوی بالاتر فرود بیاید. از هر طرف صفحه بیرون برود از طرف دیگر می‌آید. سکوی سبز معمولی است، آبی جابه‌جا می‌شود، قهوه‌ای فقط یک پرش تحمل می‌کند و بعد می‌شکند و فنر تو را خیلی بالا می‌برد. اگر از پایین صفحه بیفتی، بازی تمام است. هر چه بالاتر، سکوها دورتر. کنترل را از چرخ‌دنده عوض کن: نگه داشتن نیمه‌ی چپ یا راست صفحه، یا کج کردن گوشی. روزانه یک مسیر یکسان برای همه است تا قله‌ای در ۲۰۰۰ متر؛ هر چند بار بخواهی دوباره امتحان کن.',
+        tutTitle1: 'بالا برو', tutText1: 'جهش خودش می‌پرد. روی سکوها فرود بیا و بالاتر برو؛ اگر از پایین صفحه بیفتی، تمام است.',
+        tutTitle2: 'چپ و راست', tutText2: 'نیمه‌ی چپ یا راست صفحه را نگه دار، یا از چرخ‌دنده کج کردن گوشی را انتخاب کن.',
+        tutTitle3: 'سکوها', tutText3: 'قهوه‌ای یک پرش می‌دهد و می‌شکند، آبی جابه‌جا می‌شود و فنر تو را خیلی بالا می‌برد.'
+      },
+      en: {
+        tapGo: 'Tap to go on.', sky: 'Sky and platforms', heightM: '{n} m', bestM: 'Best: {n} m', summitM: 'Summit: {n} m', dailyHp: 'Daily Hop', newRun: 'Start over',
+        control: 'Controls', ctlTouch: 'Touch', ctlTilt: 'Tilt the phone', howTouch: 'Hold the left or right half of the screen.', howTilt: 'Tilt the phone left or right.',
+        noTilt: 'This device sends no tilt; touch controls stay on.', fell: 'You fell!', summit: 'You reached the summit!', height: 'Height', best: 'Best', tries: 'Tries',
+        kSteer: 'Left or right', kAgain: 'Start over', paused: 'Paused',
+        rules: 'Hop jumps by itself; you only steer it left or right so it lands on a higher platform. Leave the screen on one side and you come back on the other. Green platforms are plain, blue ones move, brown ones hold for one jump and then crumble, and a spring sends you high. Fall off the bottom of the screen and the run is over. The higher you go, the further apart the platforms. Switch the controls behind the gear: hold the left or right half of the screen, or tilt the phone. The daily climb is one course, the same for everyone, to a summit at 2,000 m; try it as often as you like.',
+        tutTitle1: 'Climb', tutText1: 'Hop jumps by itself. Land on the platforms and climb; fall off the bottom and the run is over.',
+        tutTitle2: 'Left and right', tutText2: 'Hold the left or right half of the screen, or choose tilting the phone behind the gear.',
+        tutTitle3: 'Platforms', tutText3: 'Brown holds for one jump, blue moves, and a spring sends you high.'
+      },
+      pl: {
+        tapGo: 'Stuknij, aby przejść dalej.', sky: 'Niebo i platformy', heightM: '{n} m', bestM: 'Najlepszy: {n} m', summitM: 'Szczyt: {n} m', dailyHp: 'Codzienny Skok', newRun: 'Zacznij od nowa',
+        control: 'Sterowanie', ctlTouch: 'Dotyk', ctlTilt: 'Przechylanie telefonu', howTouch: 'Przytrzymaj lewą lub prawą połowę ekranu.', howTilt: 'Przechylaj telefon w lewo lub w prawo.',
+        noTilt: 'To urządzenie nie obsługuje przechylania; sterowanie dotykowe pozostaje włączone.', fell: 'Spadłeś!', summit: 'Osiągnąłeś szczyt!', height: 'Wysokość', best: 'Najlepszy', tries: 'Próby',
+        kSteer: 'W lewo lub w prawo', kAgain: 'Zacznij od nowa', paused: 'Pauza',
+        rules: 'Postać skacze automatycznie; Ty sterujesz nią tylko w lewo lub w prawo, aby lądować na coraz wyższych platformach. Wyjdź poza jedną krawędź ekranu, a pojawisz się z drugiej strony. Zielone platformy są zwyczajne, niebieskie się ruszają, brązowe wytrzymują jeden skok i się kruszą, a sprężyna wyrzuca Cię wysoko w górę. Spadnięcie poniżej dolnej krawędzi ekranu kończy próbę. Im wyżej się znajdujesz, tym rzadziej rozmieszczone są platformy. Sposób sterowania zmienisz pod ikoną zębatki: możesz przytrzymywać lewą bądź prawą połowę ekranu lub przechylać telefon. Codzienna wspinaczka to jedna trasa, taka sama dla wszystkich, ze szczytem na wysokości 2000 metrów; możesz próbować tyle razy, ile chcesz.',
+        tutTitle1: 'Wspinaczka', tutText1: 'Postać skacze automatycznie. Ląduj na platformach i wspinaj się w górę; spadnięcie poniżej ekranu kończy próbę.',
+        tutTitle2: 'W lewo i w prawo', tutText2: 'Przytrzymuj lewą lub prawą połowę ekranu albo wybierz przechylanie telefonu pod ikoną zębatki.',
+        tutTitle3: 'Platformy', tutText3: 'Brązowe wytrzymują jeden skok, niebieskie się ruszają, a sprężyna wystrzeliwuje Cię wysoko w górę.'
+      },
+      fr: {
+        tapGo: 'Touche pour continuer.', sky: 'Ciel et plateformes', heightM: '{n} m', bestM: 'Record : {n} m', summitM: 'Sommet : {n} m', dailyHp: 'Hop du jour', newRun: 'Recommencer',
+        control: 'Commandes', ctlTouch: 'Toucher', ctlTilt: 'Incliner le téléphone', howTouch: 'Appuie sur la moitié gauche ou droite de l’écran.', howTilt: 'Incline le téléphone à gauche ou à droite.',
+        noTilt: 'Cet appareil n’envoie pas d’inclinaison ; les commandes tactiles restent actives.', fell: 'Tu es tombé !', summit: 'Tu as atteint le sommet !', height: 'Hauteur', best: 'Record', tries: 'Essais',
+        kSteer: 'Gauche ou droite', kAgain: 'Recommencer', paused: 'Pause',
+        rules: 'Hop saute tout seul ; tu le diriges seulement à gauche ou à droite pour qu’il atterrisse sur une plateforme plus haute. Sors de l’écran d’un côté et tu reviens de l’autre. Les plateformes vertes sont simples, les bleues bougent, les marron tiennent un saut puis s’effritent, et un ressort t’envoie très haut. Tombe en bas de l’écran et la partie est finie. Plus tu montes, plus les plateformes s’écartent. Change les commandes derrière l’engrenage : appuie sur la moitié gauche ou droite de l’écran, ou incline le téléphone. L’ascension du jour est un parcours unique, le même pour tous, jusqu’à un sommet à 2 000 m ; essaie autant que tu veux.',
+        tutTitle1: 'Grimpe', tutText1: 'Hop saute tout seul. Atterris sur les plateformes et grimpe ; tombe en bas et la partie est finie.',
+        tutTitle2: 'Gauche et droite', tutText2: 'Appuie sur la moitié gauche ou droite de l’écran, ou choisis d’incliner le téléphone derrière l’engrenage.',
+        tutTitle3: 'Plateformes', tutText3: 'La marron tient un saut, la bleue bouge, et un ressort t’envoie très haut.'
+      },
+      ar: {
+        tapGo: 'انقر للمتابعة.', sky: 'السماء والمنصات', heightM: '{n} م', bestM: 'الأفضل: {n} م', summitM: 'القمة: {n} م', dailyHp: 'قفزة اليوم', newRun: 'من جديد',
+        control: 'التحكم', ctlTouch: 'اللمس', ctlTilt: 'إمالة الهاتف', howTouch: 'اضغط مطولًا على النصف الأيسر أو الأيمن من الشاشة.', howTilt: 'أمِل الهاتف يسارًا أو يمينًا.',
+        noTilt: 'هذا الجهاز لا يرسل بيانات الإمالة؛ يبقى التحكم باللمس.', fell: 'سقطت!', summit: 'وصلت إلى القمة!', height: 'الارتفاع', best: 'الأفضل', tries: 'المحاولات',
+        kSteer: 'يسار أو يمين', kAgain: 'من جديد', paused: 'متوقف',
+        rules: 'البطل يقفز وحده؛ وأنت توجّهه يسارًا أو يمينًا فقط ليهبط على منصة أعلى. إن خرجت من جهة في الشاشة عدت من الجهة الأخرى. المنصات الخضراء عادية، والزرقاء تتحرك، والبنية تحتمل قفزة واحدة ثم تتفتت، والنابض يقذفك عاليًا. إن سقطت من أسفل الشاشة انتهت المحاولة. كلما صعدت أعلى تباعدت المنصات أكثر. غيّر طريقة التحكم خلف الترس: اضغط مطولًا على النصف الأيسر أو الأيمن من الشاشة، أو أمِل الهاتف. صعود اليوم مسار واحد، هو نفسه للجميع، حتى قمة على ارتفاع 2,000 م؛ حاول كما تشاء.',
+        tutTitle1: 'اصعد', tutText1: 'البطل يقفز وحده. اهبط على المنصات واصعد؛ وإن سقطت من الأسفل انتهت المحاولة.',
+        tutTitle2: 'يسار ويمين', tutText2: 'اضغط مطولًا على النصف الأيسر أو الأيمن من الشاشة، أو اختر إمالة الهاتف خلف الترس.',
+        tutTitle3: 'المنصات', tutText3: 'البنية تحتمل قفزة واحدة، والزرقاء تتحرك، والنابض يقذفك عاليًا.'
+      },
+      hi: {
+        tapGo: 'आगे बढ़ने के लिए छुएँ।', sky: 'आसमान और मंच', heightM: '{n} मी', bestM: 'सर्वश्रेष्ठ: {n} मी', summitM: 'चोटी: {n} मी', dailyHp: 'रोज़ का उछाल', newRun: 'फिर से शुरू',
+        control: 'नियंत्रण', ctlTouch: 'छूकर', ctlTilt: 'फ़ोन झुकाकर', howTouch: 'स्क्रीन का बायाँ या दायाँ आधा हिस्सा दबाए रखें।', howTilt: 'फ़ोन को बाएँ या दाएँ झुकाएँ।',
+        noTilt: 'यह डिवाइस झुकाव नहीं भेजता; छूकर नियंत्रण चालू रहेगा।', fell: 'आप गिर गए!', summit: 'आप चोटी पर पहुँच गए!', height: 'ऊँचाई', best: 'सर्वश्रेष्ठ', tries: 'कोशिशें',
+        kSteer: 'बाएँ या दाएँ', kAgain: 'फिर से शुरू', paused: 'रुका हुआ',
+        rules: 'आपका खिलाड़ी अपने आप उछलता है; आप बस उसे बाएँ या दाएँ मोड़ें ताकि वह ऊँचे मंच पर उतरे। स्क्रीन के एक किनारे से निकलेंगे तो दूसरे किनारे से वापस आएँगे। हरे मंच सादे हैं, नीले चलते हैं, भूरे एक छलांग झेलकर टूट जाते हैं, और स्प्रिंग आपको बहुत ऊपर भेजती है। स्क्रीन के नीचे से गिरे तो दौड़ ख़त्म। जितना ऊपर जाएँगे, मंच उतने दूर-दूर होंगे। गियर में नियंत्रण बदलें: स्क्रीन का बायाँ या दायाँ आधा हिस्सा दबाए रखें, या फ़ोन झुकाएँ। रोज़ की चढ़ाई एक ही रास्ता है, सबके लिए एक जैसा, 2,000 मी की चोटी तक; जितनी बार चाहें कोशिश करें।',
+        tutTitle1: 'चढ़ें', tutText1: 'खिलाड़ी अपने आप उछलता है। मंचों पर उतरें और ऊपर चढ़ें; नीचे गिरे तो दौड़ ख़त्म।',
+        tutTitle2: 'बाएँ और दाएँ', tutText2: 'स्क्रीन का बायाँ या दायाँ आधा हिस्सा दबाए रखें, या गियर में फ़ोन झुकाना चुनें।',
+        tutTitle3: 'मंच', tutText3: 'भूरा एक छलांग झेलता है, नीला चलता है, और स्प्रिंग आपको बहुत ऊपर भेजती है।'
+      },
+      zh: {
+        tapGo: '点一下继续。', sky: '天空和平台', heightM: '{n} 米', bestM: '最佳：{n} 米', summitM: '山顶：{n} 米', dailyHp: '每日跳跳', newRun: '重新开始',
+        control: '操作', ctlTouch: '触摸', ctlTilt: '倾斜手机', howTouch: '按住屏幕左半边或右半边。', howTilt: '向左或向右倾斜手机。',
+        noTilt: '此设备没有倾斜数据，继续使用触摸操作。', fell: '掉下去了！', summit: '登顶了！', height: '高度', best: '最佳', tries: '尝试次数',
+        kSteer: '向左或向右', kAgain: '重新开始', paused: '暂停',
+        rules: '跳跳会自己跳；你只要把它往左或往右引，让它落在更高的平台上。从屏幕一侧出去会从另一侧回来。绿色平台是普通的，蓝色会移动，棕色只能跳一次，然后会碎，弹簧会把你弹得很高。从屏幕底部掉下去就结束了。越往上，平台间距越大。可在齿轮里切换操作：按住屏幕左半边或右半边，或倾斜手机。每日挑战是一条人人相同的路线，山顶在 2000 米；想试几次都可以。',
+        tutTitle1: '往上爬', tutText1: '跳跳会自己跳。落在平台上往上爬；从底部掉下去就结束了。',
+        tutTitle2: '左和右', tutText2: '按住屏幕左半边或右半边，或在齿轮里选择倾斜手机。',
+        tutTitle3: '平台', tutText3: '棕色只能跳一次，蓝色会动，弹簧会把你弹得很高。'
+      },
+      de: {
+        tapGo: 'Tippe, um weiterzumachen.', sky: 'Himmel und Plattformen', heightM: '{n} m', bestM: 'Bestwert: {n} m', summitM: 'Gipfel: {n} m', dailyHp: 'Hüpf des Tages', newRun: 'Neu starten',
+        control: 'Steuerung', ctlTouch: 'Tippen', ctlTilt: 'Handy neigen', howTouch: 'Halte die linke oder rechte Bildschirmhälfte.', howTilt: 'Neig das Handy nach links oder rechts.',
+        noTilt: 'Dieses Gerät meldet keine Neigung; die Tippsteuerung bleibt an.', fell: 'Abgestürzt!', summit: 'Gipfel erreicht!', height: 'Höhe', best: 'Bestwert', tries: 'Versuche',
+        kSteer: 'Nach links oder rechts', kAgain: 'Neu starten', paused: 'Pause',
+        rules: 'Hüpf springt von allein; du lenkst nur nach links oder rechts, damit er auf einer höheren Plattform landet. Wer an einer Seite den Bildschirm verlässt, kommt auf der anderen zurück. Grüne Plattformen sind normal, blaue bewegen sich, braune halten einen Sprung und zerbröseln dann, und eine Feder schickt dich hoch hinaus. Fällst du unten aus dem Bildschirm, ist der Lauf vorbei. Je höher, desto weiter auseinander die Plattformen. Die Steuerung wechselst du hinter dem Zahnrad: linke oder rechte Bildschirmhälfte halten oder das Handy neigen. Der Tagesaufstieg ist eine Strecke, für alle gleich, bis zu einem Gipfel auf 2000 m; versuch es so oft du willst.',
+        tutTitle1: 'Klettern', tutText1: 'Hüpf springt von allein. Lande auf den Plattformen und steig höher; fällst du unten raus, ist es vorbei.',
+        tutTitle2: 'Links und rechts', tutText2: 'Halte die linke oder rechte Bildschirmhälfte, oder wähle hinter dem Zahnrad das Neigen.',
+        tutTitle3: 'Plattformen', tutText3: 'Braun hält einen Sprung, Blau bewegt sich, und eine Feder schickt dich hoch hinaus.'
+      },
+      es: {
+        tapGo: 'Toca para seguir.', sky: 'Cielo y plataformas', heightM: '{n} m', bestM: 'Mejor: {n} m', summitM: 'Cima: {n} m', dailyHp: 'Salto del día', newRun: 'Empezar de nuevo',
+        control: 'Control', ctlTouch: 'Tocar', ctlTilt: 'Inclinar el móvil', howTouch: 'Mantén pulsada la mitad izquierda o derecha.', howTilt: 'Inclina el móvil a la izquierda o a la derecha.',
+        noTilt: 'Este dispositivo no envía inclinación; sigue el control táctil.', fell: '¡Te caíste!', summit: '¡Llegaste a la cima!', height: 'Altura', best: 'Mejor', tries: 'Intentos',
+        kSteer: 'Izquierda o derecha', kAgain: 'Empezar de nuevo', paused: 'Pausa',
+        rules: 'Salto salta solo; tú solo lo llevas a izquierda o derecha para que caiga en una plataforma más alta. Si sales por un lado de la pantalla, vuelves por el otro. Las plataformas verdes son normales, las azules se mueven, las marrones aguantan un salto y luego se desmoronan y un muelle te lanza muy alto. Si caes por abajo, se acaba. Cuanto más alto, más separadas están. Cambia el control tras el engranaje: mantener pulsada la mitad izquierda o derecha, o inclinar el móvil. El ascenso diario es un recorrido igual para todos hasta una cima a 2000 m; inténtalo tantas veces como quieras.',
+        tutTitle1: 'Sube', tutText1: 'Salto salta solo. Cae sobre las plataformas y sube; si caes por abajo, se acaba.',
+        tutTitle2: 'Izquierda y derecha', tutText2: 'Mantén pulsada la mitad izquierda o derecha, o elige inclinar el móvil tras el engranaje.',
+        tutTitle3: 'Plataformas', tutText3: 'La marrón aguanta un salto, la azul se mueve y el muelle te lanza muy alto.'
+      }
+    }
+  });
+
+  var params = new URLSearchParams(location.search);
+  var dailyDate = params.get('daily');
+  var prefs = ctx.store.get('prefs', null);
+  if (!prefs || (prefs.control !== 'touch' && prefs.control !== 'tilt')) prefs = { control: 'touch' };
+
+  var S = null, raf = 0, last = 0, acc = 0, paused = false, held = { l: false, r: false }, keys = { l: false, r: false };
+  var tilt = 0, tiltSeen = false, tiltTimer = null, tries = 0, startedAt = 0, ended = false;
+
+  var cv = el('canvas', { class: 'hp-canvas', role: 'img', 'aria-label': C.t('sky') });
+  var box = el('div', { class: 'hp-box' }, [cv]);
+  var top = el('div', { class: 'hp-top ch-above' });
+  var status = el('div', { class: 'hp-status', role: 'status', 'aria-live': 'polite' });
+  var wrap = el('div', { class: 'hp-wrap ch-split' }, [el('div', { class: 'ch-fit' }, [box]), el('div', { class: 'ch-side' }, [top, status])]);
+
+  ctx.button({ icon: 'help', label: C.t('help'), onClick: showHelp });
+  ctx.button({ icon: 'refresh', label: C.t('newRun'), onClick: function () { newRun(); } });
+  ctx.main.appendChild(wrap);
+  ctx.mount();
+
+  /* ------------------------------------------------------------- runs */
+
+  // Endless runs get a seed of their own, so a saved run can grow the same course on
+  function seeded(seed) {
+    var a = seed >>> 0;
+    return function () { a = (a + 0x6D2B79F5) >>> 0; var t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  }
+  function rngFor(seed) { return dailyDate ? C.daily('hop', dailyDate).rng : seeded(seed); }
+  var seed = 0, waiting = false;
+
+  function newRun() {
+    seed = Math.floor(Math.random() * 4294967296);
+    S = E.newGame(rngFor(seed), dailyDate ? SUMMIT : 0);
+    waiting = false;
+    tries++;
+    startedAt = Date.now();
+    ended = false;
+    acc = 0; last = 0;
+    renderTop();
+    renderStatus();
+    kick();
+  }
+
+  function steer() {
+    var k = (keys.r ? 1 : 0) - (keys.l ? 1 : 0) + (held.r ? 1 : 0) - (held.l ? 1 : 0);
+    if (prefs.control === 'tilt' && tiltSeen) k += tilt;
+    return Math.max(-1, Math.min(1, k));
+  }
+
+  function tick(now) {
+    raf = 0;
+    if (!S) return;
+    var blocked = paused || waiting || document.hidden || !!document.querySelector('.ch-scrim');
+    if (!last || blocked) last = now;
+    acc += Math.min(0.1, (now - last) / 1000);
+    last = now;
+    var ev = [];
+    if (blocked) acc = 0;
+    while (acc >= E.DT && !ended) {
+      acc -= E.DT;
+      ev = ev.concat(E.step(S, steer()));
+      if (S.over || S.won) break;
+    }
+    sounds(ev);
+    draw();
+    renderHeight();
+    if ((S.over || S.won) && !ended) { ended = true; setTimeout(finish, C.ui.reduceMotion() ? 200 : 700); }
+    if (!ended) raf = requestAnimationFrame(tick);
+  }
+  function kick() { if (!raf) raf = requestAnimationFrame(tick); }
+  function sounds(ev) {
+    if (!ev.length) return;
+    if (ev.indexOf('spring') >= 0) C.feedback('whoosh');
+    else if (ev.indexOf('jump') >= 0) C.audio.sfx('tap');
+    if (ev.indexOf('crumble') >= 0) C.feedback('thud');
+    if (ev.indexOf('summit') >= 0) C.feedback('good');
+    if (ev.indexOf('fall') >= 0) C.feedback('bad');
+  }
+
+  function finish() {
+    ctx.clearSave();
+    var m = E.metres(S.best), won = S.won;
+    var coins = Math.min(30, 2 + Math.floor(m / 150)), points = Math.min(120, 6 + Math.floor(m / 40)), note = null;
+    if (m >= 500) C.achievements.unlock('hop-500');
+    if (m >= 2000 && !dailyDate) C.achievements.unlock('hop-2k');
+    if (won) C.achievements.unlock('hop-summit');
+    if (dailyDate) {
+      if (won) {
+        coins += 8; points += 25;
+        if (!C.stats.daily('hop', dailyDate, { label: C.t('heightM', { n: C.num(E.metres(SUMMIT)) }), win: true, tries: tries })) { coins = Math.round(coins * 0.2); points = Math.round(points * 0.2); }
+      } else { coins = 1; points = 2; }
+    } else if (C.stats.best('hop', 'metres', m)) note = C.t('bestM', { n: C.num(m) });
+    var bestEver = C.stats.getBest('hop', 'metres');
+    ctx.finish({
+      won: dailyDate ? won : null,
+      title: won ? C.t('summit') : C.t('fell'),
+      note: note, timeMs: Date.now() - startedAt, coins: coins, points: points,
+      lines: [
+        { label: C.t('height'), value: C.t('heightM', { n: C.num(m) }) },
+        dailyDate ? { label: C.t('tries'), value: C.num(tries) } : { label: C.t('best'), value: C.t('heightM', { n: C.num(bestEver || m) }) }
+      ],
+      shareText: 'چوگان · جهش' + (dailyDate ? ('\nروزانه ' + dailyDate) : '') + '\n' + m + ' متر',
+      againLabel: C.t('newRun'),
+      onAgain: dailyDate && won ? null : function () { newRun(); }
+    });
+  }
+
+  /* --------------------------------------------------------------- draw */
+
+  function dark() {
+    var t = document.documentElement.getAttribute('data-theme');
+    if (t === 'dark') return true;
+    if (t === 'light') return false;
+    return window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+  function palette() {
+    return dark()
+      ? { sky0: '#141B33', sky1: '#2A2F52', cloud: 'rgba(255,255,255,.06)', normal: '#4CAF63', moving: '#4C8FE0', crumble: '#8A6343', spring: '#C9CED6', summit: '#E0B43A', hop: '#F08A3C', hopDk: '#B5561B', eye: '#FFFFFF', ink: '#1A1A1A', text: '#F4EEE4' }
+      : { sky0: '#BFE6F5', sky1: '#F4FAF2', cloud: 'rgba(255,255,255,.75)', normal: '#3E9C55', moving: '#2F74CF', crumble: '#9A6B45', spring: '#8A93A0', summit: '#D4A017', hop: '#E8702A', hopDk: '#A9481A', eye: '#FFFFFF', ink: '#1A1A1A', text: '#1F1A17' };
+  }
+
+  function size() {
+    // the slot's own size only: a floor of 320 px ran off a phone on its side
+    var r = box.getBoundingClientRect(), h = Math.floor(Math.min(r.height, r.width * E.VIEW / E.W));
+    h = Math.max(120, h || 0);
+    return { w: Math.round(h * E.W / E.VIEW), h: h };
+  }
+  function draw() {
+    if (!S) return;
+    var Z = size(), dpr = Math.min(2, window.devicePixelRatio || 1);
+    // both sides: a new canvas is 300×150 (#359)
+    if (cv.width !== Math.round(Z.w * dpr) || cv.height !== Math.round(Z.h * dpr)) { cv.width = Math.round(Z.w * dpr); cv.height = Math.round(Z.h * dpr); }
+    cv.style.width = Z.w + 'px'; cv.style.height = Z.h + 'px';
+    var g = cv.getContext('2d'), P = palette(), k = Z.w / E.W;
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    var sky = g.createLinearGradient(0, 0, 0, Z.h);
+    sky.addColorStop(0, P.sky0); sky.addColorStop(1, P.sky1);
+    g.fillStyle = sky; g.fillRect(0, 0, Z.w, Z.h);
+    g.save();
+    g.scale(k, k);
+    var sy = function (y) { return E.VIEW - (y - S.cam); };
+    // clouds drift past at half speed, placed by height so they don't jump around
+    g.fillStyle = P.cloud;
+    var c0 = Math.floor(S.cam * 0.5 / 220);
+    for (var c = c0; c < c0 + 5; c++) {
+      var cy = E.VIEW - (c * 220 - S.cam * 0.5), cx = ((c * 137) % 300) + 30;
+      g.beginPath(); g.ellipse(cx, cy, 46, 14, 0, 0, Math.PI * 2); g.ellipse(cx + 26, cy - 8, 26, 12, 0, 0, Math.PI * 2); g.fill();
+    }
+    // platforms
+    S.plats.forEach(function (p) {
+      var y = sy(p.y);
+      if (y < -20 || y > E.VIEW + 20) return;
+      var x0 = p.x - p.w / 2;
+      if (p.kind === 'base') { g.fillStyle = P.normal; g.fillRect(0, y, E.W, 40); return; }
+      if (p.broken) {
+        g.fillStyle = P.crumble; g.globalAlpha = 0.5;
+        C.rrect(g, x0, y + 6, p.w / 2 - 3, E.PH, 5); g.fill(); C.rrect(g, x0 + p.w / 2 + 3, y + 10, p.w / 2 - 3, E.PH, 5); g.fill();
+        g.globalAlpha = 1; return;
+      }
+      g.fillStyle = p.kind === 'moving' ? P.moving : p.kind === 'crumble' ? P.crumble : p.kind === 'summit' ? P.summit : P.normal;
+      C.rrect(g, x0, y, p.w, E.PH, 6); g.fill();
+      if (p.kind === 'crumble') { g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(p.x - 8, y + 1); g.lineTo(p.x - 2, y + 7); g.lineTo(p.x + 6, y + 3); g.lineTo(p.x + 10, y + 11); g.stroke(); }
+      if (p.kind === 'spring') {
+        g.strokeStyle = P.spring; g.lineWidth = 3;
+        g.beginPath(); g.moveTo(p.x - 7, y); for (var s = 1; s <= 4; s++) g.lineTo(p.x + (s % 2 ? 7 : -7), y - s * 4); g.stroke();
+        g.fillStyle = P.spring; C.rrect(g, p.x - 10, y - 19, 20, 4, 2); g.fill();
+      }
+      if (p.kind === 'summit') {
+        g.strokeStyle = P.ink; g.lineWidth = 2.5; g.beginPath(); g.moveTo(p.x, y); g.lineTo(p.x, y - 46); g.stroke();
+        g.fillStyle = '#D9362B'; g.beginPath(); g.moveTo(p.x, y - 46); g.lineTo(p.x + 26, y - 38); g.lineTo(p.x, y - 30); g.closePath(); g.fill();
+      }
+    });
+    // Hop: a round body that squashes as it lands, eyes looking the way it goes;
+    // near a side it shows on both, since the world wraps
+    var hx = S.x, hy = sy(S.y);
+    [hx, hx - E.W, hx + E.W].forEach(function (x) { if (x > -E.R * 2 && x < E.W + E.R * 2) drawHop(g, x, hy, P); });
+    g.restore();
+    // the summit's height, at the top while it's ahead
+    if (S.summit && !S.won) {
+      g.fillStyle = P.text; g.font = '700 ' + Math.round(13 * k + 2) + 'px ' + (getComputedStyle(document.body).fontFamily || 'sans-serif');
+      g.textAlign = 'center'; g.textBaseline = 'top';
+      g.fillText(C.t('summitM', { n: C.num(E.metres(S.summit)) }), Z.w / 2, 8);
+    }
+  }
+  function drawHop(g, x, y, P) {
+    var sq = S.squash, rx = E.R * (1 + 0.25 * sq), ry = E.R * (1 - 0.25 * sq);
+    g.fillStyle = P.hop;
+    g.beginPath(); g.ellipse(x, y - ry, rx, ry, 0, 0, Math.PI * 2); g.fill();
+    g.fillStyle = P.hopDk;
+    g.beginPath(); g.ellipse(x - 6, y - 1, 5, 2.5, 0, 0, Math.PI * 2); g.ellipse(x + 6, y - 1, 5, 2.5, 0, 0, Math.PI * 2); g.fill();
+    var ex = S.face * 3;
+    g.fillStyle = P.eye;
+    g.beginPath(); g.arc(x - 5 + ex, y - ry - 3, 4.2, 0, Math.PI * 2); g.arc(x + 5 + ex, y - ry - 3, 4.2, 0, Math.PI * 2); g.fill();
+    g.fillStyle = P.ink;
+    g.beginPath(); g.arc(x - 4 + ex * 1.4, y - ry - 3 + (S.vy < 0 ? 1 : -1), 2, 0, Math.PI * 2); g.arc(x + 6 + ex * 1.4, y - ry - 3 + (S.vy < 0 ? 1 : -1), 2, 0, Math.PI * 2); g.fill();
+  }
+
+  /* ----------------------------------------------------------------- ui */
+
+  var heightEl = null;
+  function renderTop() {
+    top.innerHTML = '';
+    if (dailyDate) top.appendChild(el('span', { class: 'ch-badge ch-badge--accent' }, [C.icon('calendar', 14), el('span', { text: C.t('dailyHp') + ' — ' + C.num(dailyDate) })]));
+    heightEl = el('span', { class: 'ch-badge' });
+    top.appendChild(heightEl);
+    var best = C.stats.getBest('hop', 'metres');
+    if (!dailyDate && best) top.appendChild(el('span', { class: 'ch-badge', text: C.t('bestM', { n: C.num(best) }) }));
+    var gear = el('button', { class: 'ch-iconbtn hp-gear', type: 'button', 'aria-label': C.t('settings'), title: C.t('settings') }, [C.icon('gear', 20)]);
+    gear.addEventListener('click', showSettings);
+    top.appendChild(gear);
+    renderHeight();
+  }
+  var shownM = -1;
+  function renderHeight() {
+    if (!heightEl || !S) return;
+    var m = E.metres(S.y);
+    if (m !== shownM) { shownM = m; heightEl.textContent = C.t('heightM', { n: C.num(m) }); }
+  }
+  function renderStatus() { status.textContent = waiting ? C.t('tapGo') : C.t(prefs.control === 'tilt' ? 'howTilt' : 'howTouch'); }
+  function go() { if (waiting) { waiting = false; last = 0; renderStatus(); kick(); } }
+
+  // The control lives behind the gear (the owner's choice): the halves of the screen,
+  // or tilting the phone. Tilt needs no Android permission; iOS asks once, on this tap.
+  function showSettings() {
+    var seg = C.ui.segmented([{ value: 'touch', label: C.t('ctlTouch') }, { value: 'tilt', label: C.t('ctlTilt') }], prefs.control, function (v) {
+      prefs.control = v === 'tilt' ? 'tilt' : 'touch';
+      ctx.store.set('prefs', prefs);
+      if (prefs.control === 'tilt') startTilt(true);
+      renderStatus();
+    });
+    C.ui.modal({
+      title: C.t('settings'),
+      body: [el('div', { class: 'ch-list' }, [el('div', { class: 'ch-item' }, [el('div', { class: 'ch-item__label', text: C.t('control') }), seg])])],
+      actions: [{ label: C.t('done'), kind: 'primary' }]
+    });
+  }
+
+  /* -------------------------------------------------------------- input */
+
+  function onTilt(e) {
+    if (e.gamma == null) return;
+    tiltSeen = true;
+    var ang = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
+    var v = ang === 90 ? e.beta : (ang === -90 || ang === 270) ? -e.beta : e.gamma;
+    // a few degrees do nothing, so a phone held still stands still; 25° is full speed
+    var a = Math.abs(v) < 3 ? 0 : (v - Math.sign(v) * 3) / 22;
+    tilt = Math.max(-1, Math.min(1, a));
+  }
+  function startTilt(ask) {
+    var go = function () {
+      window.addEventListener('deviceorientation', onTilt);
+      clearTimeout(tiltTimer);
+      // no event in two seconds: no sensor here, so say so and keep touch working
+      tiltTimer = setTimeout(function () { if (!tiltSeen && prefs.control === 'tilt') C.ui.toast({ icon: 'info', title: C.t('noTilt') }); }, 2000);
+    };
+    var D = window.DeviceOrientationEvent;
+    if (ask && D && typeof D.requestPermission === 'function') D.requestPermission().then(function (r) { if (r === 'granted') go(); else C.ui.toast({ icon: 'info', title: C.t('noTilt') }); }).catch(function () { C.ui.toast({ icon: 'info', title: C.t('noTilt') }); });
+    else go();
+  }
+  if (prefs.control === 'tilt') startTilt(false);
+
+  // Touch steers with both controls, so a phone without tilt still plays. The whole
+  // game area steers, split at the middle of the sky: on a phone on its side the sky is
+  // a narrow strip and the empty sides of the screen did nothing.
+  var touches = {};
+  function side(e) { var r = cv.getBoundingClientRect(); return e.clientX < r.left + r.width / 2 ? 'l' : 'r'; }
+  function syncHeld() { held.l = held.r = false; for (var id in touches) held[touches[id]] = true; }
+  wrap.addEventListener('pointerdown', function (e) {
+    if (!S || (e.target.closest && e.target.closest('button'))) return;
+    e.preventDefault();
+    if (ended) return;
+    go();
+    touches[e.pointerId] = side(e); syncHeld();
+    try { wrap.setPointerCapture(e.pointerId); } catch (er) { /* old browsers */ }
+  });
+  wrap.addEventListener('pointermove', function (e) { if (touches[e.pointerId]) { touches[e.pointerId] = side(e); syncHeld(); } });
+  function lift(e) { delete touches[e.pointerId]; syncHeld(); }
+  wrap.addEventListener('pointerup', lift);
+  wrap.addEventListener('pointercancel', lift);
+  wrap.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  wrap.style.touchAction = 'none';
+
+  window.addEventListener('keydown', function (e) {
+    if (document.querySelector('.ch-scrim')) return;
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === ' ' || C.keyIs(e, 'a') || C.keyIs(e, 'd')) go();
+    if (e.key === 'ArrowLeft' || C.keyIs(e, 'a')) { keys.l = true; e.preventDefault(); }
+    else if (e.key === 'ArrowRight' || C.keyIs(e, 'd')) { keys.r = true; e.preventDefault(); }
+    else if (C.keyIs(e, 'r')) { newRun(); e.preventDefault(); }
+  });
+  window.addEventListener('keyup', function (e) {
+    if (e.key === 'ArrowLeft' || C.keyIs(e, 'a')) keys.l = false;
+    else if (e.key === 'ArrowRight' || C.keyIs(e, 'd')) keys.r = false;
+  });
+  // a run waits while the app is away, and nothing is held when it comes back
+  C.onPause(function () { paused = true; keys.l = keys.r = false; touches = {}; syncHeld(); ctx.save(); });
+  C.onResume(function () { paused = false; last = 0; kick(); });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) { last = 0; kick(); } });
+  if (window.ResizeObserver) new ResizeObserver(function () { draw(); }).observe(box);
+  if (window.matchMedia) { try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw); } catch (er) { /* old WebViews */ } }
+
+  /* --------------------------------------------------------------- help */
+
+  function kb(k, what) { return el('div', { class: 'ch-item' }, [el('div', { class: 'ch-item__label', text: what }), el('span', { class: 'ch-badge', text: k })]); }
+  function showHelp() {
+    C.ui.modal({
+      title: C.t('help'),
+      body: [
+        el('p', { class: 'ch-dim', text: C.t('rules') }),
+        el('h3', { style: { 'margin-top': 'var(--s-4)' }, text: C.t('keyboard') }),
+        el('div', { class: 'ch-list' }, [kb('← → / A D', C.t('kSteer')), kb('R', C.t('kAgain'))])
+      ],
+      actions: [{ label: C.t('tutorial'), onClick: function () { ctx.showTutorial(TUT); } }, { label: C.t('done'), kind: 'primary' }]
+    });
+  }
+  function tArt(kind) {
+    var s = '<svg viewBox="0 0 200 110" width="100%" direction="ltr"><rect width="200" height="110" rx="10" fill="#BFE6F5"/>';
+    var plat = function (x, y, c) { return '<rect x="' + x + '" y="' + y + '" width="40" height="8" rx="4" fill="' + c + '"/>'; };
+    var hop = function (x, y) { return '<ellipse cx="' + x + '" cy="' + y + '" rx="11" ry="11" fill="#E8702A"/><circle cx="' + (x - 4) + '" cy="' + (y - 3) + '" r="3.2" fill="#fff"/><circle cx="' + (x + 4) + '" cy="' + (y - 3) + '" r="3.2" fill="#fff"/>'; };
+    if (kind === 1) s += plat(30, 90, '#3E9C55') + plat(90, 62, '#3E9C55') + plat(140, 30, '#3E9C55') + hop(110, 46) + '<path d="M60 86 Q 80 40 100 58" fill="none" stroke="#1971C2" stroke-width="2.5" stroke-dasharray="4 4"/>';
+    if (kind === 2) s += '<rect x="0" y="0" width="100" height="110" fill="rgba(0,0,0,.06)"/><text x="50" y="60" font-size="26" text-anchor="middle" fill="#1F1A17">←</text><text x="150" y="60" font-size="26" text-anchor="middle" fill="#1F1A17">→</text>' + hop(100, 80);
+    if (kind === 3) s += plat(20, 70, '#9A6B45') + plat(80, 70, '#2F74CF') + plat(140, 70, '#3E9C55') + '<path d="M153 70 l7 -4 -14 -4 14 -4 -7 -4" stroke="#8A93A0" stroke-width="3" fill="none"/>';
+    return s + '</svg>';
+  }
+  var TUT = [
+    { title: C.t('tutTitle1'), text: C.t('tutText1'), art: tArt(1) },
+    { title: C.t('tutTitle2'), text: C.t('tutText2'), art: tArt(2) },
+    { title: C.t('tutTitle3'), text: C.t('tutText3'), art: tArt(3) }
+  ];
+
+  /* -------------------------------------------------------------- start */
+
+  // A run in progress is saved when the app goes away, and comes back waiting for a tap,
+  // so a player is never dropped mid-air; the daily climb has its own slot (#132)
+  ctx.autosave(function () {
+    if (!S || S.over || S.won || ended || S.t < 1) return { inProgress: false };
+    return { s: E.snapshot(S), seed: seed, tries: tries, daily: dailyDate || null, elapsed: Date.now() - startedAt };
+  });
+  function resumeRun(sv) {
+    var R = E.restore(sv.s, rngFor(sv.seed));
+    if (!R) return false;
+    S = R; seed = sv.seed; tries = sv.tries || 1; startedAt = Date.now() - (sv.elapsed || 0);
+    ended = false; waiting = true; acc = 0; last = 0;
+    renderTop(); renderStatus(); draw(); kick();
+    return true;
+  }
+  var saved = ctx.loadSave();
+  if (dailyDate) {
+    if (!(saved && saved.s && saved.daily === dailyDate && resumeRun(saved))) newRun();
+    if (C.stats.dailyDone('hop', dailyDate)) {
+      var rec = C.stats.dailyOf(dailyDate).hop;
+      C.ui.toast({ icon: 'check', title: C.t('dailyDone'), sub: rec && rec.label });
+    }
+  } else if (!(saved && saved.s && !saved.daily && resumeRun(saved))) {
+    newRun();
+  }
+  ctx.tutorialIfNew(TUT);
+})();
+</script>
+</body>
+</html>

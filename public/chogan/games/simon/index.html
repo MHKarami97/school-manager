@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#FBF6EF">
+<title>سایمون — چوگان</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../lib/chogan.css">
+<script src="../../lib/early.js"></script>
+<style>
+  .sm-wrap > .ch-fit { --fit-ar: 1; }
+  .ch-fit > .sm-box { width: 100%; height: 100%; display: grid; place-items: center; }
+  /* four quarter pads round a centre disc, like the original toy; the board is
+     left to right in every language, so a pad keeps its place and its key */
+  .sm-board { position: relative; width: 100%; aspect-ratio: 1; max-width: 100%; max-height: 100%; direction: ltr;
+    display: grid; grid-template: 1fr 1fr / 1fr 1fr; gap: 3.5%; padding: 3.5%; box-sizing: border-box;
+    border-radius: 50%; background: var(--sm-ring); box-shadow: var(--sh-2); touch-action: manipulation; }
+  :root { --sm-ring: #2B2622; }
+  .sm-pad { border: 0; padding: 0; margin: 0; cursor: pointer; position: relative; background: var(--pad);
+    filter: brightness(.62) saturate(.85); transition: filter 90ms var(--ease), transform 90ms var(--ease); }
+  .sm-pad:nth-child(1) { border-radius: 100% 6% 6% 6%; }
+  .sm-pad:nth-child(2) { border-radius: 6% 100% 6% 6%; }
+  .sm-pad:nth-child(3) { border-radius: 6% 6% 6% 100%; }
+  .sm-pad:nth-child(4) { border-radius: 6% 6% 100% 6%; }
+  .sm-pad--lit { filter: brightness(1.18) saturate(1.1); box-shadow: 0 0 28px var(--pad); }
+  .sm-pad:active { transform: scale(.98); }
+  .sm-pad:focus-visible { outline: 4px solid #fff; outline-offset: -8px; }
+  /* a shape on every pad, so the four tell apart without colour too */
+  .sm-pad svg { position: absolute; width: 22%; height: 22%; opacity: .55; pointer-events: none; }
+  .sm-pad:nth-child(1) svg { right: 22%; bottom: 22%; }
+  .sm-pad:nth-child(2) svg { left: 22%; bottom: 22%; }
+  .sm-pad:nth-child(3) svg { right: 22%; top: 22%; }
+  .sm-pad:nth-child(4) svg { left: 22%; top: 22%; }
+  .sm-hub { position: absolute; left: 50%; top: 50%; width: 34%; aspect-ratio: 1; transform: translate(-50%, -50%);
+    border-radius: 50%; background: var(--c-surface); border: 6px solid var(--sm-ring); display: grid; place-items: center;
+    text-align: center; cursor: pointer; font: inherit; color: var(--c-text); padding: 0; }
+  .sm-hub__n { font-size: clamp(22px, 9cqmin, 54px); font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+  .sm-hub__l { font-size: clamp(10px, 2.6cqmin, 15px); color: var(--c-text-dim); font-weight: 700; }
+  .sm-hub--go .sm-hub__n { color: var(--game); }
+  .sm-top { display: flex; justify-content: center; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
+  .sm-status { min-height: 1.6em; font-weight: 700; color: var(--c-text-dim); text-align: center; }
+  .sm-shake { animation: sm-shake 360ms var(--ease); }
+  @keyframes sm-shake { 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
+</style>
+</head>
+<body>
+<script src="../../version.js"></script>
+<script src="../../lib/chogan.js"></script>
+<script>
+/* ==== ENGINE START ==== */
+function SimonEngineFactory() {
+  'use strict';
+
+  var PADS = 4, LONG = 400;
+
+  // The whole sequence is drawn at the start, so a round only ever adds one more of the
+  // same notes, a saved game comes back with its own sequence, and the daily one is
+  // the same for everyone.
+  function sequence(rnd, n) {
+    var s = [];
+    for (var i = 0; i < (n || LONG); i++) s.push(Math.floor(rnd() * PADS));
+    return s;
+  }
+  function game(rnd, round) {
+    return { seq: sequence(rnd), len: Math.max(1, round || 1), pos: 0, best: Math.max(0, (round || 1) - 1), over: false };
+  }
+  // The next press: 'ok' (right, more to go), 'round' (the whole sequence repeated:
+  // the next round is one longer), 'wrong' (the game ends)
+  function press(S, pad) {
+    if (S.over) return 'over';
+    if (pad !== S.seq[S.pos]) { S.over = true; return 'wrong'; }
+    S.pos++;
+    if (S.pos < S.len) return 'ok';
+    S.best = S.len;
+    S.len = Math.min(S.len + 1, S.seq.length);
+    S.pos = 0;
+    return 'round';
+  }
+  // How long each note of the playback shows: quicker as the sequence grows, never
+  // so quick that it can't be followed
+  function noteMs(len) { return Math.max(260, 560 - len * 18); }
+  function gapMs(len) { return Math.round(noteMs(len) * 0.45); }
+
+  return { PADS: PADS, sequence: sequence, game: game, press: press, noteMs: noteMs, gapMs: gapMs };
+}
+if (typeof module !== 'undefined') module.exports = SimonEngineFactory;
+/* ==== ENGINE END ==== */
+</script>
+<script>
+(function () {
+  'use strict';
+  var C = window.Chogan, el = C.el;
+  var E = SimonEngineFactory();
+
+  C.boot({});
+  var ctx = C.game({
+    id: 'simon',
+    name: { fa: 'سایمون', en: 'Echo', zh: '闪灯记忆', de: 'Echo', es: 'Eco', pl: 'Echo', fr: 'Écho', ar: 'الصدى', hi: 'गूँज' },
+    accent: '#2C64FC',
+    mood: 'menu',
+    strings: {
+      fa: {
+        pads: 'چهار دکمه‌ی رنگی', start: 'شروع', tapStart: 'وسط را بزن تا شروع شود', watch: 'نگاه کن و گوش بده…', yourTurn: 'حالا تو تکرار کن',
+        roundN: 'دور {n}', wrong: 'اشتباه شد! به دور {n} رسیدی.', bestN: 'رکورد: {n}', dailySm: 'سایمون روزانه', reached: 'دور', triesN: 'تلاش‌ها',
+        green: 'سبز', red: 'قرمز', yellow: 'زرد', blue: 'آبی', kPads: 'چهار دکمه (بالا چپ، بالا راست، پایین چپ، پایین راست)', kStart: 'شروع',
+        rules: 'هر دور چند دکمه به ترتیب روشن می‌شوند و هر کدام صدای خودش را دارد. وقتی تمام شد، همان ترتیب را با زدن دکمه‌ها تکرار کن. اگر درست بزنی، دور بعد یکی به آخرش اضافه می‌شود و کمی تندتر پخش می‌شود. اولین اشتباه بازی را تمام می‌کند و دورهایی که کامل کردی امتیازت است. عجله‌ای نیست: برای تکرار زمان نمی‌گیرد. هر دکمه شکل خودش را هم دارد تا بدون رنگ هم شناخته شود. چالش روزانه برای همه یک ترتیب است.',
+        tutTitle1: 'نگاه کن', tutText1: 'دکمه‌ها یکی‌یکی روشن می‌شوند و صدا می‌دهند. ترتیب را به خاطر بسپار.',
+        tutTitle2: 'تکرار کن', tutText2: 'همان ترتیب را بزن. هر دور یکی بیشتر می‌شود.',
+        tutTitle3: 'تا کجا؟', tutText3: 'اولین اشتباه پایان بازی است. برای تکرار وقت محدود نیست.'
+      },
+      en: {
+        pads: 'Four coloured pads', start: 'Start', tapStart: 'Tap the middle to start', watch: 'Watch and listen…', yourTurn: 'Now repeat it',
+        roundN: 'Round {n}', wrong: 'Wrong one! You reached round {n}.', bestN: 'Best: {n}', dailySm: 'Daily Echo', reached: 'Round', triesN: 'Tries',
+        green: 'Green', red: 'Red', yellow: 'Yellow', blue: 'Blue', kPads: 'The four pads (top left, top right, bottom left, bottom right)', kStart: 'Start',
+        rules: 'Each round some pads light up in turn, each with its own note. When it ends, repeat the same order by tapping the pads. Get it right and the next round adds one more at the end and plays a little faster. The first mistake ends the game, and the rounds you completed are your score. There is no rush: repeating is never timed. Each pad also has its own shape, so you can tell them apart without colour. The daily challenge is the same sequence for everyone.',
+        tutTitle1: 'Watch', tutText1: 'The pads light up one by one, each with its own note. Remember the order.',
+        tutTitle2: 'Repeat', tutText2: 'Tap the same order. Each round adds one more.',
+        tutTitle3: 'How far?', tutText3: 'The first mistake ends the game. Repeating is never timed.'
+      },
+      pl: {
+        pads: 'Cztery kolorowe pola', start: 'Start', tapStart: 'Dotknij środka, aby rozpocząć', watch: 'Oglądaj i słuchaj…', yourTurn: 'Teraz powtórz',
+        roundN: 'Runda {n}', wrong: 'Błąd! Dotarłeś do rundy {n}.', bestN: 'Najlepszy wynik: {n}', dailySm: 'Codzienne Echo', reached: 'Runda', triesN: 'Próby',
+        green: 'Zielony', red: 'Czerwony', yellow: 'Żółty', blue: 'Niebieski', kPads: 'Cztery pola (góra-lewo, góra-prawo, dół-lewo, dół-prawo)', kStart: 'Start',
+        rules: 'W każdej rundzie kolejne pola podświetlają się jedno po drugim, a każde wydaje swój własny dźwięk. Gdy sekwencja się skończy, powtórz tę samą kolejność, dotykając odpowiednich pól. Jeśli zrobisz to poprawnie, w następnej rundzie na końcu zostanie dodane jeszcze jedno pole, a całość odtworzy się nieco szybciej. Pierwszy błąd kończy grę, a ukończone rundy stanowią Twój wynik. Nie musisz się spieszyć: powtarzanie sekwencji nigdy nie jest ograniczone czasem. Każde pole ma również swój własny kształt, dzięki czemu możesz je rozróżnić bez pomocy kolorów. Codzienne wyzwanie to ta sama sekwencja dla wszystkich.',
+        tutTitle1: 'Oglądaj', tutText1: 'Pola podświetlają się jedno po drugim, a każde z nich wydaje własny dźwięk. Zapamiętaj kolejność.',
+        tutTitle2: 'Powtórz', tutText2: 'Dotknij pól w tej samej kolejności. Każda runda dodaje jeden nowy element na końcu.',
+        tutTitle3: 'Jak daleko zajdziesz?', tutText3: 'Pierwszy błąd kończy grę. Powtarzanie sekwencji nie jest ograniczone czasem.'
+      },
+      fr: {
+        pads: 'Quatre touches de couleur', start: 'Démarrer', tapStart: 'Touche le centre pour démarrer', watch: 'Regarde et écoute…', yourTurn: 'À toi de répéter',
+        roundN: 'Manche {n}', wrong: 'Raté ! Tu as atteint la manche {n}.', bestN: 'Record : {n}', dailySm: 'Écho du jour', reached: 'Manche', triesN: 'Essais',
+        green: 'Vert', red: 'Rouge', yellow: 'Jaune', blue: 'Bleu', kPads: 'Les quatre touches (haut gauche, haut droite, bas gauche, bas droite)', kStart: 'Démarrer',
+        rules: 'À chaque manche, des touches s’allument l’une après l’autre, chacune avec sa note. À la fin, répète le même ordre en touchant les touches. Si c’est juste, la manche suivante en ajoute une à la fin et va un peu plus vite. La première erreur termine la partie, et les manches réussies font ton score. Rien ne presse : la répétition n’est jamais chronométrée. Chaque touche a aussi sa forme, tu peux donc les distinguer sans la couleur. Le défi du jour est la même séquence pour tous.',
+        tutTitle1: 'Regarde', tutText1: 'Les touches s’allument une à une, chacune avec sa note. Retiens l’ordre.',
+        tutTitle2: 'Répète', tutText2: 'Touche-les dans le même ordre. Chaque manche en ajoute une.',
+        tutTitle3: 'Jusqu’où ?', tutText3: 'La première erreur termine la partie. La répétition n’est jamais chronométrée.'
+      },
+      ar: {
+        pads: 'أربع لوحات ملونة', start: 'ابدأ', tapStart: 'انقر الوسط لتبدأ', watch: 'شاهد واستمع…', yourTurn: 'الآن كرّرها',
+        roundN: 'الجولة {n}', wrong: 'خطأ! بلغت الجولة {n}.', bestN: 'الأفضل: {n}', dailySm: 'صدى اليوم', reached: 'الجولة', triesN: 'المحاولات',
+        green: 'أخضر', red: 'أحمر', yellow: 'أصفر', blue: 'أزرق', kPads: 'اللوحات الأربع (أعلى اليسار، أعلى اليمين، أسفل اليسار، أسفل اليمين)', kStart: 'ابدأ',
+        rules: 'في كل جولة تضيء بعض اللوحات بالتتابع، ولكل منها نغمتها. حين ينتهي العرض، كرّر الترتيب نفسه بالنقر على اللوحات. إن أصبت تضيف الجولة التالية لوحة أخرى في النهاية وتعزف أسرع قليلًا. أول خطأ ينهي اللعبة، والجولات التي أكملتها هي نتيجتك. لا عجلة: التكرار بلا وقت محدد أبدًا. لكل لوحة شكلها الخاص أيضًا، فيمكنك تمييزها دون الألوان. تحدي اليوم تسلسل واحد للجميع.',
+        tutTitle1: 'شاهد', tutText1: 'تضيء اللوحات واحدة تلو الأخرى، ولكل منها نغمتها. تذكّر الترتيب.',
+        tutTitle2: 'كرّر', tutText2: 'انقر الترتيب نفسه. كل جولة تضيف لوحة أخرى.',
+        tutTitle3: 'إلى أي مدى؟', tutText3: 'أول خطأ ينهي اللعبة. التكرار بلا وقت محدد أبدًا.'
+      },
+      hi: {
+        pads: 'चार रंगीन बटन', start: 'शुरू', tapStart: 'शुरू करने के लिए बीच में छुएँ', watch: 'देखें और सुनें…', yourTurn: 'अब दोहराएँ',
+        roundN: 'दौर {n}', wrong: 'ग़लत! आप दौर {n} तक पहुँचे।', bestN: 'रिकॉर्ड: {n}', dailySm: 'रोज़ की गूँज', reached: 'दौर', triesN: 'कोशिशें',
+        green: 'हरा', red: 'लाल', yellow: 'पीला', blue: 'नीला', kPads: 'चारों बटन (ऊपर बाएँ, ऊपर दाएँ, नीचे बाएँ, नीचे दाएँ)', kStart: 'शुरू',
+        rules: 'हर दौर में कुछ बटन बारी-बारी से जलते हैं, हर एक की अपनी आवाज़ होती है। जब यह ख़त्म हो, बटन छूकर वही क्रम दोहराएँ। सही रहा तो अगले दौर में आख़िर में एक और जुड़ता है और थोड़ा तेज़ बजता है। पहली ग़लती पर खेल ख़त्म होता है, और पूरे किए दौर आपका स्कोर हैं। कोई जल्दी नहीं: दोहराने पर कोई समय सीमा नहीं है। हर बटन का अपना आकार भी है, ताकि रंग के बिना भी पहचान सकें। रोज़ की चुनौती में सबके लिए एक ही क्रम होता है।',
+        tutTitle1: 'देखें', tutText1: 'बटन एक-एक करके जलते हैं, हर एक की अपनी आवाज़ के साथ। क्रम याद रखें।',
+        tutTitle2: 'दोहराएँ', tutText2: 'वही क्रम छुएँ। हर दौर में एक और जुड़ता है।',
+        tutTitle3: 'कितनी दूर?', tutText3: 'पहली ग़लती पर खेल ख़त्म। दोहराने पर कोई समय सीमा नहीं।'
+      },
+      zh: {
+        pads: '四个彩色按键', start: '开始', tapStart: '点中间开始', watch: '看好、听好……', yourTurn: '现在按顺序重复',
+        roundN: '第 {n} 轮', wrong: '按错了！你到了第 {n} 轮。', bestN: '最佳：{n}', dailySm: '每日闪灯记忆', reached: '轮数', triesN: '尝试',
+        green: '绿', red: '红', yellow: '黄', blue: '蓝', kPads: '四个按键（左上、右上、左下、右下）', kStart: '开始',
+        rules: '每轮会有几个按键依次亮起，每个都有自己的音。播放结束后，按同样的顺序点按键。全对的话，下一轮会在末尾多加一个，并稍快一些。第一次按错游戏就结束，完成的轮数就是得分。不用着急：重复时不计时。每个按键还有自己的形状，不看颜色也能分辨。每日挑战对所有人都是同一个序列。',
+        tutTitle1: '看', tutText1: '按键依次亮起并发出各自的音。记住顺序。',
+        tutTitle2: '重复', tutText2: '按同样的顺序点按键。每轮多一个。',
+        tutTitle3: '能走多远？', tutText3: '第一次按错就结束。重复时不计时。'
+      },
+      de: {
+        pads: 'Vier farbige Tasten', start: 'Start', tapStart: 'Tippe in die Mitte zum Starten', watch: 'Schau und hör zu …', yourTurn: 'Jetzt wiederholen',
+        roundN: 'Runde {n}', wrong: 'Falsch! Erreicht: Runde {n}.', bestN: 'Rekord: {n}', dailySm: 'Tages-Echo', reached: 'Runde', triesN: 'Versuche',
+        green: 'Grün', red: 'Rot', yellow: 'Gelb', blue: 'Blau', kPads: 'Die vier Tasten (oben links, oben rechts, unten links, unten rechts)', kStart: 'Start',
+        rules: 'In jeder Runde leuchten einige Tasten nacheinander auf, jede mit ihrem eigenen Ton. Danach tippst du dieselbe Reihenfolge nach. Stimmt sie, kommt in der nächsten Runde einer dazu, etwas schneller gespielt. Der erste Fehler beendet das Spiel; die geschafften Runden sind die Punkte. Keine Eile: Das Nachtippen hat kein Zeitlimit. Jede Taste hat auch eine eigene Form, damit man sie ohne Farbe unterscheiden kann. Die Tagesaufgabe ist für alle dieselbe Folge.',
+        tutTitle1: 'Schauen', tutText1: 'Die Tasten leuchten nacheinander mit ihrem Ton. Merk dir die Reihenfolge.',
+        tutTitle2: 'Wiederholen', tutText2: 'Tippe dieselbe Reihenfolge. Jede Runde kommt einer dazu.',
+        tutTitle3: 'Wie weit?', tutText3: 'Der erste Fehler beendet das Spiel. Es gibt kein Zeitlimit.'
+      },
+      es: {
+        pads: 'Cuatro botones de colores', start: 'Empezar', tapStart: 'Toca el centro para empezar', watch: 'Mira y escucha…', yourTurn: 'Ahora repítelo',
+        roundN: 'Ronda {n}', wrong: '¡Fallo! Llegaste a la ronda {n}.', bestN: 'Récord: {n}', dailySm: 'Eco diario', reached: 'Ronda', triesN: 'Intentos',
+        green: 'Verde', red: 'Rojo', yellow: 'Amarillo', blue: 'Azul', kPads: 'Los cuatro botones (arriba izquierda, arriba derecha, abajo izquierda, abajo derecha)', kStart: 'Empezar',
+        rules: 'En cada ronda se encienden varios botones por turno, cada uno con su nota. Al terminar, repite el mismo orden tocándolos. Si aciertas, la ronda siguiente añade uno más al final y suena un poco más rápido. El primer fallo termina la partida, y las rondas completadas son tu puntuación. Sin prisa: repetir nunca tiene tiempo. Cada botón tiene también su forma, para distinguirlos sin color. El reto diario es la misma secuencia para todos.',
+        tutTitle1: 'Mira', tutText1: 'Los botones se encienden uno a uno con su nota. Recuerda el orden.',
+        tutTitle2: 'Repite', tutText2: 'Toca el mismo orden. Cada ronda suma uno.',
+        tutTitle3: '¿Hasta dónde?', tutText3: 'El primer fallo termina la partida. Repetir nunca tiene tiempo.'
+      }
+    }
+  });
+
+  var params = new URLSearchParams(location.search);
+  var dailyDate = params.get('daily');
+  // green, red, yellow, blue, as on the toy; one shape each for colour blindness
+  var COLORS = ['#22A846', '#E0322F', '#F2BE0F', '#1E6FE8'];
+  var NAMES = ['green', 'red', 'yellow', 'blue'];
+  var SHAPES = [
+    '<circle cx="12" cy="12" r="9"/>',
+    '<path d="M12 3l9 17H3z"/>',
+    '<rect x="4" y="4" width="16" height="16" rx="2"/>',
+    '<path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.6 7-6.2-3.7-6.2 3.7 1.6-7L2 9.2l7.1-.6z"/>'
+  ];
+
+  var S = null, seed = 0, phase = 'idle', tries = 0, startedAt = 0, timers = [], ended = false;
+
+  var pads = [], board = el('div', { class: 'sm-board', role: 'group', 'aria-label': C.t('pads') });
+  for (var k = 0; k < 4; k++) {
+    (function (i) {
+      var b = el('button', { class: 'sm-pad', type: 'button', 'aria-label': C.t(NAMES[i]), style: { '--pad': COLORS[i] }, html: '<svg viewBox="0 0 24 24" fill="#fff">' + SHAPES[i] + '</svg>' });
+      b.addEventListener('pointerdown', function (e) { e.preventDefault(); tapPad(i); });
+      b.addEventListener('click', function (e) { if (e.detail === 0) tapPad(i); });   // keyboard Enter/Space on a focused pad
+      pads.push(b); board.appendChild(b);
+    })(k);
+  }
+  var hubN = el('span', { class: 'sm-hub__n' }), hubL = el('span', { class: 'sm-hub__l' });
+  var hub = el('button', { class: 'sm-hub', type: 'button' }, [el('span', {}, [hubN, el('br'), hubL])]);
+  hub.addEventListener('click', function () { if (phase === 'idle' || phase === 'over') begin(); });
+  board.appendChild(hub);
+  var box = el('div', { class: 'sm-box' }, [board]);
+  var top = el('div', { class: 'sm-top ch-above' });
+  var status = el('div', { class: 'sm-status', role: 'status', 'aria-live': 'polite' });
+  var wrap = el('div', { class: 'sm-wrap ch-split' }, [el('div', { class: 'ch-fit' }, [box]), el('div', { class: 'ch-side' }, [top, status])]);
+
+  ctx.button({ icon: 'help', label: C.t('help'), onClick: showHelp });
+  ctx.button({ icon: 'refresh', label: C.t('start'), onClick: function () { if (phase !== 'show') begin(); } });
+  ctx.main.appendChild(wrap);
+  ctx.mount();
+
+  /* ------------------------------------------------------------- game */
+
+  function seeded(sd) {
+    var a = sd >>> 0;
+    return function () { a = (a + 0x6D2B79F5) >>> 0; var t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  }
+  function rngFor(sd) { return dailyDate ? C.daily('simon', dailyDate).rng : seeded(sd); }
+
+  function clearTimers() { timers.forEach(clearTimeout); timers = []; pads.forEach(function (p) { p.classList.remove('sm-pad--lit'); }); }
+  function later(fn, ms) { timers.push(setTimeout(fn, ms)); }
+
+  function fresh() {
+    clearTimers();
+    seed = Math.floor(Math.random() * 4294967296);
+    S = E.game(rngFor(seed), 1);
+    phase = 'idle'; ended = false;
+    render();
+  }
+  function begin() {
+    if (!S || S.over) { seed = Math.floor(Math.random() * 4294967296); S = E.game(rngFor(seed), 1); }
+    tries++;
+    startedAt = Date.now(); ended = false;
+    playBack(500);
+  }
+
+  function light(i, ms) {
+    var p = pads[i];
+    p.classList.add('sm-pad--lit');
+    C.audio.sfx('simon' + i);
+    later(function () { p.classList.remove('sm-pad--lit'); }, ms);
+  }
+  // Plays the sequence so far; a reduced-motion player still sees each pad lit, as the
+  // light is the information, but with no glow animation
+  function playBack(delay) {
+    clearTimers();
+    phase = 'show'; render();
+    var note = E.noteMs(S.len), gap = E.gapMs(S.len), t = delay;
+    for (var j = 0; j < S.len; j++) {
+      (function (i, at) { later(function () { light(i, note); }, at); })(S.seq[j], t);
+      t += note + gap;
+    }
+    later(function () { phase = 'input'; render(); }, t);
+  }
+
+  function tapPad(i) {
+    if (phase !== 'input') return;
+    var r = E.press(S, i);
+    light(i, 180);
+    if (r === 'wrong') {
+      phase = 'over';
+      C.audio.sfx('simonWrong'); C.haptic('error');
+      board.classList.remove('sm-shake'); void board.offsetWidth; board.classList.add('sm-shake');
+      // show the pad that was due
+      var due = S.seq[S.pos];
+      later(function () { light(due, 700); }, 450);
+      ctx.clearSave();
+      render();
+      later(finish, 1300);
+      return;
+    }
+    if (r === 'round') {
+      phase = 'wait';
+      save();
+      render();
+      later(function () { playBack(0); }, 750);
+      return;
+    }
+    render();
+  }
+
+  function finish() {
+    if (ended) return;
+    ended = true;
+    var n = S.best;
+    var coins = Math.min(30, 1 + Math.floor(n / 2)), points = Math.min(120, 4 + n * 4), note = null;
+    if (n >= 10) C.achievements.unlock('smn-10');
+    if (n >= 20) C.achievements.unlock('smn-20');
+    if (dailyDate) {
+      if (n >= 1 && !C.stats.daily('simon', dailyDate, { label: C.t('roundN', { n: C.num(n) }), win: n >= 8, tries: tries })) { coins = Math.round(coins * 0.2); points = Math.round(points * 0.2); }
+      if (n >= 8) C.achievements.unlock('smn-daily');
+    } else if (C.stats.best('simon', 'rounds', n)) note = C.t('bestN', { n: C.num(n) });
+    ctx.finish({
+      won: dailyDate ? n >= 8 : null,
+      title: C.t('roundN', { n: C.num(n) }),
+      note: note, timeMs: Date.now() - startedAt, coins: coins, points: points,
+      lines: [
+        { label: C.t('reached'), value: C.num(n) },
+        dailyDate ? { label: C.t('triesN'), value: C.num(tries) } : { label: C.t('best'), value: C.num(C.stats.getBest('simon', 'rounds') || n) }
+      ],
+      shareText: 'چوگان · سایمون' + (dailyDate ? ('\nروزانه ' + dailyDate) : '') + '\n' + n + ' دور',
+      againLabel: C.t('start'),
+      onAgain: function () { fresh(); begin(); }
+    });
+  }
+
+  /* --------------------------------------------------------------- view */
+
+  function render() {
+    top.innerHTML = '';
+    if (dailyDate) top.appendChild(el('span', { class: 'ch-badge ch-badge--accent' }, [C.icon('calendar', 14), el('span', { text: C.t('dailySm') + ' — ' + C.num(dailyDate) })]));
+    var best = C.stats.getBest('simon', 'rounds');
+    if (!dailyDate && best) top.appendChild(el('span', { class: 'ch-badge', text: C.t('bestN', { n: C.num(best) }) }));
+    var idle = phase === 'idle' || (phase === 'over' && ended);
+    hub.classList.toggle('sm-hub--go', idle);
+    hubN.textContent = idle ? '▶' : C.num(S ? S.len - (phase === 'over' ? 1 : 0) : 1);
+    hubL.textContent = idle ? C.t('start') : C.t('roundN', { n: '' }).trim();
+    hub.setAttribute('aria-label', idle ? C.t('start') : C.t('roundN', { n: C.num(S.len) }));
+    status.textContent = phase === 'show' ? C.t('watch') : phase === 'input' ? C.t('yourTurn') : phase === 'over' ? C.t('wrong', { n: C.num(S.best) }) : phase === 'wait' ? '✓' : C.t('tapStart');
+  }
+
+  /* -------------------------------------------------------------- input */
+
+  var KEYS = ['1', '2', '3', '4'];
+  window.addEventListener('keydown', function (e) {
+    if (document.querySelector('.ch-scrim')) return;
+    var t = e.target && e.target.tagName;
+    var i = KEYS.indexOf(e.key);
+    if (i < 0) i = C.keyIs(e, 'q') ? 0 : C.keyIs(e, 'w') ? 1 : C.keyIs(e, 'a') ? 2 : C.keyIs(e, 's') ? 3 : -1;
+    if (i >= 0) { tapPad(i); e.preventDefault(); return; }
+    if ((e.key === ' ' || e.key === 'Enter') && t !== 'BUTTON' && (phase === 'idle' || phase === 'over')) { begin(); e.preventDefault(); }
+  });
+  // away from the app, a playback stops; it starts again from the top of the round
+  C.onPause(function () { if (phase === 'show' || phase === 'wait') { clearTimers(); phase = 'paused'; } });
+  C.onResume(function () { if (phase === 'paused' || phase === 'input') { S.pos = 0; playBack(400); } });
+
+  /* --------------------------------------------------------------- help */
+
+  function kb(k, what) { return el('div', { class: 'ch-item' }, [el('div', { class: 'ch-item__label', text: what }), el('span', { class: 'ch-badge', text: k })]); }
+  function showHelp() {
+    C.ui.modal({
+      title: C.t('help'),
+      body: [
+        el('p', { class: 'ch-dim', text: C.t('rules') }),
+        el('h3', { style: { 'margin-top': 'var(--s-4)' }, text: C.t('keyboard') }),
+        el('div', { class: 'ch-list' }, [kb('1 2 3 4 / Q W A S', C.t('kPads')), kb('Space / Enter', C.t('kStart'))])
+      ],
+      actions: [{ label: C.t('tutorial'), onClick: function () { ctx.showTutorial(TUT); } }, { label: C.t('done'), kind: 'primary' }]
+    });
+  }
+  function tArt(kind) {
+    var s = '<svg viewBox="0 0 200 110" width="100%" direction="ltr"><rect width="200" height="110" rx="10" fill="#F3EDE4"/><g transform="translate(100 55)">';
+    var q = function (i, lit) {
+      var d = ['M-4-4H-44A40 40 0 0 1-4-44Z', 'M4-4V-44A40 40 0 0 1 44-4Z', 'M-4 4V44A40 40 0 0 1-44 4Z', 'M4 4H44A40 40 0 0 1 4 44Z'][i];
+      return '<path d="' + d + '" fill="' + COLORS[i] + '" opacity="' + (lit ? 1 : 0.45) + '"/>';
+    };
+    for (var i = 0; i < 4; i++) s += q(i, (kind === 1 && i === 1) || (kind === 2 && i === 2));
+    s += '<circle r="14" fill="#fff" stroke="#2B2622" stroke-width="4"/>';
+    if (kind === 3) s += '<text y="5" font-size="14" font-weight="800" text-anchor="middle" fill="#2B2622">12</text>';
+    return s + '</g></svg>';
+  }
+  var TUT = [
+    { title: C.t('tutTitle1'), text: C.t('tutText1'), art: tArt(1) },
+    { title: C.t('tutTitle2'), text: C.t('tutText2'), art: tArt(2) },
+    { title: C.t('tutTitle3'), text: C.t('tutText3'), art: tArt(3) }
+  ];
+
+  /* -------------------------------------------------------------- start */
+
+  // A game is saved after each round it completes and comes back at that round,
+  // replaying the sequence from the start; the daily one has its own slot
+  ctx.autosave(function () {
+    if (!S || S.over || S.best < 1) return { inProgress: false };
+    return { seed: seed, round: S.len, tries: tries, daily: dailyDate || null };
+  });
+  function save() { ctx.save(); }
+  var saved = ctx.loadSave();
+  if (saved && typeof saved.round === 'number' && saved.round >= 2 && saved.round <= 400 && (saved.daily || null) === (dailyDate || null)) {
+    seed = saved.seed >>> 0; tries = saved.tries || 0;
+    S = E.game(rngFor(seed), saved.round);
+    phase = 'idle'; render();
+  } else fresh();
+  if (dailyDate && C.stats.dailyDone('simon', dailyDate)) {
+    var rec = C.stats.dailyOf(dailyDate).simon;
+    C.ui.toast({ icon: 'check', title: C.t('dailyDone'), sub: rec && rec.label });
+  }
+  ctx.tutorialIfNew(TUT);
+})();
+</script>
+</body>
+</html>

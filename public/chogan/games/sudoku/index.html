@@ -1,0 +1,1548 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#FBF6EF">
+<title>سودوکو — چوگان</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../lib/chogan.css">
+<script src="../../lib/early.js"></script>
+<style>
+  /* The board fills the room it has (#359); before, it stopped at 520px and a
+     laptop or tablet showed it in half the screen. In a wide window the tools and
+     a 3x3 number pad sit beside it (the core's .ch-split). */
+  .sd-tools, .sd-pad { width: 100%; }
+  /* The box lines and the frame have their own colour, at least 3:1 against the
+     cells: in the frame's --c-line the dark theme showed a 5px gap and a 2px gap
+     alike, and players could not find the 3x3 boxes (#519). Only in the dark theme: the
+     owner found the light board right as it was (#526). */
+  :root { --sd-box: var(--c-line); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --sd-box: #857560; } }
+  :root[data-theme="dark"] { --sd-box: #857560; }
+  /* A player found the board hard on the eyes: the notes too faint, and the selected cell
+     filled with the solid accent blue (#6A8CBF, 3.4:1 under white) that hid its notes
+     (#874). Six board themes behind the gear, each with its own surfaces and inks for the
+     light and the dark app theme; the selection is a tint with a ring, so the cell keeps
+     its own ink. tools/tests/sudoku-themes.js checks every pair of colours that meet. */
+  /* ---- board themes (#874) ---- */
+  [data-sd-theme="default"] { --sd-frame: #E7DACA; --sd-cell: #FFFFFF; --sd-given-bg: #F7F1E8; --sd-given: #2C2620; --sd-user: #355B95; --sd-note: #5F5447; --sd-hint: #336A40; --sd-peer: #F0E8DC; --sd-same: #E8EEF7; --sd-sel: #CCDBF0; --sd-ring: #4C70A8; --sd-bad-bg: #FAE3E0; --sd-bad: #B0443A; --sd-cage: #7C7063; --sd-sum: #2C2620; }
+  [data-sd-theme="paper"] { --sd-frame: #DDCFB4; --sd-box: #8E7854; --sd-cell: #F5EDDC; --sd-given-bg: #ECE3CE; --sd-given: #46382A; --sd-user: #7A4119; --sd-note: #625240; --sd-hint: #3D5524; --sd-peer: #E4D6B8; --sd-same: #F0D99A; --sd-sel: #DCC79E; --sd-ring: #946429; --sd-bad-bg: #F2D3C4; --sd-bad: #963822; --sd-cage: #7A6650; --sd-sum: #46382A; }
+  [data-sd-theme="contrast"] { --sd-frame: #8A8A8A; --sd-box: #000000; --sd-cell: #FFFFFF; --sd-given-bg: #EEEEEE; --sd-given: #000000; --sd-user: #003CA6; --sd-note: #262626; --sd-hint: #00652A; --sd-peer: #FFF6CC; --sd-same: #FFE680; --sd-sel: #FFD000; --sd-ring: #000000; --sd-bad-bg: #FFD4D4; --sd-bad: #A80000; --sd-cage: #3A3A3A; --sd-sum: #000000; }
+  [data-sd-theme="sage"] { --sd-frame: #D3DDCC; --sd-box: #6B8662; --sd-cell: #F4F8F1; --sd-given-bg: #E5EDDF; --sd-given: #22301F; --sd-user: #275E36; --sd-note: #46593F; --sd-hint: #674A8F; --sd-peer: #DCE7D4; --sd-same: #D2E6C2; --sd-sel: #B9D6AF; --sd-ring: #3B744A; --sd-bad-bg: #F5DAD5; --sd-bad: #A0382C; --sd-cage: #5D7257; --sd-sum: #22301F; }
+  [data-sd-theme="ocean"] { --sd-frame: #DCE5EF; --sd-box: #5B7792; --sd-cell: #FFFFFF; --sd-given-bg: #F1F5FA; --sd-given: #1B2939; --sd-user: #19548D; --sd-note: #425569; --sd-hint: #215D43; --sd-peer: #E6EEF7; --sd-same: #D2E5F7; --sd-sel: #BCD8F2; --sd-ring: #2C69A5; --sd-bad-bg: #FBE3E3; --sd-bad: #A33139; --sd-cage: #5B6F84; --sd-sum: #1B2939; }
+  [data-sd-theme="night"] { --sd-frame: #3B3543; --sd-box: #A08FB5; --sd-cell: #1F1B24; --sd-given-bg: #29242F; --sd-given: #F3E9D8; --sd-user: #FFB648; --sd-note: #CDBFA8; --sd-hint: #8FD6B0; --sd-peer: #2F2837; --sd-same: #45361F; --sd-sel: #5A4422; --sd-ring: #FFB648; --sd-bad-bg: #4B2128; --sd-bad: #FF9393; --sd-cage: #A898B8; --sd-sum: #F3E9D8; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) [data-sd-theme="default"] { --sd-frame: #3A3128; --sd-box: #857560; --sd-cell: #211C16; --sd-given-bg: #2A241C; --sd-given: #F4EEE4; --sd-user: #A5C0E8; --sd-note: #BDB2A1; --sd-hint: #8FCF9E; --sd-peer: #362E23; --sd-same: #2B3445; --sd-sel: #34445C; --sd-ring: #93B2DF; --sd-bad-bg: #40231F; --sd-bad: #F29384; --sd-cage: #A99C8B; --sd-sum: #F4EEE4; }
+    :root:not([data-theme="light"]) [data-sd-theme="paper"] { --sd-frame: #3A3226; --sd-box: #8F7957; --sd-cell: #29231B; --sd-given-bg: #322A20; --sd-given: #E6DAC4; --sd-user: #E8B47A; --sd-note: #C9B99D; --sd-hint: #A9C58C; --sd-peer: #3C3326; --sd-same: #47402A; --sd-sel: #554226; --sd-ring: #DBA760; --sd-bad-bg: #4B2B22; --sd-bad: #F0A28C; --sd-cage: #AB977A; --sd-sum: #E6DAC4; }
+    :root:not([data-theme="light"]) [data-sd-theme="contrast"] { --sd-frame: #707070; --sd-box: #FFFFFF; --sd-cell: #000000; --sd-given-bg: #161616; --sd-given: #FFFFFF; --sd-user: #9CD0FF; --sd-note: #E6E6E6; --sd-hint: #8AF0AA; --sd-peer: #2B2700; --sd-same: #4D4400; --sd-sel: #5A4E00; --sd-ring: #FFE14D; --sd-bad-bg: #520000; --sd-bad: #FF9A9A; --sd-cage: #CFCFCF; --sd-sum: #FFFFFF; }
+    :root:not([data-theme="light"]) [data-sd-theme="sage"] { --sd-frame: #2E3A2D; --sd-box: #7C9972; --sd-cell: #1B231B; --sd-given-bg: #222C21; --sd-given: #E0EBDC; --sd-user: #A0D8AA; --sd-note: #BACCB4; --sd-hint: #D3BDF5; --sd-peer: #2A3729; --sd-same: #2E4733; --sd-sel: #3A5A40; --sd-ring: #92CD9A; --sd-bad-bg: #3F2523; --sd-bad: #F09C90; --sd-cage: #97AE90; --sd-sum: #E0EBDC; }
+    :root:not([data-theme="light"]) [data-sd-theme="ocean"] { --sd-frame: #26333F; --sd-box: #6E8AA5; --sd-cell: #141D26; --sd-given-bg: #19232E; --sd-given: #DEE7F0; --sd-user: #88BEF0; --sd-note: #A9BACB; --sd-hint: #88D4B0; --sd-peer: #22303D; --sd-same: #1F3A55; --sd-sel: #2B4B6B; --sd-ring: #88BEF0; --sd-bad-bg: #3B2027; --sd-bad: #F39CA2; --sd-cage: #8397AC; --sd-sum: #DEE7F0; }
+    :root:not([data-theme="light"]) [data-sd-theme="night"] { --sd-frame: #2B2632; --sd-box: #8D7DA2; --sd-cell: #141118; --sd-given-bg: #1C1821; --sd-given: #EFE5D3; --sd-user: #FFB140; --sd-note: #C6B8A0; --sd-hint: #88D0AA; --sd-peer: #251F2C; --sd-same: #3B2E19; --sd-sel: #4F3B1D; --sd-ring: #FFB140; --sd-bad-bg: #43191F; --sd-bad: #FF8E8E; --sd-cage: #9D8DAE; --sd-sum: #EFE5D3; }
+  }
+  :root[data-theme="dark"] [data-sd-theme="default"] { --sd-frame: #3A3128; --sd-box: #857560; --sd-cell: #211C16; --sd-given-bg: #2A241C; --sd-given: #F4EEE4; --sd-user: #A5C0E8; --sd-note: #BDB2A1; --sd-hint: #8FCF9E; --sd-peer: #362E23; --sd-same: #2B3445; --sd-sel: #34445C; --sd-ring: #93B2DF; --sd-bad-bg: #40231F; --sd-bad: #F29384; --sd-cage: #A99C8B; --sd-sum: #F4EEE4; }
+  :root[data-theme="dark"] [data-sd-theme="paper"] { --sd-frame: #3A3226; --sd-box: #8F7957; --sd-cell: #29231B; --sd-given-bg: #322A20; --sd-given: #E6DAC4; --sd-user: #E8B47A; --sd-note: #C9B99D; --sd-hint: #A9C58C; --sd-peer: #3C3326; --sd-same: #47402A; --sd-sel: #554226; --sd-ring: #DBA760; --sd-bad-bg: #4B2B22; --sd-bad: #F0A28C; --sd-cage: #AB977A; --sd-sum: #E6DAC4; }
+  :root[data-theme="dark"] [data-sd-theme="contrast"] { --sd-frame: #707070; --sd-box: #FFFFFF; --sd-cell: #000000; --sd-given-bg: #161616; --sd-given: #FFFFFF; --sd-user: #9CD0FF; --sd-note: #E6E6E6; --sd-hint: #8AF0AA; --sd-peer: #2B2700; --sd-same: #4D4400; --sd-sel: #5A4E00; --sd-ring: #FFE14D; --sd-bad-bg: #520000; --sd-bad: #FF9A9A; --sd-cage: #CFCFCF; --sd-sum: #FFFFFF; }
+  :root[data-theme="dark"] [data-sd-theme="sage"] { --sd-frame: #2E3A2D; --sd-box: #7C9972; --sd-cell: #1B231B; --sd-given-bg: #222C21; --sd-given: #E0EBDC; --sd-user: #A0D8AA; --sd-note: #BACCB4; --sd-hint: #D3BDF5; --sd-peer: #2A3729; --sd-same: #2E4733; --sd-sel: #3A5A40; --sd-ring: #92CD9A; --sd-bad-bg: #3F2523; --sd-bad: #F09C90; --sd-cage: #97AE90; --sd-sum: #E0EBDC; }
+  :root[data-theme="dark"] [data-sd-theme="ocean"] { --sd-frame: #26333F; --sd-box: #6E8AA5; --sd-cell: #141D26; --sd-given-bg: #19232E; --sd-given: #DEE7F0; --sd-user: #88BEF0; --sd-note: #A9BACB; --sd-hint: #88D4B0; --sd-peer: #22303D; --sd-same: #1F3A55; --sd-sel: #2B4B6B; --sd-ring: #88BEF0; --sd-bad-bg: #3B2027; --sd-bad: #F39CA2; --sd-cage: #8397AC; --sd-sum: #DEE7F0; }
+  :root[data-theme="dark"] [data-sd-theme="night"] { --sd-frame: #2B2632; --sd-box: #8D7DA2; --sd-cell: #141118; --sd-given-bg: #1C1821; --sd-given: #EFE5D3; --sd-user: #FFB140; --sd-note: #C6B8A0; --sd-hint: #88D0AA; --sd-peer: #251F2C; --sd-same: #3B2E19; --sd-sel: #4F3B1D; --sd-ring: #FFB140; --sd-bad-bg: #43191F; --sd-bad: #FF8E8E; --sd-cage: #9D8DAE; --sd-sum: #EFE5D3; }
+  /* ---- end of board themes ---- */
+  @container game (min-aspect-ratio: 5 / 4) {
+    .ch-side .sd-pad { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+    .ch-side .sd-pad .sd-num { min-height: clamp(36px, 10cqh, 76px); padding-block: 2px; font-size: clamp(16px, 3.4cqh, 28px); }
+    .ch-side .sd-tool { min-height: clamp(40px, 9cqh, 56px); }
+  }
+  .sd-board {
+    /* ردیف‌ها هم صریح‌اند: با ردیف خودکار هر ردیف به اندازه‌ی محتوایش بود و
+       ردیفی که هیچ عددی نداشت تا چند پیکسل جمع می‌شد (#118). minmax(0, …) تا
+       محتوای خانه اندازه‌ی ستون یا ردیف را بزرگ نکند. */
+    display: grid;
+    /* the 1px tracks between the boxes widen the gap there, in the frame's own
+       colour, while every cell keeps the same size (#411) */
+    grid-template-columns: repeat(3, minmax(0, 1fr)) 1px repeat(3, minmax(0, 1fr)) 1px repeat(3, minmax(0, 1fr));
+    grid-template-rows: repeat(3, minmax(0, 1fr)) 1px repeat(3, minmax(0, 1fr)) 1px repeat(3, minmax(0, 1fr));
+    aspect-ratio: 1; container-type: inline-size;
+    background: var(--sd-frame); gap: 2px; padding: 3px;
+    border-radius: var(--r-md); box-shadow: var(--sh-2);
+    border: 3px solid var(--sd-box);
+    /* خانه‌ها مربع‌اند و بدون این، چهار گوشه‌شان از گوشه‌ی گرد تخته بیرون
+       می‌زند. بریدن به‌تنهایی گوشه را تخت می‌کند، پس خودِ چهار خانه‌ی گوشه هم
+       شعاع می‌گیرند: شعاع بیرونی منهای حاشیه منهای پدینگ، تا دو منحنی
+       هم‌مرکز باشند. */
+    --sd-outer-r: var(--r-md);
+    --sd-inner-r: calc(var(--r-md) - 6px);
+    overflow: hidden;
+    touch-action: manipulation;
+  }
+  /* ویژگی‌های منطقی‌اند تا در چیدمان راست‌چین هم گوشه‌ی درست را بگیرند */
+  .sd-cell:nth-child(1)  { border-start-start-radius: var(--sd-inner-r); }
+  .sd-cell:nth-child(9)  { border-start-end-radius: var(--sd-inner-r); }
+  .sd-cell:nth-child(73) { border-end-start-radius: var(--sd-inner-r); }
+  .sd-cell:nth-child(81) { border-end-end-radius: var(--sd-inner-r); }
+  /* each line covers its spacer track and the gaps either side, out to the frame */
+  .sd-sep { background: var(--sd-box); pointer-events: none; }
+  .sd-sep--col { grid-row: 1 / -1; margin: -3px -2px; }
+  .sd-sep--row { grid-column: 1 / -1; margin: -2px -3px; }
+  .sd-cell {
+    background: var(--sd-cell); border: 0; padding: 0; font: inherit; cursor: pointer;
+    display: grid; place-items: center; position: relative;
+    font-size: max(15px, 5.3cqi); font-weight: 700; color: var(--sd-given);
+    transition: background var(--t-fast) var(--ease);
+    font-variant-numeric: tabular-nums;
+    /* soft tiles on the frame's colour (owner's wish, #411) */
+    border-radius: max(3px, 1.2cqi);
+  }
+  .sd-cell--given { color: var(--sd-given); background: var(--sd-given-bg); }
+  /* a finished row, column or box answers with a ripple from the last digit (#407) */
+  .sd-cell.sd-done { animation: sd-done 420ms var(--ease); }
+  @keyframes sd-done { 40% { transform: scale(1.08); background-color: var(--sd-same); } }
+  .sd-cell--user { color: var(--sd-user); }
+  .sd-cell--hinted { color: var(--sd-hint); }
+  .sd-cell--peer { background: var(--sd-peer); }
+  .sd-cell--same { background: var(--sd-same); }
+  .sd-cell--sel { background: var(--sd-sel); box-shadow: inset 0 0 0 2px var(--sd-ring); }
+  .sd-cell--bad { background: var(--sd-bad-bg); color: var(--sd-bad); }
+  .sd-cell--sel.sd-cell--bad { box-shadow: inset 0 0 0 2px var(--sd-bad); }
+  /* notes are ink only, on whatever the cell shows (#874) */
+  /* Auto rows and 1fr columns sized to their content, so an empty row or the larger
+     highlighted digit moved the other notes, and a 5 could sit where a 2 belongs (#965).
+     Fixed equal tracks keep every digit in its own place in every cell. */
+  .sd-notes { display: grid; grid-template: repeat(3, minmax(0, 1fr)) / repeat(3, minmax(0, 1fr)); width: 100%; height: 100%; padding: 2px; }
+  .sd-notes span { font-size: max(7px, 2.2cqi); font-weight: 700; color: var(--sd-note); display: grid; place-items: center; line-height: 1; }
+  /* a note of the selected digit: the "yours" ink, which reads at 4.5:1 on every shading of every theme */
+  .sd-notes .sd-note--same { color: var(--sd-user); font-weight: 900; font-size: max(8px, 2.6cqi); }
+  .sd-pad { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; }
+  .sd-num {
+    border: 0; background: var(--c-surface); border-radius: var(--r-sm); cursor: pointer;
+    /* اندازه‌ی قلم به عرض خود دکمه بسته است نه به عرض صفحه: نه دکمه در عرض
+       یک گوشی یعنی حدود ده درصد عرض هر کدام، و ۵.۴vw از آن بزرگ‌تر درمی‌آمد
+       و رقم با شمارنده‌ی زیرش به هم می‌چسبید. */
+    font: inherit; font-weight: 800; font-size: clamp(15px, 4.4vw, 22px); color: var(--game);
+    box-shadow: var(--sh-1); position: relative;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 1px; padding: 7px 0 6px;
+    transition: transform var(--t-fast) var(--ease);
+    touch-action: manipulation; min-height: 54px;
+  }
+  .sd-num:active { transform: scale(.9); }
+  .sd-num small { font-size: 10px; color: var(--c-text-faint); font-weight: 600; line-height: 1; }
+  .sd-num[disabled] { opacity: .3; }
+  .sd-tools { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+  .sd-tool {
+    border: 0; background: var(--c-surface); border-radius: var(--r-sm); box-shadow: var(--sh-1);
+    font: inherit; font-size: 11px; font-weight: 700; color: var(--c-text-dim); cursor: pointer;
+    padding: 7px 2px; display: flex; flex-direction: column; align-items: center; gap: 2px;
+    min-height: 52px; transition: transform var(--t-fast) var(--ease);
+    touch-action: manipulation;
+  }
+  .sd-tool:active { transform: scale(.94); }
+  .sd-tool[aria-pressed="true"] { background: var(--game); color: #fff; }
+  .sd-tool svg { width: 20px; height: 20px; }
+  .sd-tool b { font-size: 9px; color: var(--c-gold); font-weight: 800; }
+  .sd-tool .sd-price { display: inline-flex; align-items: center; gap: 2px; }
+  .sd-tool .sd-price svg { width: 10px; height: 10px; }
+  .sd-tool[aria-pressed="true"] b { color: #fff; }
+  /* روی گوشی باریک، انتخابگر سختی و نشان تعداد سرنخ کنار هم جا نمی‌شوند و
+     نشان از لبه‌ی صفحه بیرون می‌زد. اجازه‌ی شکستن خط می‌دهیم. */
+  .sd-top {
+    display: flex; align-items: center; gap: var(--s-2);
+    justify-content: center; flex-wrap: wrap;
+  }
+  /* Killer (#851): each cell draws its own piece of a cage's dotted outline; the pieces
+     reach across the gaps to meet their neighbours' (cageLines works out where). The
+     sum sits on the cage's first cell, on the cell's own colour so the line passes behind. */
+  /* above every cell, or the next cell's background hides the piece crossing the gap */
+  .sd-cage { position: absolute; z-index: 1; pointer-events: none; border: 0 dotted var(--sd-cage); }
+  .sd-cage--h { height: 0; border-top-width: 2px; }
+  .sd-cage--v { width: 0; border-inline-start-width: 2px; }
+  .sd-sum {
+    position: absolute; z-index: 2; top: 1px; inset-inline-start: 1px; pointer-events: none;
+    font-size: max(8px, 2.3cqi); font-weight: 800; line-height: 1; padding: 1px 2px;
+    color: var(--sd-sum); background: inherit; border-radius: 3px;
+  }
+  /* the gear's row of six board themes (#874): each swatch is drawn in its own theme */
+  .sd-theme-item { flex-direction: column; align-items: stretch; gap: var(--s-2); }
+  .sd-themes { display: flex; flex-wrap: wrap; gap: 8px; }
+  .sd-swatch {
+    width: 40px; height: 40px; padding: 0; cursor: pointer; border-radius: 10px;
+    border: 3px solid var(--sd-box); display: grid; place-items: center;
+    background: linear-gradient(135deg, var(--sd-cell) 55%, var(--sd-sel) 55%);
+    font: inherit; font-size: 17px; font-weight: 800; color: var(--sd-user);
+  }
+  .sd-swatch[aria-pressed="true"] { outline: 3px solid var(--c-text); outline-offset: 2px; }
+  .sd-swatch:focus-visible { outline: 3px solid var(--c-text-dim); outline-offset: 2px; }
+  .sd-swatch[aria-pressed="true"]:focus-visible { outline-color: var(--c-text); outline-style: double; outline-width: 4px; }
+  .sd-theme-name { font-size: var(--fs-sm); color: var(--c-text-dim); }
+  /* notes and digits move down a little, clear of the sum in the corner */
+  .sd-board--killer .sd-notes { padding-top: max(7px, 2.4cqi); }
+  .sd-board--killer .sd-cell { padding-top: max(3px, 0.8cqi); }
+</style>
+</head>
+<body>
+<script src="../../version.js"></script>
+<script src="../../lib/chogan.js"></script>
+<script>
+/* ==== ENGINE START ==== */
+function SudokuEngineFactory() {
+  'use strict';
+
+  var ROWS = [], COLS = [], BOXES = [], PEERS = [];
+  (function build() {
+    for (var i = 0; i < 9; i++) { ROWS.push([]); COLS.push([]); BOXES.push([]); }
+    for (var c = 0; c < 81; c++) {
+      var r = (c / 9) | 0, k = c % 9, b = ((r / 3) | 0) * 3 + ((k / 3) | 0);
+      ROWS[r].push(c); COLS[k].push(c); BOXES[b].push(c);
+    }
+    for (var i2 = 0; i2 < 81; i2++) {
+      var r2 = (i2 / 9) | 0, k2 = i2 % 9, b2 = ((r2 / 3) | 0) * 3 + ((k2 / 3) | 0);
+      var set = {};
+      ROWS[r2].concat(COLS[k2], BOXES[b2]).forEach(function (x) { if (x !== i2) set[x] = 1; });
+      PEERS.push(Object.keys(set).map(Number));
+    }
+  })();
+
+  function candidates(grid, i) {
+    if (grid[i]) return 0;
+    var used = 0, p = PEERS[i];
+    for (var j = 0; j < p.length; j++) { var v = grid[p[j]]; if (v) used |= 1 << v; }
+    return (~used) & 0x3FE;
+  }
+  function bitCount(m) { var n = 0; while (m) { m &= m - 1; n++; } return n; }
+  function firstBit(m) { var v = 1; while (!(m & (1 << v))) v++; return v; }
+
+  // شمارش جواب‌ها تا سقف. برای بررسی یکتا بودن جواب.
+  function solveCount(grid, limit) {
+    var g = grid.slice();
+    var count = 0;
+    (function rec() {
+      if (count >= limit) return;
+      var best = -1, bestMask = 0, bestN = 10;
+      for (var i = 0; i < 81; i++) {
+        if (g[i]) continue;
+        var m = candidates(g, i);
+        var n = bitCount(m);
+        if (n === 0) return;
+        if (n < bestN) { bestN = n; best = i; bestMask = m; if (n === 1) break; }
+      }
+      if (best === -1) { count++; return; }
+      for (var v = 1; v <= 9; v++) {
+        if (!(bestMask & (1 << v))) continue;
+        g[best] = v; rec(); g[best] = 0;
+        if (count >= limit) return;
+      }
+    })();
+    return count;
+  }
+
+  function solve(grid) {
+    var g = grid.slice();
+    var ok = (function rec() {
+      var best = -1, bestMask = 0, bestN = 10;
+      for (var i = 0; i < 81; i++) {
+        if (g[i]) continue;
+        var m = candidates(g, i);
+        var n = bitCount(m);
+        if (n === 0) return false;
+        if (n < bestN) { bestN = n; best = i; bestMask = m; if (n === 1) break; }
+      }
+      if (best === -1) return true;
+      for (var v = 1; v <= 9; v++) {
+        if (!(bestMask & (1 << v))) continue;
+        g[best] = v;
+        if (rec()) return true;
+        g[best] = 0;
+      }
+      return false;
+    })();
+    return ok ? g : null;
+  }
+
+  function generateSolved(rnd) {
+    var g = new Array(81).fill(0);
+    (function rec() {
+      var best = -1, bestMask = 0, bestN = 10;
+      for (var i = 0; i < 81; i++) {
+        if (g[i]) continue;
+        var m = candidates(g, i);
+        var n = bitCount(m);
+        if (n === 0) return false;
+        if (n < bestN) { bestN = n; best = i; bestMask = m; }
+      }
+      if (best === -1) return true;
+      var vals = [];
+      for (var v = 1; v <= 9; v++) if (bestMask & (1 << v)) vals.push(v);
+      for (var k = vals.length - 1; k > 0; k--) {
+        var j2 = Math.floor(rnd() * (k + 1));
+        var t = vals[k]; vals[k] = vals[j2]; vals[j2] = t;
+      }
+      for (var q = 0; q < vals.length; q++) {
+        g[best] = vals[q];
+        if (rec()) return true;
+        g[best] = 0;
+      }
+      return false;
+    })();
+    return g;
+  }
+
+  /* درجه‌بندی بر پایه‌ی تکنیک لازم، نه فقط تعداد سرنخ:
+     ۰ تک‌مقدار آشکار · ۱ تک‌مقدار پنهان · ۲ نامزد قفل‌شده و جفت آشکار · ۳ نیازمند حدس */
+  function rate(puzzle) {
+    var g = puzzle.slice();
+    var level = 0;
+    for (;;) {
+      var empty = 0;
+      for (var i = 0; i < 81; i++) if (!g[i]) empty++;
+      if (empty === 0) return level;
+
+      var moved = false;
+      for (var a = 0; a < 81; a++) {
+        if (g[a]) continue;
+        var m = candidates(g, a);
+        if (m === 0) return 3;
+        if (bitCount(m) === 1) { g[a] = firstBit(m); moved = true; }
+      }
+      if (moved) continue;
+
+      var units = ROWS.concat(COLS, BOXES);
+      for (var u = 0; u < units.length && !moved; u++) {
+        for (var v = 1; v <= 9 && !moved; v++) {
+          var spot = -1, cnt = 0;
+          for (var s = 0; s < 9; s++) {
+            var cell = units[u][s];
+            if (g[cell] === v) { cnt = 0; break; }
+            if (!g[cell] && (candidates(g, cell) & (1 << v))) { cnt++; spot = cell; }
+          }
+          if (cnt === 1) { g[spot] = v; moved = true; level = Math.max(level, 1); }
+        }
+      }
+      if (moved) continue;
+
+      if (reduceLocked(g)) { level = Math.max(level, 2); continue; }
+      return 3;
+    }
+  }
+
+  function reduceLocked(g) {
+    var cand = new Array(81).fill(0);
+    for (var i = 0; i < 81; i++) if (!g[i]) cand[i] = candidates(g, i);
+    for (var b = 0; b < 9; b++) {
+      for (var v = 1; v <= 9; v++) {
+        var cells = BOXES[b].filter(function (c) { return !g[c] && (cand[c] & (1 << v)); });
+        if (cells.length < 2 || cells.length > 3) continue;
+        var rows = {}, cols = {};
+        cells.forEach(function (c) { rows[(c / 9) | 0] = 1; cols[c % 9] = 1; });
+        var rk = Object.keys(rows), ck = Object.keys(cols);
+        if (rk.length === 1) ROWS[+rk[0]].forEach(function (c) { if (BOXES[b].indexOf(c) < 0) cand[c] &= ~(1 << v); });
+        if (ck.length === 1) COLS[+ck[0]].forEach(function (c) { if (BOXES[b].indexOf(c) < 0) cand[c] &= ~(1 << v); });
+      }
+    }
+    var units = ROWS.concat(COLS, BOXES);
+    for (var u = 0; u < units.length; u++) {
+      for (var x = 0; x < 9; x++) {
+        var c1 = units[u][x];
+        if (g[c1] || bitCount(cand[c1]) !== 2) continue;
+        for (var y = x + 1; y < 9; y++) {
+          var c2 = units[u][y];
+          if (g[c2] || cand[c2] !== cand[c1]) continue;
+          for (var z = 0; z < 9; z++) {
+            var c3 = units[u][z];
+            if (c3 === c1 || c3 === c2 || g[c3]) continue;
+            cand[c3] &= ~cand[c1];
+          }
+        }
+      }
+    }
+    for (var q = 0; q < 81; q++) if (!g[q] && bitCount(cand[q]) === 1) { g[q] = firstBit(cand[q]); return true; }
+    return false;
+  }
+
+  var TARGET = {
+    easy:   { clues: [40, 46], level: 0 },
+    medium: { clues: [32, 38], level: 1 },
+    hard:   { clues: [27, 31], level: 2 },
+    expert: { clues: [23, 27], level: 3 }
+  };
+
+  function makePuzzle(rnd, difficulty) {
+    var spec = TARGET[difficulty] || TARGET.medium;
+    var best = null;
+    for (var attempt = 0; attempt < 14; attempt++) {
+      var solution = generateSolved(rnd);
+      var puzzle = solution.slice();
+      var order = [];
+      for (var i = 0; i < 81; i++) order.push(i);
+      for (var k = order.length - 1; k > 0; k--) {
+        var j = Math.floor(rnd() * (k + 1));
+        var t = order[k]; order[k] = order[j]; order[j] = t;
+      }
+      var clues = 81;
+      var minClues = spec.clues[0];
+      for (var o = 0; o < order.length && clues > minClues; o++) {
+        var c = order[o];
+        if (!puzzle[c]) continue;
+        var keep = puzzle[c];
+        puzzle[c] = 0;
+        if (solveCount(puzzle, 2) !== 1) { puzzle[c] = keep; continue; }
+        clues--;
+      }
+      var lvl = rate(puzzle);
+      var cand = { puzzle: puzzle, solution: solution, clues: clues, level: lvl };
+      if (lvl === spec.level && clues <= spec.clues[1]) return cand;
+      if (!best || Math.abs(lvl - spec.level) < Math.abs(best.level - spec.level)) best = cand;
+    }
+    return best;
+  }
+
+  /* ---- Killer (#851): normal sudoku plus cages whose digits add up to a sum and never
+     repeat. The cages are cut from a solved grid, and a solver that knows the cages
+     proves the puzzle has exactly one answer; where it finds a second, a digit where
+     the two answers differ is shown, until only one is left. */
+
+  // COMBOS[k][s]: every set of k different digits that adds up to s, as a mask with
+  // bit v for digit v (the same bits as candidates())
+  var COMBOS = [];
+  (function () {
+    for (var k = 0; k <= 9; k++) { COMBOS.push([]); for (var s = 0; s <= 45; s++) COMBOS[k].push([]); }
+    for (var m = 0; m < 512; m++) {
+      var n = 0, sum = 0;
+      for (var d = 1; d <= 9; d++) if (m & (1 << (d - 1))) { n++; sum += d; }
+      COMBOS[n][sum].push(m << 1);
+    }
+  })();
+
+  function cageIndex(cages) {
+    var of = new Array(81).fill(-1);
+    cages.forEach(function (cg, ci) { cg.cells.forEach(function (c) { of[c] = ci; }); });
+    return of;
+  }
+
+  // the digits still possible in a cage's empty cells: the ones in some set of
+  // different, unused digits that fills what is left of its sum
+  function cageMask(g, cg) {
+    var used = 0, left = cg.sum, empty = 0, cs = cg.cells;
+    for (var i = 0; i < cs.length; i++) { var v = g[cs[i]]; if (v) { used |= 1 << v; left -= v; } else empty++; }
+    if (!empty || left <= 0 || left > 45) return 0;
+    var out = 0, list = COMBOS[empty][left];
+    for (var j = 0; j < list.length; j++) if (!(list[j] & used)) out |= list[j];
+    return out;
+  }
+
+  // Counts answers up to `limit`. The search stops after `maxNodes` steps and says so
+  // (gaveUp), so a slow puzzle is never taken for a unique one.
+  // The row, column, box and cage state is kept up to date move by move: working it out
+  // from the peers at every step made a hard puzzle take most of a second to make.
+  function killerCount(puzzle, cages, limit, maxNodes) {
+    var g = puzzle.slice(), of = cageIndex(cages), found = [], nodes = 0, gaveUp = false;
+    var ru = new Array(9).fill(0), cu = new Array(9).fill(0), bu = new Array(9).fill(0);
+    var nc = cages.length, kUsed = new Array(nc).fill(0), kLeft = [], kEmpty = [], km = new Array(nc).fill(0);
+    var RW = [], CL = [], BX = [];
+    for (var a = 0; a < 81; a++) { RW.push((a / 9) | 0); CL.push(a % 9); BX.push(((RW[a] / 3) | 0) * 3 + ((CL[a] / 3) | 0)); }
+    cages.forEach(function (cg, ci) { kLeft.push(cg.sum); kEmpty.push(cg.cells.length); });
+    function put(i, v) {
+      var b = 1 << v; ru[RW[i]] |= b; cu[CL[i]] |= b; bu[BX[i]] |= b;
+      var k = of[i]; kUsed[k] |= b; kLeft[k] -= v; kEmpty[k]--; g[i] = v;
+    }
+    function take(i, v) {
+      var b = ~(1 << v); ru[RW[i]] &= b; cu[CL[i]] &= b; bu[BX[i]] &= b;
+      var k = of[i]; kUsed[k] &= b; kLeft[k] += v; kEmpty[k]++; g[i] = 0;
+    }
+    for (var p = 0; p < 81; p++) if (g[p]) { var v0 = g[p]; g[p] = 0; put(p, v0); }
+    maxNodes = maxNodes || 200000;
+    (function rec() {
+      if (found.length >= limit || gaveUp) return;
+      if (++nodes > maxNodes) { gaveUp = true; return; }
+      for (var k = 0; k < nc; k++) {
+        var out = 0;
+        if (kEmpty[k] && kLeft[k] > 0 && kLeft[k] <= 45) {
+          var list = COMBOS[kEmpty[k]][kLeft[k]], used = kUsed[k];
+          for (var j = 0; j < list.length; j++) if (!(list[j] & used)) out |= list[j];
+        }
+        km[k] = out;
+      }
+      var best = -1, bestMask = 0, bestN = 10;
+      for (var i = 0; i < 81; i++) {
+        if (g[i]) continue;
+        var m = ~(ru[RW[i]] | cu[CL[i]] | bu[BX[i]]) & km[of[i]];
+        var n = bitCount(m);
+        if (n === 0) return;
+        if (n < bestN) { bestN = n; best = i; bestMask = m; if (n === 1) break; }
+      }
+      if (best === -1) { found.push(g.slice()); return; }
+      for (var v = 1; v <= 9; v++) {
+        if (!(bestMask & (1 << v))) continue;
+        put(best, v); rec(); take(best, v);
+        if (found.length >= limit || gaveUp) return;
+      }
+    })();
+    return { count: found.length, solutions: found, gaveUp: gaveUp, nodes: nodes };
+  }
+
+  function killerSolve(puzzle, cages) {
+    var r = killerCount(puzzle, cages, 1, 2000000);
+    return r.count ? r.solutions[0] : null;
+  }
+
+  // Smaller cages and a few more shown digits make the easier levels
+  var KILLER = {
+    easy:   { size: [2, 3], extra: 12 },
+    medium: { size: [2, 4], extra: 5 },
+    hard:   { size: [2, 5], extra: 1 },
+    expert: { size: [3, 5], extra: 0 }
+  };
+
+  function nbrs(c) {
+    var r = (c / 9) | 0, k = c % 9, out = [];
+    if (r > 0) out.push(c - 9);
+    if (r < 8) out.push(c + 9);
+    if (k > 0) out.push(c - 1);
+    if (k < 8) out.push(c + 1);
+    return out;
+  }
+
+  // Cuts a solved grid into connected cages of different digits, sizes from spec.size;
+  // a lone cell left over joins a neighbouring cage that lacks its digit. null when
+  // one cannot (the caller tries again).
+  function makeCages(sol, rnd, spec) {
+    var of = new Array(81).fill(-1), cages = [], order = [];
+    for (var i = 0; i < 81; i++) order.push(i);
+    for (var k = order.length - 1; k > 0; k--) {
+      var j = Math.floor(rnd() * (k + 1)), t = order[k]; order[k] = order[j]; order[j] = t;
+    }
+    for (var o = 0; o < 81; o++) {
+      var c0 = order[o];
+      if (of[c0] >= 0) continue;
+      var want = spec.size[0] + Math.floor(rnd() * (spec.size[1] - spec.size[0] + 1));
+      var cells = [c0], mask = 1 << sol[c0], idx = cages.length;
+      of[c0] = idx;
+      while (cells.length < want) {
+        var opts = [];
+        cells.forEach(function (c) {
+          nbrs(c).forEach(function (nb) { if (of[nb] < 0 && !(mask & (1 << sol[nb])) && opts.indexOf(nb) < 0) opts.push(nb); });
+        });
+        if (!opts.length) break;
+        var pick = opts[Math.floor(rnd() * opts.length)];
+        cells.push(pick); of[pick] = idx; mask |= 1 << sol[pick];
+      }
+      cages.push({ cells: cells });
+    }
+    for (var q = 0; q < cages.length; q++) {
+      if (cages[q].cells.length !== 1) continue;
+      var lone = cages[q].cells[0], home = -1;
+      nbrs(lone).forEach(function (nb) {
+        var cg = cages[of[nb]];
+        if (home >= 0 || cg.cells.length < 2 || cg.cells.length >= 5) return;
+        if (cg.cells.some(function (x) { return sol[x] === sol[lone]; })) return;
+        home = of[nb];
+      });
+      if (home < 0) return null;
+      cages[home].cells.push(lone); of[lone] = home; cages[q].cells = [];
+    }
+    return cages.filter(function (cg) { return cg.cells.length; }).map(function (cg) {
+      var cs = cg.cells.slice().sort(function (a, b) { return a - b; });
+      return { cells: cs, sum: cs.reduce(function (s, c) { return s + sol[c]; }, 0) };
+    });
+  }
+
+  function makeKiller(rnd, difficulty) {
+    var spec = KILLER[difficulty] || KILLER.medium;
+    for (var attempt = 0; attempt < 20; attempt++) {
+      var solution = generateSolved(rnd);
+      var cages = makeCages(solution, rnd, spec);
+      if (!cages) continue;
+      var puzzle = new Array(81).fill(0), shown = 0;
+      for (;;) {
+        var r = killerCount(puzzle, cages, 2, 60000);
+        if (r.count === 1 && !r.gaveUp) break;
+        var from = [];
+        for (var i = 0; i < 81; i++) {
+          if (puzzle[i]) continue;
+          if (r.count === 2 && r.solutions[0][i] === r.solutions[1][i]) continue;
+          from.push(i);
+        }
+        var c = from[Math.floor(rnd() * from.length)];
+        puzzle[c] = solution[c]; shown++;
+        if (shown > 30) break;
+      }
+      if (shown > 30) continue;
+      // the easier levels show a few more digits, spread over the board
+      for (var e = 0; e < spec.extra; e++) {
+        var empty = [];
+        for (var x = 0; x < 81; x++) if (!puzzle[x]) empty.push(x);
+        var at = empty[Math.floor(rnd() * empty.length)];
+        puzzle[at] = solution[at];
+      }
+      return { puzzle: puzzle, solution: solution, cages: cages, killer: true };
+    }
+    return null;
+  }
+
+  // a digit twice in one cage, or a cage whose digits pass its sum (or, once full, miss it)
+  function killerConflicts(grid, cages) {
+    var bad = {};
+    cages.forEach(function (cg) {
+      var seen = {}, sum = 0, full = true;
+      cg.cells.forEach(function (c) {
+        var v = grid[c];
+        if (!v) { full = false; return; }
+        sum += v;
+        if (seen[v] !== undefined) { bad[c] = 1; bad[seen[v]] = 1; } else seen[v] = c;
+      });
+      if (sum > cg.sum || (full && sum !== cg.sum)) cg.cells.forEach(function (c) { if (grid[c]) bad[c] = 1; });
+    });
+    return bad;
+  }
+
+  var api = {
+    ROWS: ROWS, COLS: COLS, BOXES: BOXES, PEERS: PEERS,
+    candidates: candidates, bitCount: bitCount, firstBit: firstBit,
+    solve: solve, solveCount: solveCount, generateSolved: generateSolved,
+    rate: rate, makePuzzle: makePuzzle, TARGET: TARGET,
+    KILLER: KILLER, COMBOS: COMBOS, cageMask: cageMask, makeCages: makeCages, makeKiller: makeKiller,
+    killerCount: killerCount, killerSolve: killerSolve, killerConflicts: killerConflicts,
+    conflicts: function (grid) {
+      var bad = {};
+      var units = ROWS.concat(COLS, BOXES);
+      for (var u = 0; u < units.length; u++) {
+        var seen = {};
+        for (var s = 0; s < 9; s++) {
+          var c = units[u][s], v = grid[c];
+          if (!v) continue;
+          if (seen[v] !== undefined) { bad[c] = 1; bad[seen[v]] = 1; }
+          else seen[v] = c;
+        }
+      }
+      return bad;
+    }
+  };
+  if (typeof self !== 'undefined') self.SudokuEngine = api;
+  return api;
+}
+if (typeof module !== 'undefined' && module.exports) module.exports = SudokuEngineFactory;
+/* ==== ENGINE END ==== */
+</script>
+<script>
+(function () {
+  'use strict';
+  var C = window.Chogan, el = C.el;
+  var E = SudokuEngineFactory();
+  var HINT_COST = 10;
+
+  C.boot({});
+  var ctx = C.game({
+    id: 'sudoku',
+    name: { fa: 'سودوکو', en: 'Sudoku', zh: '数独', de: 'Sudoku', es: 'Sudoku', pl: 'Sudoku', fr: 'Sudoku', ar: 'سودوكو', hi: 'सुडोकू' },
+    accent: '#6A8CBF',
+    mood: 'sudoku',
+    strings: {
+      fa: {
+        mistakes: 'خطا', hints: 'راهنمایی', notes: 'یادداشت', erase: 'پاک‌کن', move: 'جابه‌جایی',
+        autoNotes: 'یادداشت خودکار', clearNotes: 'پاک کردن همه‌ی یادداشت‌ها', clearBtn: 'پاک کن', notesCleared: 'یادداشت‌ها پاک شد', notesBack: 'برگرداندن آن‌ها را برمی‌گرداند', showErrors: 'نمایش خطا',
+        highlight: 'برجسته‌سازی', hlPeers: 'سطر، ستون و بلوک', hlDigit: 'فقط رقم یکسان', newPuzzle: 'جدول تازه',
+        solvedIn: 'در {t} حل شد', noMoreEmpty: 'خانه‌ی خالی نمانده',
+        dailySudoku: 'سودوکوی روزانه', clues: 'سرنخ',
+        thLabel: 'رنگ جدول', thDefault: 'پیش‌فرض', thPaper: 'کاغذی', thContrast: 'پرکنتراست', thSage: 'مریم‌گلی', thOcean: 'اقیانوس', thNight: 'شب',
+        kMode: 'نوع جدول', kClassic: 'کلاسیک', kKiller: 'گنج', kTitle: 'سودوکوی گنج', kRule: 'در سودوکوی گنج خانه‌ها در قفس‌های نقطه‌چین‌اند. جمع عددهای هر قفس برابر عدد کوچک گوشه‌ی آن است و در یک قفس هیچ عددی تکرار نمی‌شود. نوع جدول را از چرخ‌دنده عوض کن.',
+        tutTitle1: 'قانون بازی', tutText1: 'هر سطر، هر ستون و هر بلوک سه‌درسه باید اعداد یک تا نه را دقیقاً یک بار داشته باشد.',
+        tutTitle2: 'یادداشت', tutText2: 'با دکمه‌ی یادداشت، عددها را به شکل کوچک داخل خانه می‌نویسی. برای وقتی که مطمئن نیستی.',
+        tutTitle3: 'راهنمایی', tutText3: 'راهنمایی یک خانه را درست پر می‌کند و ده سکه می‌گیرد. سکه از بازی کردن می‌آید.'
+      },
+      en: {
+        mistakes: 'Errors', hints: 'Hints', notes: 'Notes', erase: 'Erase', move: 'Move',
+        autoNotes: 'Auto notes', clearNotes: 'Clear all notes', clearBtn: 'Clear', notesCleared: 'Notes cleared', notesBack: 'Undo brings them back', showErrors: 'Show errors',
+        highlight: 'Highlight', hlPeers: 'Row, column and box', hlDigit: 'Same digit only', newPuzzle: 'New puzzle',
+        solvedIn: 'Solved in {t}', noMoreEmpty: 'No empty cells left',
+        dailySudoku: 'Daily sudoku', clues: 'clues',
+        thLabel: 'Board colours', thDefault: 'Default', thPaper: 'Paper', thContrast: 'High contrast', thSage: 'Sage', thOcean: 'Ocean', thNight: 'Night',
+        kMode: 'Mode', kClassic: 'Classic', kKiller: 'Killer', kTitle: 'Killer sudoku', kRule: 'In Killer sudoku the cells sit in dotted cages. The digits in a cage add up to the small number in its corner, and no digit repeats within a cage. Switch the mode behind the gear.',
+        tutTitle1: 'The rule', tutText1: 'Every row, column and 3x3 block must contain each digit from one to nine exactly once.',
+        tutTitle2: 'Notes', tutText2: 'Notes mode writes small pencil marks inside a cell, for when you are not sure yet.',
+        tutTitle3: 'Hints', tutText3: 'A hint fills one cell correctly and costs ten coins. Coins come from playing.'
+      },
+      pl: {
+        mistakes: 'Błędy', hints: 'Podpowiedzi', notes: 'Notatki', erase: 'Wymaż', move: 'Przemieść',
+        autoNotes: 'Automatyczne notatki', clearNotes: 'Wyczyść wszystkie notatki', clearBtn: 'Wyczyść', notesCleared: 'Notatki wyczyszczone', notesBack: 'Cofnięcie ruchu przywróci notatki', showErrors: 'Pokazuj błędy',
+        highlight: 'Podświetlenie', hlPeers: 'Wiersz, kolumna i blok', hlDigit: 'Tylko ta sama cyfra', newPuzzle: 'Nowa łamigłówka',
+        solvedIn: 'Rozwiązano w czasie: {t}', noMoreEmpty: 'Brak wolnych pól',
+        dailySudoku: 'Codzienne Sudoku', clues: 'wskazówki',
+        thLabel: 'Kolory planszy', thDefault: 'Domyślne', thPaper: 'Papier', thContrast: 'Wysoki kontrast', thSage: 'Szałwia', thOcean: 'Ocean', thNight: 'Noc',
+        kMode: 'Tryb', kClassic: 'Klasyczne', kKiller: 'Killer', kTitle: 'Sudoku killer', kRule: 'W sudoku killer pola leżą w kropkowanych klatkach. Cyfry w klatce sumują się do małej liczby w jej rogu i żadna cyfra nie powtarza się w klatce. Tryb zmienisz pod kołem zębatym.',
+        tutTitle1: 'Zasada gry', tutText1: 'Każdy wiersz, kolumna oraz blok 3x3 musi zawierać każdą cyfrę od jeden do dziewięć dokładnie jeden raz.',
+        tutTitle2: 'Notatki', tutText2: 'Tryb notatek pozwala na nanoszenie małych ołówkowych znaków wewnątrz pola, gdy nie masz jeszcze pewności.',
+        tutTitle3: 'Podpowiedzi', tutText3: 'Podpowiedź poprawnie uzupełnia jedno pole i kosztuje dziesięć monet. Monety zdobywa się za grę.'
+      },
+      fr: {
+        mistakes: 'Erreurs', hints: 'Indices', notes: 'Notes', erase: 'Effacer', move: 'Coup',
+        autoNotes: 'Notes auto', clearNotes: 'Effacer toutes les notes', clearBtn: 'Effacer', notesCleared: 'Notes effacées', notesBack: 'Annuler les fait revenir', showErrors: 'Afficher les erreurs',
+        highlight: 'Surbrillance', hlPeers: 'Ligne, colonne et bloc', hlDigit: 'Même chiffre seulement', newPuzzle: 'Nouvelle grille',
+        solvedIn: 'Résolu en {t}', noMoreEmpty: 'Plus aucune case vide',
+        dailySudoku: 'Sudoku du jour', clues: 'indices',
+        thLabel: 'Couleurs de la grille', thDefault: 'Par défaut', thPaper: 'Papier', thContrast: 'Contraste élevé', thSage: 'Sauge', thOcean: 'Océan', thNight: 'Nuit',
+        kMode: 'Mode', kClassic: 'Classique', kKiller: 'Killer', kTitle: 'Sudoku killer', kRule: 'Au sudoku killer, les cases sont dans des cages en pointillés. Les chiffres d’une cage ont pour somme le petit nombre dans son coin, et aucun chiffre ne se répète dans une cage. Change de mode sous la roue dentée.',
+        tutTitle1: 'La règle', tutText1: 'Chaque ligne, colonne et bloc 3x3 doit contenir chaque chiffre de un à neuf une seule fois.',
+        tutTitle2: 'Notes', tutText2: 'Le mode notes écrit de petites marques au crayon dans une case, quand tu n’es pas encore sûr.',
+        tutTitle3: 'Indices', tutText3: 'Un indice remplit une case correctement et coûte dix pièces. Les pièces se gagnent en jouant.'
+      },
+      ar: {
+        thLabel: 'ألوان اللوحة', thDefault: 'الافتراضي', thPaper: 'ورقي', thContrast: 'تباين عالٍ', thSage: 'ميرمية', thOcean: 'محيطي', thNight: 'ليلي',
+        kMode: 'النمط', kClassic: 'كلاسيكي', kKiller: 'كيلر', kTitle: 'سودوكو كيلر',
+        kRule: 'في سودوكو كيلر تقع الخانات داخل أقفاص منقّطة. مجموع أرقام كل قفص يساوي العدد الصغير في ركنه، ولا يتكرر رقم داخل القفص الواحد. بدّل النمط من أيقونة الترس.',
+        mistakes: 'الأخطاء', hints: 'التلميحات', notes: 'ملاحظات', erase: 'مسح', move: 'نقل',
+        autoNotes: 'ملاحظات تلقائية', clearNotes: 'مسح كل الملاحظات', clearBtn: 'مسح', notesCleared: 'مُسحت الملاحظات', notesBack: 'التراجع يعيدها', showErrors: 'إظهار الأخطاء',
+        highlight: 'التظليل', hlPeers: 'الصف والعمود والمربع', hlDigit: 'الرقم نفسه فقط', newPuzzle: 'لغز جديد',
+        solvedIn: 'حُلّ في {t}', noMoreEmpty: 'لم تبق خانات فارغة',
+        dailySudoku: 'سودوكو اليوم', clues: 'أدلة',
+        tutTitle1: 'القاعدة', tutText1: 'يجب أن يحوي كل صف وعمود ومربع 3x3 كل رقم من واحد إلى تسعة مرة واحدة بالضبط.',
+        tutTitle2: 'الملاحظات', tutText2: 'وضع الملاحظات يكتب علامات صغيرة بالقلم داخل الخانة، حين لا تكون متأكدًا بعد.',
+        tutTitle3: 'التلميحات', tutText3: 'التلميح يملأ خانة واحدة بشكل صحيح ويكلف عشر عملات. العملات تأتي من اللعب.'
+      },
+      hi: {
+        mistakes: 'ग़लतियाँ', hints: 'संकेत', notes: 'नोट्स', erase: 'मिटाएँ', move: 'चलें',
+        autoNotes: 'अपने-आप नोट्स', clearNotes: 'सारे नोट्स मिटाएँ', clearBtn: 'मिटाएँ', notesCleared: 'नोट्स मिट गए', notesBack: 'वापस करने से वे लौट आते हैं', showErrors: 'ग़लतियाँ दिखाएँ',
+        highlight: 'उभारें', hlPeers: 'पंक्ति, स्तंभ और खंड', hlDigit: 'सिर्फ़ वही अंक', newPuzzle: 'नई पहेली',
+        solvedIn: '{t} में हल किया', noMoreEmpty: 'कोई ख़ाली खाना नहीं बचा',
+        dailySudoku: 'रोज़ का सुडोकू', clues: 'सुराग',
+        thLabel: 'बोर्ड के रंग', thDefault: 'डिफ़ॉल्ट', thPaper: 'काग़ज़ी', thContrast: 'ज़्यादा कंट्रास्ट', thSage: 'सेज', thOcean: 'सागर', thNight: 'रात',
+        kMode: 'तरीक़ा', kClassic: 'क्लासिक', kKiller: 'किलर', kTitle: 'किलर सुडोकू', kRule: 'किलर सुडोकू में खाने बिंदीदार पिंजरों में बँटे होते हैं। पिंजरे के अंकों का जोड़ उसके कोने के छोटे अंक के बराबर होता है, और एक पिंजरे में कोई अंक दोहराया नहीं जाता। तरीक़ा गियर के पीछे बदलें।',
+        tutTitle1: 'नियम', tutText1: 'हर पंक्ति, स्तंभ और 3x3 खंड में एक से नौ तक हर अंक ठीक एक बार होना चाहिए।',
+        tutTitle2: 'नोट्स', tutText2: 'नोट्स मोड खाने के अंदर पेंसिल से छोटे निशान लिखता है, जब आप अभी पक्के न हों।',
+        tutTitle3: 'संकेत', tutText3: 'एक संकेत एक खाना सही भरता है और उसकी क़ीमत दस सिक्के है। सिक्के खेलने से मिलते हैं।'
+      },
+      zh: {
+        mistakes: '错误', hints: '提示', notes: '笔记', erase: '擦除', move: '移动',
+        autoNotes: '自动笔记', clearNotes: '清除所有笔记', clearBtn: '清除', notesCleared: '笔记已清除', notesBack: '撤销可以恢复', showErrors: '显示错误',
+        highlight: '高亮', hlPeers: '行、列和宫', hlDigit: '仅相同数字', newPuzzle: '新题',
+        solvedIn: '用时 {t} 解开', noMoreEmpty: '没有空格了',
+        dailySudoku: '每日数独', clues: '提示数',
+        thLabel: '盘面颜色', thDefault: '默认', thPaper: '纸张', thContrast: '高对比度', thSage: '鼠尾草', thOcean: '海洋', thNight: '夜间',
+        kMode: '模式', kClassic: '经典', kKiller: '杀手', kTitle: '杀手数独', kRule: '杀手数独的格子分在虚线笼子里。笼中数字之和等于角上的小数字，同一笼子里数字不能重复。在齿轮里切换模式。',
+        tutTitle1: '规则', tutText1: '每一行、每一列和每个三宫格都必须包含一到九各一次。',
+        tutTitle2: '笔记', tutText2: '笔记模式会在格子里写下小字候选数，适合还不确定的时候。',
+        tutTitle3: '提示', tutText3: '提示会正确填入一个格子，花费十金币。金币靠玩游戏获得。'
+      },
+      de: {
+        mistakes: 'Fehler', hints: 'Tipps', notes: 'Notizen', erase: 'Löschen', move: 'Bewegen',
+        autoNotes: 'Auto-Notizen', clearNotes: 'Alle Notizen löschen', clearBtn: 'Löschen', notesCleared: 'Notizen gelöscht', notesBack: 'Rückgängig holt sie zurück', showErrors: 'Fehler zeigen',
+        highlight: 'Hervorheben', hlPeers: 'Zeile, Spalte und Block', hlDigit: 'Nur gleiche Ziffer', newPuzzle: 'Neues Rätsel',
+        solvedIn: 'Gelöst in {t}', noMoreEmpty: 'Keine leeren Felder mehr',
+        dailySudoku: 'Tages-Sudoku', clues: 'Vorgaben',
+        thLabel: 'Farben des Gitters', thDefault: 'Standard', thPaper: 'Papier', thContrast: 'Hoher Kontrast', thSage: 'Salbei', thOcean: 'Ozean', thNight: 'Nacht',
+        kMode: 'Modus', kClassic: 'Klassisch', kKiller: 'Killer', kTitle: 'Killer-Sudoku', kRule: 'Beim Killer-Sudoku liegen die Felder in gepunkteten Käfigen. Die Ziffern eines Käfigs ergeben zusammen die kleine Zahl in seiner Ecke, und keine Ziffer kommt in einem Käfig doppelt vor. Den Modus wechselst du über das Zahnrad.',
+        tutTitle1: 'Die Regel', tutText1: 'Jede Zeile, jede Spalte und jeder 3x3-Block muss jede Ziffer von eins bis neun genau einmal enthalten.',
+        tutTitle2: 'Notizen', tutText2: 'Im Notizmodus schreibst du kleine Bleistiftzahlen in ein Feld, wenn du dir noch nicht sicher bist.',
+        tutTitle3: 'Tipps', tutText3: 'Ein Tipp füllt ein Feld richtig aus und kostet zehn Münzen. Münzen bekommst du beim Spielen.'
+      },
+      es: {
+        mistakes: 'Errores', hints: 'Pistas', notes: 'Notas', erase: 'Borrar', move: 'Mover',
+        autoNotes: 'Notas auto', clearNotes: 'Borrar todas las notas', clearBtn: 'Borrar', notesCleared: 'Notas borradas', notesBack: 'Deshacer las recupera', showErrors: 'Ver errores',
+        highlight: 'Resaltar', hlPeers: 'Fila, columna y bloque', hlDigit: 'Solo el mismo número', newPuzzle: 'Nuevo sudoku',
+        solvedIn: 'Resuelto en {t}', noMoreEmpty: 'No quedan casillas vacías',
+        dailySudoku: 'Sudoku diario', clues: 'pistas',
+        thLabel: 'Colores del tablero', thDefault: 'Predeterminado', thPaper: 'Papel', thContrast: 'Alto contraste', thSage: 'Salvia', thOcean: 'Océano', thNight: 'Noche',
+        kMode: 'Modo', kClassic: 'Clásico', kKiller: 'Killer', kTitle: 'Sudoku killer', kRule: 'En el sudoku killer las casillas están en jaulas punteadas. Los números de una jaula suman la cifra pequeña de su esquina y ninguno se repite dentro de la jaula. Cambia el modo en el engranaje.',
+        tutTitle1: 'La regla', tutText1: 'Cada fila, cada columna y cada bloque de 3x3 debe contener cada número del uno al nueve exactamente una vez.',
+        tutTitle2: 'Notas', tutText2: 'El modo notas escribe pequeñas marcas a lápiz dentro de una casilla, para cuando aún no estás seguro.',
+        tutTitle3: 'Pistas', tutText3: 'Una pista rellena bien una casilla y cuesta diez monedas. Las monedas se ganan jugando.'
+      }
+    }
+  });
+
+  /* ------------------------------------------------------------ وضعیت */
+  var params = new URLSearchParams(location.search);
+  var dailyDate = params.get('daily');
+  var DIFFS = ['easy', 'medium', 'hard', 'expert'];
+
+  var S = null;               // وضعیت جاری
+  var selected = -1;
+  var noteMode = false;
+  var timerId = null;
+  var cells = [];
+  var pads = [];
+
+  var prefs = ctx.store.get('prefs', { showErrors: true, difficulty: 'medium' });
+
+  // The six board themes (#874), in the gear's order; the colours live in the CSS under
+  // [data-sd-theme]. A saved name that is not one of them (none yet, or an old or
+  // hand-edited save) reads as the default, so the board never loses its colours.
+  var THEMES = [
+    { id: 'default', key: 'thDefault' }, { id: 'paper', key: 'thPaper' }, { id: 'contrast', key: 'thContrast' },
+    { id: 'sage', key: 'thSage' }, { id: 'ocean', key: 'thOcean' }, { id: 'night', key: 'thNight' }
+  ];
+  function themeOf(p) {
+    var t = p && p.boardTheme;
+    for (var i = 0; i < THEMES.length; i++) if (THEMES[i].id === t) return t;
+    return 'default';
+  }
+
+  /* ------------------------------------------------------------ ساخت */
+
+  // A Killer game (#851) is the same state with mode 'killer' and its cages. A Classic
+  // game has no mode field, so every save made before Killer reads as Classic.
+  function newGame(difficulty, seedRng, daily, mode) {
+    var rnd = seedRng || function () { return Math.random(); };
+    var killer = mode === 'killer' && !daily;
+    var p = killer ? E.makeKiller(rnd, difficulty) : E.makePuzzle(rnd, difficulty);
+    S = {
+      difficulty: difficulty,
+      daily: daily || null,
+      puzzle: p.puzzle,
+      solution: p.solution,
+      grid: p.puzzle.slice(),
+      notes: [], hinted: {},
+      undo: [],
+      elapsed: 0, mistakes: 0, hints: 0,
+      started: Date.now(), done: false
+    };
+    if (killer) { S.mode = 'killer'; S.cages = p.cages; }
+    for (var i = 0; i < 81; i++) S.notes.push([]);
+    selected = -1;
+    render();
+    save();
+  }
+
+  function restore(s) {
+    S = s;
+    selected = -1;
+    render();
+  }
+
+  function isKiller(s) { return !!(s && s.mode === 'killer' && s.cages); }
+
+  // Which saved games to bring back (#851). Classic stays in the core's session slot,
+  // exactly as before Killer, so a game saved by an older version loads unchanged;
+  // Killer has its own key. A daily is always Classic and never touches Killer's save.
+  function pickSaves(saved, killerSaved, daily) {
+    var c = saved && saved.s && !saved.s.done && saved.s.grid && (saved.s.daily || null) === (daily || null) && !isKiller(saved.s) ? saved.s : null;
+    var k = !daily && killerSaved && isKiller(killerSaved.s) && !killerSaved.s.done && killerSaved.s.grid ? killerSaved.s : null;
+    return { classic: c, killer: k };
+  }
+
+  // Where each cell draws its piece of its cage's outline: [side, offset, start, end] in
+  // px, side 'h' at the top or bottom (offset from that edge), 'v' at the start or end.
+  // A piece ends inside the cell at a corner the cage turns out of, halfway across the
+  // gap where the cage runs straight on, and past the gap where it turns in, so the
+  // pieces of a cage join up. Box edges have a wider gap (2px + the 1px track + 2px).
+  var CAGE_IN = 3;
+  function cageLines(cages) {
+    var of = new Array(81).fill(-1), out = [];
+    cages.forEach(function (cg, ci) { cg.cells.forEach(function (c) { of[c] = ci; }); });
+    function inC(r, c, k) { return r >= 0 && r < 9 && c >= 0 && c < 9 && of[r * 9 + c] === k; }
+    function gap(a, b) { var lo = Math.min(a, b); return lo === 2 || lo === 5 ? 5 : 2; }
+    // the end of a piece along its edge, toward neighbour (nr, nc); (dr, dc) is the cell beyond it
+    function end(r, c, k, nr, nc, dr, dc, g) {
+      if (!inC(nr, nc, k)) return CAGE_IN;
+      return inC(dr, dc, k) ? -(g + CAGE_IN) : -g / 2;
+    }
+    for (var i = 0; i < 81; i++) {
+      var r = (i / 9) | 0, c = i % 9, k = of[i], lines = [];
+      out.push(lines);
+      if (k < 0) continue;
+      [-1, 1].forEach(function (d) {
+        if (!inC(r + d, c, k)) lines.push(['h', d < 0 ? 'top' : 'bottom',
+          end(r, c, k, r, c - 1, r + d, c - 1, gap(c, c - 1)), end(r, c, k, r, c + 1, r + d, c + 1, gap(c, c + 1))]);
+        if (!inC(r, c + d, k)) lines.push(['v', d < 0 ? 'start' : 'end',
+          end(r, c, k, r - 1, c, r - 1, c + d, gap(r, r - 1)), end(r, c, k, r + 1, c, r + 1, c + d, gap(r, r + 1))]);
+      });
+    }
+    return out;
+  }
+  // the markup each cell repaints with; column order follows the page's direction,
+  // so the cage's first cell sits at the top on the reading side
+  function cageMarkup(cages) {
+    var lines = cageLines(cages), first = {};
+    cages.forEach(function (cg) { first[cg.cells[0]] = cg.sum; });
+    return lines.map(function (ls, i) {
+      var html = ls.map(function (l) {
+        var st = l[0] === 'h'
+          ? l[1] + ':' + CAGE_IN + 'px;inset-inline-start:' + l[2] + 'px;inset-inline-end:' + l[3] + 'px'
+          : 'inset-inline-' + l[1] + ':' + CAGE_IN + 'px;top:' + l[2] + 'px;bottom:' + l[3] + 'px';
+        return '<span class="sd-cage sd-cage--' + l[0] + '" style="' + st + '"></span>';
+      }).join('');
+      if (first[i]) html += '<span class="sd-sum">' + C.num(first[i]) + '</span>';
+      return html;
+    });
+  }
+  var cageHtml = null, cageFor = null;
+
+  /* ------------------------------------------------------------ رابط */
+
+  var board = el('div', { class: 'sd-board', role: 'grid', 'aria-label': 'جدول سودوکو' });
+  var pad = el('div', { class: 'sd-pad' });
+  var tools = el('div', { class: 'sd-tools' });
+  var topRow = el('div', { class: 'sd-top ch-above' });
+  var wrap = el('div', { class: 'sd-wrap ch-split' }, [el('div', { class: 'ch-fit' }, [board]), el('div', { class: 'ch-side' }, [topRow, tools, pad])]);
+  // one attribute switches every board colour; no cell is repainted for it
+  wrap.setAttribute('data-sd-theme', themeOf(prefs));
+
+  for (var i = 0; i < 81; i++) {
+    (function (idx) {
+      var r = (idx / 9) | 0, c = idx % 9;
+      var b = el('button', {
+        class: 'sd-cell', type: 'button', role: 'gridcell',
+        // a spacer track follows every third row and column (#411)
+        style: { 'grid-row': String(r + 1 + ((r / 3) | 0)), 'grid-column': String(c + 1 + ((c / 3) | 0)) }
+      });
+      b.addEventListener('click', function () { pick(idx); });
+      cells.push(b);
+      board.appendChild(b);
+    })(i);
+  }
+  // after the cells, so the corner cells keep their nth-child radius
+  [4, 8].forEach(function (t) {
+    board.appendChild(el('div', { class: 'sd-sep sd-sep--col', 'aria-hidden': 'true', style: { 'grid-column': String(t) } }));
+    board.appendChild(el('div', { class: 'sd-sep sd-sep--row', 'aria-hidden': 'true', style: { 'grid-row': String(t) } }));
+  });
+
+  for (var n = 1; n <= 9; n++) {
+    (function (v) {
+      var left = el('small');
+      var b = el('button', { class: 'sd-num', type: 'button' }, [el('span', { text: C.num(v) }), left]);
+      b.addEventListener('click', function () { enter(v); });
+      pads.push({ btn: b, left: left, v: v });
+      pad.appendChild(b);
+    })(n);
+  }
+
+  function tool(icon, labelKey, onClick, extra) {
+    var b = el('button', { class: 'sd-tool', type: 'button' }, [
+      C.icon(icon, 20), el('span', { text: C.t(labelKey) }), extra || null
+    ]);
+    b.addEventListener('click', function () { onClick(b); });
+    tools.appendChild(b);
+    return b;
+  }
+
+  var noteBtn = tool('pencil', 'notes', function (b) {
+    noteMode = !noteMode;
+    b.setAttribute('aria-pressed', noteMode ? 'true' : 'false');
+    C.feedback('select');
+    // دکمه‌های عدد در حالت یادداشت هیچ‌وقت غیرفعال نمی‌شوند، پس باید
+    // بلافاصله دوباره رسم شوند وگرنه عددهای تمام‌شده قفل می‌مانند.
+    if (S) paint();
+  });
+  noteBtn.setAttribute('aria-pressed', 'false');
+  tool('eraser', 'erase', function () { enter(0); });
+  tool('undo', 'undo', function () { undo(); });
+  // The bare "10" under the bulb read as hints left, and a player reported that
+  // it never went down (#892); it is the price in coins, so it carries the coin.
+  var hintBtn = tool('bulb', 'hint', function () { hint(); },
+    el('b', { class: 'sd-price' }, [C.icon('coin', 10), el('span', { text: C.num(HINT_COST) })]));
+  // The options had lived inside the help sheet, where the owner could not find
+  // them (#409); a fourth game-bar button cut the title on a phone, and a gear
+  // beside the difficulty wrapped to a line of its own (#413). It is a tool.
+  tool('gear', 'settings', function () { showSettings(); });
+
+  ctx.stat('time', C.t('time'));
+  ctx.stat('mistakes', C.t('mistakes'));
+  ctx.button({ icon: 'help', label: C.t('help'), onClick: showHelp });
+  ctx.button({ icon: 'refresh', label: C.t('newPuzzle'), onClick: askNew });
+
+  ctx.main.appendChild(wrap);
+  ctx.mount();
+
+  /* --------------------------------------------------------- نمایش */
+
+  function render() {
+    if (!S) return;
+    var kill = isKiller(S);
+    board.classList.toggle('sd-board--killer', kill);
+    if (kill && cageFor !== S.cages) { cageHtml = cageMarkup(S.cages); cageFor = S.cages; }
+    topRow.innerHTML = '';
+    if (S.daily) {
+      topRow.appendChild(el('span', { class: 'ch-badge ch-badge--accent' },
+        [C.icon('calendar', 14), el('span', { text: C.t('dailySudoku') + ' — ' + C.num(S.daily) })]));
+      topRow.appendChild(el('span', { class: 'ch-badge', text: C.t(S.difficulty) }));
+    } else {
+      topRow.appendChild(C.ui.segmented(DIFFS.map(function (d) {
+        return { value: d, label: C.t(d) };
+      }), S.difficulty, function (v) {
+        if (v === S.difficulty) return;
+        // each mode keeps its own level (#851)
+        var key = kill ? 'killerDifficulty' : 'difficulty', mode = kill ? 'killer' : null;
+        // جدول نیمه‌تمام نباید بی‌هشدار برود؛ همان تأییدی که «جدول تازه» می‌گیرد
+        if (started()) {
+          C.ui.confirm({
+            title: C.t('newPuzzle'), body: C.t('resetWarn'),
+            onOk: function () { prefs[key] = v; ctx.store.set('prefs', prefs); newGame(v, null, null, mode); startTimer(); },
+            onCancel: function () { render(); }
+          });
+          render();
+          return;
+        }
+        prefs[key] = v; ctx.store.set('prefs', prefs);
+        newGame(v, null, null, mode); startTimer();
+      }));
+      topRow.appendChild(kill ? el('span', { class: 'ch-badge ch-badge--accent', text: C.t('kKiller') })
+        : el('span', { class: 'ch-badge', text: C.num(S.puzzle.filter(function (x) { return x; }).length) + ' ' + C.t('clues') }));
+    }
+    paint();
+  }
+
+  // شمارنده هر عدد روی جدول را می‌شمارد، درست یا غلط: قبلاً فقط جای درست شمرده
+  // می‌شد و بازیکنی که هفت «۱» گذاشته بود هنوز «۷ مانده» می‌دید، و خودِ شمارنده
+  // لو می‌داد حدس درست بوده یا نه (#124). دکمه فقط وقتی قفل می‌شود که هر نُه تا
+  // درست نشسته باشند، تا یک عدد غلط راه را نبندد.
+  function padState(grid, solution) {
+    var left = [0, 9, 9, 9, 9, 9, 9, 9, 9, 9], right = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], locked = [];
+    for (var i = 0; i < 81; i++) {
+      if (!grid[i]) continue;
+      left[grid[i]]--;
+      if (grid[i] === solution[i]) right[grid[i]]++;
+    }
+    for (var v = 0; v <= 9; v++) locked[v] = right[v] >= 9;
+    return { left: left, locked: locked };
+  }
+
+  // Which shading a cell gets. "Same digit only" drops the row, column and box shading for a
+  // harder, more focused look, and keeps the cells with the selected digit (#377)
+  function hlMarks(c, sel, selVal, v, mode) {
+    return {
+      peer: mode !== 'digit' && sel >= 0 && c !== sel && isPeer(c, sel),
+      same: !!selVal && v === selVal && c !== sel
+    };
+  }
+
+  function paint() {
+    var bad = prefs.showErrors ? E.conflicts(S.grid) : {};
+    var kill = isKiller(S);
+    if (kill && prefs.showErrors) Object.assign(bad, E.killerConflicts(S.grid, S.cages));
+    var selVal = selected >= 0 ? S.grid[selected] : 0;
+    var tally = padState(S.grid, S.solution);
+
+    for (var c = 0; c < 81; c++) {
+      var b = cells[c];
+      var v = S.grid[c];
+      var given = !!S.puzzle[c];
+      var cls = 'sd-cell';
+      if (given) cls += ' sd-cell--given';
+      else if (S.hinted[c]) cls += ' sd-cell--hinted';
+      else if (v) cls += ' sd-cell--user';
+      var hl = hlMarks(c, selected, selVal, v, prefs.highlight);
+      if (hl.peer) cls += ' sd-cell--peer';
+      if (hl.same) cls += ' sd-cell--same';
+      if (bad[c]) cls += ' sd-cell--bad';
+      if (c === selected) cls += ' sd-cell--sel';
+      b.className = cls;
+      b.innerHTML = kill ? cageHtml[c] : '';
+      if (v) {
+        b.appendChild(document.createTextNode(C.num(v)));
+      } else if (notesOf(c).length) {
+        var g = el('div', { class: 'sd-notes' }), ns = notesOf(c);
+        for (var n = 1; n <= 9; n++) {
+          var has = ns.indexOf(n) >= 0;
+          // the selected digit lit up on the board but not in the notes, so a
+          // player could not see where they had pencilled it in (#893)
+          g.appendChild(el('span', has && n === selVal ? { class: 'sd-note--same', text: C.num(n) } : { text: has ? C.num(n) : '' }));
+        }
+        b.appendChild(g);
+      }
+    }
+    pads.forEach(function (p) {
+      var left = tally.left[p.v];
+      p.left.textContent = left > 0 ? C.num(left) : '';
+      p.btn.disabled = tally.locked[p.v] && !noteMode;
+    });
+    ctx.setStat('mistakes', S.mistakes);
+    hintBtn.disabled = false;
+  }
+
+  function isPeer(a, b) {
+    return ((a / 9) | 0) === ((b / 9) | 0) || (a % 9) === (b % 9) ||
+      (((((a / 9) | 0) / 3) | 0) === ((((b / 9) | 0) / 3) | 0) && (((a % 9) / 3) | 0) === (((b % 9) / 3) | 0));
+  }
+
+  /* ------------------------------------------------------------ حرکت */
+
+  // بازی «شروع شده» یعنی کاربر چیزی نوشته یا زمان معناداری گذشته
+  function started() {
+    if (!S || S.done) return false;
+    if (S.undo && S.undo.length) return true;
+    return S.elapsed > 5000;
+  }
+
+  function pick(i) {
+    if (S.done) return;
+    selected = i;
+    C.audio.sfx('select');
+    paint();
+  }
+
+  function pushUndo() {
+    S.undo.push({ grid: S.grid.slice(), notes: JSON.stringify(S.notes), hinted: JSON.stringify(S.hinted), mistakes: S.mistakes });
+    if (S.undo.length > 400) S.undo.shift();
+  }
+
+  function undo() {
+    if (!S.undo.length) { C.feedback('bad'); return; }
+    var u = S.undo.pop();
+    S.grid = u.grid;
+    S.notes = JSON.parse(u.notes);
+    S.hinted = JSON.parse(u.hinted);
+    S.mistakes = u.mistakes;
+    C.feedback('tap');
+    paint();
+    save();
+  }
+
+  function enter(v) {
+    if (!S || S.done || selected < 0) { C.feedback('bad'); return; }
+    if (S.puzzle[selected]) { C.feedback('bad'); C.ui.shake(cells[selected]); return; }
+    pushUndo();
+    if (v === 0) {
+      S.grid[selected] = 0;
+      S.notes[selected] = [];
+      delete S.hinted[selected];
+      C.feedback('tap');
+    } else if (noteMode) {
+      if (S.grid[selected]) S.grid[selected] = 0;
+      var arr = S.notes[selected];
+      var at = arr.indexOf(v);
+      if (at >= 0) arr.splice(at, 1); else arr.push(v);
+      C.audio.sfx('tap');
+    } else {
+      S.grid[selected] = v;
+      S.notes[selected] = [];
+      delete S.hinted[selected];
+      if (v !== S.solution[selected]) {
+        S.mistakes++;
+        C.feedback('bad');
+        C.ui.shake(cells[selected]);
+      } else {
+        C.feedback('place');
+        dropPeerNotes(selected, v);
+      }
+    }
+    paint();
+    if (v && !noteMode && v === S.solution[selected]) ripple(selected);
+    save();
+    checkWin();
+  }
+
+  // A correct digit rules itself out of its row, column and box notes. A hint
+  // places a correct digit too, but left those notes standing (#892).
+  function dropPeerNotes(i, v) {
+    E.PEERS[i].forEach(function (p) {
+      var a = S.notes[p], k = a ? a.indexOf(v) : -1;
+      if (k >= 0) a.splice(k, 1);
+    });
+  }
+
+  // Every row, column and box that the digit at i has just finished ripples out
+  // from it, 35 ms a step. Returns the cells it touched.
+  function ripple(i) {
+    if (C.ui.reduceMotion()) return [];
+    var r0 = (i / 9) | 0, c0 = i % 9, units = [[], [], []], hit = {};
+    for (var k = 0; k < 9; k++) {
+      units[0].push(r0 * 9 + k);
+      units[1].push(k * 9 + c0);
+      units[2].push((((r0 / 3) | 0) * 3 + ((k / 3) | 0)) * 9 + ((c0 / 3) | 0) * 3 + k % 3);
+    }
+    units.forEach(function (u) {
+      if (u.every(function (c) { return S.grid[c] === S.solution[c]; })) u.forEach(function (c) { hit[c] = 1; });
+    });
+    var out = Object.keys(hit).map(Number);
+    out.forEach(function (c) {
+      var b = cells[c];
+      if (!b) return;
+      b.classList.add('sd-done');
+      b.style.animationDelay = (Math.abs(((c / 9) | 0) - r0) + Math.abs(c % 9 - c0)) * 35 + 'ms';
+      setTimeout(function () { b.classList.remove('sd-done'); b.style.animationDelay = ''; }, 900);
+    });
+    return out;
+  }
+
+  function hint() {
+    if (!S || S.done) return;
+    var empties = [];
+    for (var i = 0; i < 81; i++) if (!S.grid[i] || S.grid[i] !== S.solution[i]) empties.push(i);
+    if (!empties.length) { C.ui.toast({ icon: 'info', title: C.t('noMoreEmpty') }); return; }
+    if (!C.coins.can(HINT_COST)) {
+      C.feedback('bad');
+      C.ui.toast({ icon: 'coin', title: C.t('notEnoughCoins'), sub: C.t('playToEarn') });
+      return;
+    }
+    C.coins.spend(HINT_COST);
+    pushUndo();
+    var pickCell = empties[Math.floor(Math.random() * empties.length)];
+    if (pickCell === undefined) return;
+    S.grid[pickCell] = S.solution[pickCell];
+    S.notes[pickCell] = [];
+    dropPeerNotes(pickCell, S.solution[pickCell]);
+    S.hinted[pickCell] = 1;
+    S.hints++;
+    selected = pickCell;
+    C.feedback('coin');
+    C.ui.toast({ icon: 'bulb', title: C.t('hintUsed') });
+    paint();
+    save();
+    checkWin();
+  }
+
+  function checkWin() {
+    for (var i = 0; i < 81; i++) if (S.grid[i] !== S.solution[i]) return;
+    S.done = true;
+    stopTimer();
+    var secs = Math.round(S.elapsed / 1000);
+    var base = { easy: 6, medium: 12, hard: 20, expert: 30 }[S.difficulty] || 12;
+    var speed = C.clamp(1.6 - secs / 900, 0.6, 1.6);
+    var coins = Math.round(base * speed) + (S.daily ? 8 : 0);
+    var points = Math.round(base * 4 * speed) + (S.daily ? 25 : 0);
+
+    var kill = isKiller(S);
+    // Killer keeps its own best times, per level (#851)
+    var isBest = C.stats.best('sudoku', (kill ? 'killer-time-' : 'time-') + S.difficulty, S.elapsed, true);
+    C.achievements.unlock('sd-win');
+    if (kill) C.achievements.unlock('sd-killer');
+    if (S.difficulty === 'expert') C.achievements.unlock('sd-expert');
+    if (S.hints === 0 && S.mistakes === 0) C.achievements.unlock('sd-clean');
+    if (!kill && S.difficulty === 'medium' && S.elapsed < 300000) C.achievements.unlock('sd-fast');
+
+    var firstDaily = false;
+    if (S.daily) {
+      firstDaily = C.stats.daily('sudoku', S.daily, { label: C.time(S.elapsed), ms: S.elapsed, difficulty: S.difficulty });
+      if (!firstDaily) { coins = Math.round(coins * 0.2); points = Math.round(points * 0.2); }
+    }
+    // Only the finished game's own save goes: this removed 'session' every time, so a
+    // finished daily or Killer game also threw away a Classic game in progress.
+    if (kill) ctx.store.remove('killer'); else ctx.clearSave();
+
+    var share = 'چوگان · سودوکو ' + (kill ? C.t('kKiller') + ' ' : '') + C.t(S.difficulty) + '\n' +
+      (S.daily ? ('روزانه ' + S.daily + '\n') : '') +
+      'زمان ' + C.time(S.elapsed) + ' · خطا ' + C.num(S.mistakes) + ' · راهنمایی ' + C.num(S.hints);
+
+    ctx.finish({
+      won: true,
+      title: C.t('won'),
+      timeMs: S.elapsed,
+      coins: coins,
+      points: points,
+      note: isBest ? C.t('best') + '!' : null,
+      lines: [
+        { label: C.t('time'), value: C.time(S.elapsed) },
+        { label: C.t('mistakes'), value: C.num(S.mistakes) },
+        { label: C.t('hints'), value: C.num(S.hints) },
+        { label: C.t('difficulty'), value: C.t(S.difficulty) }
+      ].concat(kill ? [{ label: C.t('kMode'), value: C.t('kKiller') }] : []),
+      shareText: share,
+      paint: cardPaint(S.puzzle, S.grid, kill ? S.cages : null),
+      onAgain: S.daily ? null : function () { newGame(S.difficulty, null, null, kill ? 'killer' : null); startTimer(); }
+    });
+  }
+
+
+  /* ------------------------------------------------- تخته روی کارت نتیجه */
+  function cardPaint(puzzle, grid, cages) {
+    var giv = puzzle.slice(), val = grid.slice();
+    return function (g, W, H, col) {
+      var rtl = document.documentElement.dir === 'rtl';
+      var side = Math.min(W - 24, H - 24);
+      var cs = side / 9;
+      var ox = (W - side) / 2, oy = (H - side) / 2;
+      C.rrect(g, ox - 8, oy - 8, side + 16, side + 16, 18);
+      g.fillStyle = col.line; g.fill();
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      for (var i = 0; i < 81; i++) {
+        var r = (i / 9) | 0, c = i % 9;
+        var x = ox + (rtl ? (8 - c) : c) * cs, y = oy + r * cs;
+        var given = giv[i] > 0;
+        g.fillStyle = given ? col.surface2 : col.surface;
+        g.fillRect(x + 1, y + 1, cs - 2, cs - 2);
+        if (val[i]) {
+          g.fillStyle = given ? col.text : col.game;
+          g.font = (given ? '800 ' : '700 ') + Math.round(cs * 0.6) + 'px Vazirmatn, system-ui, sans-serif';
+          g.fillText(C.num(val[i]), x + cs / 2, y + cs / 2 + cs * 0.03);
+        }
+      }
+      // خط‌های ضخیم بلوک‌های سه‌تایی
+      g.strokeStyle = col.line;
+      for (var k = 0; k <= 9; k++) {
+        g.lineWidth = (k % 3 === 0) ? 5 : 2;
+        g.beginPath(); g.moveTo(ox + k * cs, oy); g.lineTo(ox + k * cs, oy + side); g.stroke();
+        g.beginPath(); g.moveTo(ox, oy + k * cs); g.lineTo(ox + side, oy + k * cs); g.stroke();
+      }
+      // a Killer card shows its cages too: a dotted line where two cages meet (#851)
+      if (cages) {
+        var of = {};
+        cages.forEach(function (cg, ci) { cg.cells.forEach(function (c) { of[c] = ci; }); });
+        g.strokeStyle = col.dim; g.lineWidth = 2; g.setLineDash([2, 3]);
+        for (var q = 0; q < 81; q++) {
+          var qr = (q / 9) | 0, qc = q % 9, x0 = ox + (rtl ? (8 - qc) : qc) * cs, y0 = oy + qr * cs;
+          if (qc < 8 && of[q + 1] !== of[q]) { var xe = rtl ? x0 : x0 + cs; g.beginPath(); g.moveTo(xe, y0); g.lineTo(xe, y0 + cs); g.stroke(); }
+          if (qr < 8 && of[q + 9] !== of[q]) { g.beginPath(); g.moveTo(x0, y0 + cs); g.lineTo(x0 + cs, y0 + cs); g.stroke(); }
+        }
+        g.setLineDash([]);
+      }
+    };
+  }
+
+  /* --------------------------------------------------------- زمان‌سنج */
+
+  function startTimer() {
+    stopTimer();
+    var last = Date.now();
+    timerId = setInterval(function () {
+      var n = Date.now();
+      if (!S.done) { S.elapsed += n - last; ctx.setStat('time', C.time(S.elapsed)); }
+      last = n;
+    }, 250);
+  }
+  function stopTimer() { if (timerId) { clearInterval(timerId); timerId = null; } }
+  C.onPause(function () { stopTimer(); });
+  C.onResume(function () { if (S && !S.done) startTimer(); });
+
+  /* --------------------------------------------------- ذخیره و شروع */
+
+  // the game of the other mode, kept while this one is on the board (#851)
+  var parked = null;
+  ctx.autosave(function () {
+    var kS = isKiller(S) ? S : (isKiller(parked) ? parked : null);
+    var cS = isKiller(S) ? parked : S;
+    if (!dailyDate) {
+      if (kS && !kS.done) ctx.store.set('killer', { s: kS, at: Date.now() });
+      else ctx.store.remove('killer');
+    }
+    if (!cS || cS.done) return { inProgress: false };
+    return { s: cS, prefs: prefs };
+  });
+  function save() { ctx.save(); }
+
+  // Switching mode never loses a game: the one on the board is parked and saved, and
+  // the other mode's game comes back where it was left, or a new one starts.
+  function setMode(m) {
+    if (dailyDate || !S || (isKiller(S) ? 'killer' : 'classic') === m) return;
+    prefs.mode = m; ctx.store.set('prefs', prefs);
+    var back = parked;
+    parked = S.done ? null : S;
+    if (back && !back.done && (isKiller(back) ? 'killer' : 'classic') === m) { restore(back); save(); }
+    else newGame(m === 'killer' ? (prefs.killerDifficulty || 'medium') : (prefs.difficulty || 'medium'), null, null, m === 'killer' ? 'killer' : null);
+    startTimer();
+  }
+
+  function askNew() {
+    var mode = isKiller(S) ? 'killer' : null;
+    if (!S || S.done) { newGame(S ? S.difficulty : prefs.difficulty, null, null, mode); startTimer(); return; }
+    C.ui.confirm({
+      title: C.t('newPuzzle'), body: C.t('resetWarn'),
+      onOk: function () { newGame(S.difficulty, null, null, mode); startTimer(); }
+    });
+  }
+
+  function showHelp() {
+    C.ui.modal({
+      title: C.t('help'),
+      body: [
+        el('p', { class: 'ch-dim', text: C.t('tutText1') }),
+        el('h3', { style: { 'margin-top': 'var(--s-4)' }, text: C.t('kTitle') }),
+        el('p', { class: 'ch-dim', text: C.t('kRule') }),
+        el('h3', { style: { 'margin-top': 'var(--s-4)' }, text: C.t('keyboard') }),
+        el('div', { class: 'ch-list' }, [
+          kbRow('۱ تا ۹ / 1-9', C.t('play')),
+          kbRow('← ↑ → ↓', C.t('move')),
+          kbRow('N', C.t('notes')),
+          kbRow('U / Ctrl+Z', C.t('undo')),
+          kbRow('H', C.t('hint')),
+          kbRow('Backspace', C.t('erase'))
+        ])
+      ],
+      actions: [
+        { label: C.t('tutorial'), keepOpen: false, onClick: function () { ctx.showTutorial(TUT); } },
+        { label: C.t('done'), kind: 'primary' }
+      ]
+    });
+  }
+  function showSettings() {
+    C.ui.modal({
+      title: C.t('settings'),
+      body: [el('div', { class: 'ch-list' }, [
+        modeRow(),
+        settingRow('showErrors', 'showErrors'),
+        el('div', { class: 'ch-item' }, [
+          el('div', { class: 'ch-item__label', text: C.t('highlight') }),
+          hlSeg()
+        ]),
+        settingRow('autoNotes', 'autoNotes'),
+        clearRow(),
+        themeRow()
+      ])],
+      actions: [{ label: C.t('done'), kind: 'primary' }]
+    });
+  }
+  // #424: notes filled by the old one-off auto-notes button (before #409) stayed in
+  // saves and looked like the player's own, and could only be erased cell by cell.
+  // One action clears them all, as one undo step.
+  function hasNotes() { for (var i = 0; i < 81; i++) if (S.notes[i] && S.notes[i].length) return true; return false; }
+  function clearNotes() {
+    if (!S || S.done || !hasNotes()) { C.feedback('bad'); return false; }
+    pushUndo();
+    for (var i = 0; i < 81; i++) S.notes[i] = [];
+    C.feedback('tap');
+    paint();
+    save();
+    return true;
+  }
+  function clearRow() {
+    var b = el('button', { class: 'ch-btn ch-btn--soft', type: 'button', text: C.t('clearBtn') });
+    b.disabled = !hasNotes();
+    b.addEventListener('click', function () {
+      if (clearNotes()) { b.disabled = true; C.ui.toast({ icon: 'check', title: C.t('notesCleared'), sub: C.t('notesBack') }); }
+    });
+    return el('div', { class: 'ch-item' }, [el('div', { class: 'ch-item__label', text: C.t('clearNotes') }), b]);
+  }
+  function kbRow(k, what) {
+    return el('div', { class: 'ch-item' }, [
+      el('div', { class: 'ch-item__label', text: what }),
+      el('span', { class: 'ch-badge', text: k })
+    ]);
+  }
+  // Two long labels do not fit beside the title on a phone, so the choice takes its own full row
+  function hlSeg() {
+    var seg = C.ui.segmented([{ value: 'peers', label: C.t('hlPeers') }, { value: 'digit', label: C.t('hlDigit') }],
+      prefs.highlight === 'digit' ? 'digit' : 'peers',
+      function (v) { prefs.highlight = v; ctx.store.set('prefs', prefs); paint(); });
+    seg.classList.add('ch-seg--wrap');
+    return seg;
+  }
+  // Board colours (#874): six swatches, each drawn in its own theme, with the chosen
+  // one's name under them. Buttons, so Tab and Enter reach them; the name is the label.
+  function themeRow() {
+    var cur = themeOf(prefs), name = el('div', { class: 'sd-theme-name' }), btns = [];
+    function show(id) {
+      btns.forEach(function (b) { b.setAttribute('aria-pressed', b.getAttribute('data-sd-theme') === id ? 'true' : 'false'); });
+      THEMES.forEach(function (t) { if (t.id === id) name.textContent = C.t(t.key); });
+    }
+    THEMES.forEach(function (t) {
+      var b = el('button', { class: 'sd-swatch', type: 'button', 'data-sd-theme': t.id, 'aria-label': C.t(t.key), title: C.t(t.key), text: C.num(5) });
+      b.addEventListener('click', function () {
+        prefs.boardTheme = t.id; ctx.store.set('prefs', prefs);
+        wrap.setAttribute('data-sd-theme', t.id);
+        C.feedback('select');
+        show(t.id);
+      });
+      btns.push(b);
+    });
+    show(cur);
+    return el('div', { class: 'ch-item sd-theme-item' }, [
+      el('div', { class: 'ch-item__label', text: C.t('thLabel') }),
+      el('div', { class: 'sd-themes', role: 'group', 'aria-label': C.t('thLabel') }, btns),
+      name
+    ]);
+  }
+  // Classic or Killer (#851); the daily is always Classic, so it has no choice
+  function modeRow() {
+    if (dailyDate) return null;
+    return el('div', { class: 'ch-item' }, [
+      el('div', { class: 'ch-item__label', text: C.t('kMode') }),
+      C.ui.segmented([{ value: 'classic', label: C.t('kClassic') }, { value: 'killer', label: C.t('kKiller') }],
+        isKiller(S) ? 'killer' : 'classic', function (v) { setMode(v); })
+    ]);
+  }
+  function settingRow(key, labelKey) {
+    return el('div', { class: 'ch-item' }, [
+      el('div', { class: 'ch-item__label', text: C.t(labelKey) }),
+      C.ui.switch(prefs[key], function (v) { prefs[key] = v; ctx.store.set('prefs', prefs); paint(); })
+    ]);
+  }
+
+  // Auto notes is a switch (#409): while it is on, every empty cell shows its
+  // candidates, worked out afresh at each paint so they follow every digit placed
+  // or erased; your own notes are kept underneath and come back when it is off.
+  // It used to be a one-off "apply" that filled the notes and could not be undone
+  // from where it was switched on.
+  function notesOf(c) {
+    if (!prefs.autoNotes || S.grid[c]) return S.notes[c] || [];
+    var m = E.candidates(S.grid, c), arr = [];
+    // in Killer the cage's sum rules digits out as well (#851)
+    if (S.mode === 'killer' && S.cages) S.cages.forEach(function (cg) { if (cg.cells.indexOf(c) >= 0) m &= E.cageMask(S.grid, cg); });
+    for (var v = 1; v <= 9; v++) if (m & (1 << v)) arr.push(v);
+    return arr;
+  }
+
+  var TUT = [
+    { title: C.t('tutTitle1'), text: C.t('tutText1'),
+      art: '<svg viewBox="0 0 200 120" width="100%"><rect x="55" y="10" width="90" height="90" rx="8" fill="var(--c-surface-2)" stroke="var(--game)" stroke-width="3"/>' +
+        '<g stroke="var(--c-line)" stroke-width="2"><path d="M85 10v90M115 10v90M55 40h90M55 70h90"/></g>' +
+        '<g fill="var(--game)" font-size="17" font-weight="700" text-anchor="middle" font-family="sans-serif"><text x="70" y="33">5</text><text x="100" y="63">7</text><text x="130" y="93">2</text></g></svg>' },
+    { title: C.t('tutTitle2'), text: C.t('tutText2'),
+      art: '<svg viewBox="0 0 200 120" width="100%"><rect x="70" y="20" width="60" height="60" rx="8" fill="var(--c-surface-2)" stroke="var(--game)" stroke-width="3"/>' +
+        '<g fill="var(--c-text-dim)" font-size="11" text-anchor="middle" font-family="sans-serif"><text x="85" y="40">1</text><text x="100" y="40">3</text><text x="115" y="60">6</text><text x="85" y="75">9</text></g>' +
+        '<circle cx="140" cy="92" r="14" fill="var(--game)"/><path d="M134 92l4 4 8-8" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>' },
+    { title: C.t('tutTitle3'), text: C.t('tutText3'),
+      art: '<svg viewBox="0 0 200 120" width="100%"><circle cx="100" cy="55" r="26" fill="var(--c-warn-soft)"/>' +
+        '<path d="M92 70h16M95 78h10M100 26a16 16 0 0 0-9.6 28.8c1.7 1.4 2.9 3.5 3.2 5.2h12.8c.3-1.7 1.5-3.8 3.2-5.2A16 16 0 0 0 100 26z" fill="none" stroke="var(--c-gold)" stroke-width="3.5" stroke-linecap="round"/>' +
+        '<circle cx="152" cy="86" r="13" fill="var(--c-gold)"/><text x="152" y="92" font-size="15" font-weight="800" fill="#fff" text-anchor="middle" font-family="sans-serif">' + C.num(10) + '</text></svg>' }
+  ];
+
+  /* --------------------------------------------------------- کیبورد */
+
+  window.addEventListener('keydown', function (e) {
+    if (!S || S.done) return;
+    if (document.querySelector('.ch-scrim')) return;
+    var tg = e.target, tag = tg && tg.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (tg && tg.isContentEditable)) return;
+    if (tag === 'BUTTON' && (e.key === ' ' || e.key === 'Enter')) return;
+    var k = e.key;
+    if (k >= '1' && k <= '9') { enter(+k); e.preventDefault(); return; }
+    if (k === '0' || k === 'Backspace' || k === 'Delete') { enter(0); e.preventDefault(); return; }
+    if (C.keyIs(e, 'n')) { noteBtn.click(); e.preventDefault(); return; }
+    if (C.undoKey(e)) { undo(); e.preventDefault(); return; }
+    if (C.keyIs(e, 'h')) { hint(); e.preventDefault(); return; }
+    var d = { ArrowUp: -9, ArrowDown: 9, ArrowLeft: 1, ArrowRight: -1 }[k];
+    if (d !== undefined) {
+      if (document.documentElement.dir !== 'rtl' && (k === 'ArrowLeft' || k === 'ArrowRight')) d = -d;
+      var next = (selected < 0 ? 40 : selected + d);
+      if (next >= 0 && next < 81) { selected = next; paint(); }
+      e.preventDefault();
+    }
+  });
+
+  /* ----------------------------------------------------------- شروع */
+
+  var saved = ctx.loadSave();
+  // هسته برای هر روز خانه‌ی ذخیره‌ی جدا دارد، ولی این بازی روزانه را همیشه از نو
+  // می‌ساخت و پیشرفت نیمه‌کاره‌ی همان روز گم می‌شد (#132). اول ذخیره‌ی همین روز.
+  var saves = pickSaves(saved, dailyDate ? null : ctx.store.get('killer', null), dailyDate);
+  var resume = !!saves.classic;
+  if (resume && saved.prefs && !dailyDate) prefs = saved.prefs;
+  // the mode last played comes back (#851); the other mode's game waits, parked
+  var wantKiller = !dailyDate && prefs.mode === 'killer';
+  if (wantKiller) {
+    parked = saves.classic;
+    if (saves.killer) { restore(saves.killer); startTimer(); } else startFresh();
+  } else if (resume) {
+    parked = saves.killer;
+    restore(saves.classic);
+    startTimer();
+  } else if (dailyDate) {
+    if (C.stats.dailyDone('sudoku', dailyDate)) {
+      var rec = C.stats.dailyOf(dailyDate).sudoku;
+      C.ui.modal({
+        title: C.t('dailyDone'),
+        body: [el('p', { class: 'ch-dim', text: C.t('solvedIn', { t: rec.label }) })],
+        actions: [{ label: C.t('menu'), onClick: function () { C.back(); } },
+          { label: C.t('newGame'), kind: 'primary', onClick: function () { startFresh(); } }],
+        dismissable: false
+      });
+      var d = C.daily('sudoku', dailyDate);
+      newGame(['medium', 'hard', 'expert'][d.seed % 3], d.rng, dailyDate);
+      startTimer();
+    } else {
+      var d2 = C.daily('sudoku', dailyDate);
+      newGame(['medium', 'hard', 'expert'][d2.seed % 3], d2.rng, dailyDate);
+      startTimer();
+      ctx.tutorialIfNew(TUT);
+    }
+  } else {
+    parked = saves.killer;
+    startFresh();
+  }
+
+  function startFresh() {
+    if (!dailyDate && prefs.mode === 'killer') newGame(prefs.killerDifficulty || 'medium', null, null, 'killer');
+    else newGame(prefs.difficulty || 'medium');
+    startTimer();
+    ctx.tutorialIfNew(TUT);
+  }
+})();
+</script>
+</body>
+</html>

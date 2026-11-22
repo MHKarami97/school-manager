@@ -275,7 +275,23 @@ export const SITE_FEATURES: SiteFeature[] = [
     audiences: ["admin", "teacher"],
     status: "active",
   },
-  // --- بازی‌های آموزشی (در حال آماده‌سازی - به‌زودی) ---
+  // --- بازی‌های آموزشی (باشگاه ۹۵ بازی دانایی و مهارت) ---
+  {
+    id: "game-hub-95",
+    title: "باشگاه ۹۵ بازی دانایی و مهارت",
+    shortTitle: "باشگاه ۹۵ بازی",
+    description:
+      "مجموعه جامع ۹۵ بازی فکری، پازل، تخته‌ای، مهارتی و کارتی تلفیق‌شده با سوالات کتاب‌های درسی، سکه و لیگ قهرمانان.",
+    icon: "M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
+    startPath: "/games",
+    startLabel: "ورود به باشگاه ۹۵ بازی 🎮",
+    historyPath: "/games",
+    historyLabel: "باشگاه بازی‌ها",
+    audiences: ["student"],
+    status: "active",
+    badge: "۹۵ بازی کامل",
+    isNew: true,
+  },
   {
     id: "game-rocket",
     title: "نبرد موشکی علمی",

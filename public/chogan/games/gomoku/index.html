@@ -1,0 +1,887 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#FBF6EF">
+<title>گوموکو — چوگان</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../lib/chogan.css">
+<script src="../../lib/early.js"></script>
+<style>
+  /* Stone colours are part of the rules, not the theme: black and white stay black
+     and white in both themes. The wood is a little darker in dark mode so it does not glare. */
+  :root { --gk-wood: #E8C9A0; --gk-line: rgba(70, 45, 15, .5); --gk-black: #1A1A1A; --gk-white: #F5F0E6; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --gk-wood: #C9A779; --gk-line: rgba(40, 25, 5, .55); } }
+  :root[data-theme="dark"] { --gk-wood: #C9A779; --gk-line: rgba(40, 25, 5, .55); }
+  .gk-top { display: flex; gap: var(--s-2); flex-wrap: wrap; justify-content: center; width: 100%; max-width: 520px; }
+  .gk-players { width: 100%; max-width: 520px; display: flex; gap: var(--s-2); }
+  .gk-player {
+    flex: 1; display: flex; align-items: center; gap: var(--s-2); min-width: 0;
+    background: var(--c-surface); border-radius: var(--r-md); padding: 8px 12px;
+    box-shadow: var(--sh-1); border: 2px solid transparent; min-height: 44px;
+    transition: border-color var(--t-mid) var(--ease), transform var(--t-mid) var(--ease);
+  }
+  .gk-player--on { border-color: var(--game); transform: translateY(-2px); box-shadow: var(--sh-2); }
+  .gk-player__stone { width: 18px; height: 18px; border-radius: 50%; flex: 0 0 18px; box-shadow: 0 0 0 1.5px var(--c-text-faint); }
+  .gk-player__name { flex: 1; min-width: 0; font-weight: 700; font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .gk-thinking { animation: gk-blink 900ms infinite; }
+  @keyframes gk-blink { 50% { opacity: .55; } }
+  .gk-boardbox { aspect-ratio: 1; } /* fills the room it has (#359); it stopped at a fixed size before */
+  .gk-canvas { width: 100%; height: 100%; display: block; touch-action: manipulation; cursor: pointer; border-radius: var(--r-md); box-shadow: var(--sh-2); }
+</style>
+</head>
+<body>
+<script src="../../version.js"></script>
+<script src="../../lib/chogan.js"></script>
+<script>
+/* ==== ENGINE START ==== */
+function GomokuEngineFactory() {
+  'use strict';
+
+  var DIRS = [[0, 1], [1, 0], [1, 1], [1, -1]];
+  var SIZES = [9, 13, 15];
+
+  function idx(n, r, c) { return r * n + c; }
+  function inside(n, r, c) { return r >= 0 && r < n && c >= 0 && c < n; }
+  function midOf(n) { return (n / 2) | 0; }
+
+  function emptyBoard(n) {
+    var b = [];
+    for (var i = 0; i < n * n; i++) b.push(0);
+    return b;
+  }
+
+  // The cells of the line of five or more through i, or null. Used both to end
+  // the game and to draw the winning line.
+  function winLine(b, n, i, p) {
+    var r0 = (i / n) | 0, c0 = i % n;
+    for (var d = 0; d < 4; d++) {
+      var dr = DIRS[d][0], dc = DIRS[d][1], line = [i];
+      for (var s = -1; s <= 1; s += 2) {
+        var r = r0 + dr * s, c = c0 + dc * s;
+        while (inside(n, r, c) && b[idx(n, r, c)] === p) { line.push(idx(n, r, c)); r += dr * s; c += dc * s; }
+      }
+      if (line.length >= 5) return line.sort(function (a, z) { return a - z; });
+    }
+    return null;
+  }
+  function winsAt(b, n, i, p) { return !!winLine(b, n, i, p); }
+
+  function isFull(b) {
+    for (var i = 0; i < b.length; i++) if (b[i] === 0) return false;
+    return true;
+  }
+
+  // Empty cells within two of a stone, nearest the centre first; the centre on
+  // an empty board. Far-away cells never matter in gomoku and only slow the bot.
+  function candidates(b, n) {
+    var mark = [], out = [], any = false, mid = midOf(n);
+    for (var i = 0; i < b.length; i++) mark.push(false);
+    for (i = 0; i < b.length; i++) {
+      if (!b[i]) continue;
+      any = true;
+      var r0 = (i / n) | 0, c0 = i % n;
+      for (var dr = -2; dr <= 2; dr++) for (var dc = -2; dc <= 2; dc++) {
+        var r = r0 + dr, c = c0 + dc;
+        if (inside(n, r, c) && !b[idx(n, r, c)]) mark[idx(n, r, c)] = true;
+      }
+    }
+    if (!any) return [idx(n, mid, mid)];
+    for (i = 0; i < b.length; i++) if (mark[i]) out.push(i);
+    var dist = function (k) { return Math.abs(((k / n) | 0) - mid) + Math.abs(k % n - mid); };
+    out.sort(function (a, z) { return dist(a) - dist(z) || a - z; });
+    return out;
+  }
+
+  // Every run of five cells through i that the opponent has not touched is a
+  // line p could still complete. Placing at i adds one stone to each; the value
+  // grows steeply with the stones that window would then hold. Blocking is the
+  // same count for the opponent. Broken shapes (X X . X) count as well, which a
+  // plain "stones in a row" count misses.
+  var ATTACK = [0, 10, 100, 1000, 100000, 10000000];
+  var DEFEND = [0, 8, 80, 800, 50000, 5000000];
+  function scoreMove(b, n, i, p) {
+    var o = 3 - p, att = 0, def = 0, r0 = (i / n) | 0, c0 = i % n;
+    for (var d = 0; d < 4; d++) {
+      var dr = DIRS[d][0], dc = DIRS[d][1];
+      for (var s = -4; s <= 0; s++) {
+        var mine = 0, theirs = 0, ok = true;
+        for (var k = 0; k < 5; k++) {
+          var r = r0 + dr * (s + k), c = c0 + dc * (s + k);
+          if (!inside(n, r, c)) { ok = false; break; }
+          var v = b[idx(n, r, c)];
+          if (v === p) mine++; else if (v === o) theirs++;
+        }
+        if (!ok) continue;
+        if (!theirs) att += ATTACK[mine + 1];
+        if (!mine) def += DEFEND[theirs + 1];
+      }
+    }
+    return att + def;
+  }
+
+  function ranked(b, n, p) {
+    return candidates(b, n).map(function (i) { return { i: i, s: scoreMove(b, n, i, p) }; })
+      .sort(function (a, z) { return z.s - a.s; });
+  }
+
+  function winningMove(b, n, p) {
+    var c = candidates(b, n);
+    for (var k = 0; k < c.length; k++) {
+      b[c[k]] = p;
+      var w = winsAt(b, n, c[k], p);
+      b[c[k]] = 0;
+      if (w) return c[k];
+    }
+    return -1;
+  }
+
+  // The position for the side to move: every untouched window of five scores for
+  // whoever owns it, the opponent's a little higher because they move next.
+  function evaluate(b, n, p) {
+    var o = 3 - p, sc = 0;
+    for (var d = 0; d < 4; d++) {
+      var dr = DIRS[d][0], dc = DIRS[d][1];
+      for (var r = 0; r < n; r++) for (var c = 0; c < n; c++) {
+        if (!inside(n, r + 4 * dr, c + 4 * dc)) continue;
+        var mine = 0, theirs = 0;
+        for (var k = 0; k < 5; k++) {
+          var v = b[idx(n, r + k * dr, c + k * dc)];
+          if (v === p) mine++; else if (v === o) theirs++;
+        }
+        if (mine && !theirs) sc += ATTACK[mine];
+        else if (theirs && !mine) sc -= ATTACK[theirs] * 1.5;
+      }
+    }
+    return sc;
+  }
+
+  // Negamax over the best few moves only: gomoku's good moves are always among
+  // the highest-scoring cells, and a wide search would freeze the page.
+  var WIN = 1e9;
+  function search(b, n, p, depth, alpha, beta) {
+    if (winningMove(b, n, p) >= 0) return WIN;
+    if (depth === 0) return evaluate(b, n, p);
+    var list = ranked(b, n, p).slice(0, 8);
+    if (!list.length) return 0;
+    var best = -Infinity;
+    for (var k = 0; k < list.length; k++) {
+      var m = list[k].i;
+      b[m] = p;
+      var v = -search(b, n, 3 - p, depth - 1, -beta, -alpha);
+      b[m] = 0;
+      if (v > best) best = v;
+      if (best > alpha) alpha = best;
+      if (alpha >= beta) break;
+    }
+    return best;
+  }
+
+  // easy: takes a win, usually blocks a five, otherwise one of the five best moves.
+  // medium: the best-scoring move. hard: a three-ply search over the best moves.
+  function think(b, n, p, level, rnd) {
+    rnd = rnd || Math.random;
+    var o = 3 - p, win = winningMove(b, n, p);
+    if (win >= 0) return win;
+    var block = winningMove(b, n, o);
+    var list = ranked(b, n, p);
+    if (level === 'easy') {
+      if (block >= 0 && rnd() < 0.8) return block;
+      return list[Math.floor(rnd() * Math.min(5, list.length))].i;
+    }
+    if (block >= 0) return block;
+    if (level !== 'hard') return list[0].i;
+    var best = list[0].i, bestV = -Infinity, top = list.slice(0, 10);
+    for (var k = 0; k < top.length; k++) {
+      var m = top[k].i;
+      b[m] = p;
+      var v = -search(b, n, o, 2, -Infinity, -bestV);
+      b[m] = 0;
+      if (v > bestV) { bestV = v; best = m; }
+    }
+    return best;
+  }
+
+  function applyMove(b, n, i, p) {
+    if (i < 0 || i >= b.length || b[i] !== 0) return null;
+    var next = b.slice();
+    next[i] = p;
+    var line = winLine(next, n, i, p);
+    return { board: next, won: !!line, line: line, draw: !line && isFull(next), move: i };
+  }
+
+  // Daily opening: two black and two white stones near the centre, from the day's
+  // seed, so everyone meets the same position and black (the player) moves next.
+  function dailyOpening(rnd, n) {
+    var b = emptyBoard(n), mid = midOf(n), moves = [];
+    for (var k = 0; k < 4; k++) {
+      var i;
+      do { i = idx(n, mid - 2 + Math.floor(rnd() * 5), mid - 2 + Math.floor(rnd() * 5)); } while (b[i]);
+      b[i] = k % 2 ? 2 : 1;
+      moves.push(i);
+    }
+    return { board: b, moves: moves, turn: 1 };
+  }
+
+  var api = {
+    SIZES: SIZES, idx: idx, midOf: midOf, emptyBoard: emptyBoard, winLine: winLine, winsAt: winsAt,
+    isFull: isFull, candidates: candidates, scoreMove: scoreMove, evaluate: evaluate, think: think,
+    applyMove: applyMove, dailyOpening: dailyOpening
+  };
+  if (typeof self !== 'undefined') self.GomokuEngine = api;
+  return api;
+}
+if (typeof module !== 'undefined' && module.exports) module.exports = GomokuEngineFactory;
+/* ==== ENGINE END ==== */
+</script>
+
+<script>
+// Started from PR #215 by @lanlan3292 (layout, settings rows, strings); the bot,
+// daily challenge and win-line drawing were reworked in #202.
+(function () {
+  'use strict';
+  var C = window.Chogan, el = C.el;
+  var E = GomokuEngineFactory();
+
+  C.boot({});
+  var ctx = C.game({
+    id: 'gomoku',
+    name: { fa: 'گوموکو', en: 'Gomoku', zh: '五子棋', de: 'Gomoku', es: 'Gomoku', pl: 'Gomoku', fr: 'Gomoku', ar: 'غوموكو', hi: 'गोमोकू' },
+    accent: '#C45C26',
+    // A thinking game, like reversi: the calm sudoku music
+    mood: 'sudoku',
+    strings: {
+      fa: {
+        twoPlayers: 'دو نفره', vsAi: 'با ربات',
+        you: 'تو', rival: 'حریف', player2: 'بازیکن دو', renameP2: 'نام بازیکن دو',
+        black: 'سیاه', white: 'سفید', toMove: 'نوبت {c}', playerWon: '{n} برد', draw: 'مساوی',
+        newMatch: 'دست تازه', undoMove: 'برگرداندن حرکت',
+        boardLabel: 'تخته‌ی گوموکو', stones: 'مهره', placed: 'مهره‌های گذاشته‌شده',
+        size9: '۹×۹', size13: '۱۳×۱۳', size15: '۱۵×۱۵',
+        playBlack: 'تو سیاه', playWhite: 'تو سفید',
+        dailyGomoku: 'گوموکوی روزانه', vsMedium: 'مقابل حریف متوسط',
+        resetWarn: 'دست فعلی تمام می‌شود. ادامه؟',
+        rules: 'به نوبت روی تقاطع خط‌ها مهره بگذارید. سیاه شروع می‌کند. اولین کسی که پنج مهره‌ی هم‌رنگ را پشت سر هم در یک خط بچیند، افقی، عمودی یا مورب، برنده است.',
+        keyboard: 'صفحه‌کلید', moveCursor: 'جابه‌جایی نشانگر', place: 'گذاشتن مهره',
+        tutTitle1: 'پنج در یک خط', tutText1: 'اولین کسی که پنج مهره‌ی هم‌رنگ را پشت سر هم در یک خط صاف بچیند برنده است: افقی، عمودی یا مورب.',
+        tutTitle2: 'جلوی حریف را بگیر', tutText2: 'وقتی حریف سه مهره در یک خط با دو سر باز دارد، یک سرش را ببند؛ وگرنه چهارتایی باز می‌سازد و دیگر نمی‌شود جلویش را گرفت.',
+        tutTitle3: 'برگرداندن', tutText3: 'اگر پشیمان شدی، دکمه‌ی برگرداندن یا کلید U / Ctrl+Z حرکت آخرت را پس می‌گیرد.'
+      },
+      en: {
+        twoPlayers: 'Two players', vsAi: 'Versus AI',
+        you: 'You', rival: 'Opponent', player2: 'Player two', renameP2: 'Player two name',
+        black: 'Black', white: 'White', toMove: "{c}'s turn", playerWon: '{n} wins', draw: 'Draw',
+        newMatch: 'New game', undoMove: 'Undo move',
+        boardLabel: 'Gomoku board', stones: 'stones', placed: 'Stones placed',
+        size9: '9×9', size13: '13×13', size15: '15×15',
+        playBlack: 'You black', playWhite: 'You white',
+        dailyGomoku: 'Daily gomoku', vsMedium: 'against the medium AI',
+        resetWarn: 'This ends the current game. Continue?',
+        rules: 'Take turns placing stones on the line crossings. Black moves first. The first to get five stones of their colour in an unbroken row, horizontally, vertically or diagonally, wins.',
+        keyboard: 'Keyboard', moveCursor: 'Move the cursor', place: 'Place a stone',
+        tutTitle1: 'Five in a row', tutText1: 'The first to line up five stones of the same colour in a straight row wins: horizontal, vertical or diagonal.',
+        tutTitle2: 'Block in time', tutText2: 'When your opponent has three in a row with both ends open, close one end. Otherwise they make an open four, and that can no longer be stopped.',
+        tutTitle3: 'Undo', tutText3: 'Changed your mind? The undo button or U / Ctrl+Z takes back your last move.'
+      },
+      pl: {
+        twoPlayers: 'Dwóch graczy', vsAi: 'Przeciwko AI',
+        you: 'Ty', rival: 'Przeciwnik', player2: 'Gracz drugi', renameP2: 'Nazwa drugiego gracza',
+        black: 'Czarne', white: 'Białe', toMove: "Ruch gracza: {c}", playerWon: '{n} wygrywa', draw: 'Remis',
+        newMatch: 'Nowa gra', undoMove: 'Cofnij ruch',
+        boardLabel: 'Plansza do Gomoku', stones: 'kamienie', placed: 'Postawione kamienie',
+        size9: '9×9', size13: '13×13', size15: '15×15',
+        playBlack: 'Grasz czarnymi', playWhite: 'Grasz białymi',
+        dailyGomoku: 'Codzienne Gomoku', vsMedium: 'przeciwko średniemu AI',
+        resetWarn: 'To zakończy bieżącą grę. Kontynuować?',
+        rules: 'Gracze na przemian kładą kamienie na przecięciach linii. Czarne zaczynają. Wygrywa ten, kto pierwszy ułoży nieprzerwany rząd pięciu kamieni swojego koloru w poziomie, pionie lub po przekątnej.',
+        keyboard: 'Klawiatura', moveCursor: 'Ruch kursorem', place: 'Postaw kamień',
+        tutTitle1: 'Pięć w linii', tutText1: 'Wygrywa ten, kto pierwszy ułoży pięć kamieni tego samego koloru w prostej linii: w poziomie, pionie lub po przekątnej.',
+        tutTitle2: 'Blokuj w porę', tutText2: 'Gdy przeciwnik ma trzy kamienie w linii otwarte z obu stron, zablokuj jeden z końców. W przeciwnym razie stworzy otwartą czwórkę, której nie będzie już można zatrzymać.',
+        tutTitle3: 'Cofanie ruchów', tutText3: 'Zmieniłeś zdanie? Przycisk cofnij lub klawisze U / Ctrl+Z pozwalają cofnąć Twój ostatni ruch.'
+      },
+      fr: {
+        twoPlayers: 'Deux joueurs', vsAi: 'Contre l’IA',
+        you: 'Toi', rival: 'Adversaire', player2: 'Joueur deux', renameP2: 'Nom du joueur deux',
+        black: 'Noir', white: 'Blanc', toMove: 'Au tour de {c}', playerWon: '{n} gagne', draw: 'Égalité',
+        newMatch: 'Nouvelle partie', undoMove: 'Annuler le coup',
+        boardLabel: 'Plateau de gomoku', stones: 'pierres', placed: 'Pierres posées',
+        size9: '9×9', size13: '13×13', size15: '15×15',
+        playBlack: 'Toi en noir', playWhite: 'Toi en blanc',
+        dailyGomoku: 'Gomoku du jour', vsMedium: 'contre l’IA moyenne',
+        resetWarn: 'Cela met fin à la partie en cours. Continuer ?',
+        rules: 'Chacun à son tour pose une pierre sur une intersection. Noir commence. Le premier à aligner cinq pierres de sa couleur sans trou, à l’horizontale, à la verticale ou en diagonale, gagne.',
+        keyboard: 'Clavier', moveCursor: 'Déplacer le curseur', place: 'Poser une pierre',
+        tutTitle1: 'Cinq alignées', tutText1: 'Le premier à aligner cinq pierres de la même couleur en ligne droite gagne : horizontale, verticale ou diagonale.',
+        tutTitle2: 'Bloque à temps', tutText2: 'Quand l’adversaire a trois pierres alignées avec les deux bouts ouverts, ferme un bout. Sinon il fait un quatre ouvert, et ça ne s’arrête plus.',
+        tutTitle3: 'Annuler', tutText3: 'Changé d’avis ? Le bouton annuler ou U / Ctrl+Z reprend ton dernier coup.'
+      },
+      ar: {
+        twoPlayers: 'لاعبان', vsAi: 'ضد الروبوت',
+        you: 'أنت', rival: 'المنافس', player2: 'اللاعب الثاني', renameP2: 'اسم اللاعب الثاني',
+        black: 'الأسود', white: 'الأبيض', toMove: 'دور {c}', playerWon: '{n} يفوز', draw: 'تعادل',
+        newMatch: 'لعبة جديدة', undoMove: 'تراجع',
+        boardLabel: 'لوحة غوموكو', stones: 'حجارة', placed: 'الحجارة الموضوعة',
+        size9: '9×9', size13: '13×13', size15: '15×15',
+        playBlack: 'أنت الأسود', playWhite: 'أنت الأبيض',
+        dailyGomoku: 'غوموكو اليوم', vsMedium: 'ضد الروبوت المتوسط',
+        resetWarn: 'سينهي هذا اللعبة الحالية. متابعة؟',
+        rules: 'ضعا الحجارة بالتناوب على تقاطعات الخطوط. الأسود يبدأ أولًا. أول من يصفّ خمسة حجارة من لونه في صف متصل، أفقيًا أو عموديًا أو قطريًا، يفوز.',
+        keyboard: 'لوحة المفاتيح', moveCursor: 'حرّك المؤشر', place: 'ضع حجرًا',
+        tutTitle1: 'خمسة في صف', tutText1: 'أول من يصفّ خمسة حجارة من اللون نفسه في خط مستقيم يفوز: أفقيًا أو عموديًا أو قطريًا.',
+        tutTitle2: 'سُدّ في الوقت', tutText2: 'عندما يكون لدى منافسك ثلاثة في صف وطرفاها مفتوحان، سُدّ أحد الطرفين. وإلا فسيصنع أربعة مفتوحة، ولا يمكن إيقافها بعد ذلك.',
+        tutTitle3: 'تراجع', tutText3: 'غيّرت رأيك؟ زر التراجع أو U / Ctrl+Z يلغي حركتك الأخيرة.'
+      },
+      hi: {
+        twoPlayers: 'दो खिलाड़ी', vsAi: 'कंप्यूटर से',
+        you: 'आप', rival: 'विरोधी', player2: 'दूसरा खिलाड़ी', renameP2: 'दूसरे खिलाड़ी का नाम',
+        black: 'काला', white: 'सफ़ेद', toMove: 'बारी: {c}', playerWon: '{n} जीत गए', draw: 'बराबरी',
+        newMatch: 'नया खेल', undoMove: 'चाल वापस',
+        boardLabel: 'गोमोकू बोर्ड', stones: 'पत्थर', placed: 'रखे गए पत्थर',
+        size9: '9×9', size13: '13×13', size15: '15×15',
+        playBlack: 'आप काले', playWhite: 'आप सफ़ेद',
+        dailyGomoku: 'रोज़ का गोमोकू', vsMedium: 'मध्यम कंप्यूटर से',
+        resetWarn: 'इससे मौजूदा खेल ख़त्म हो जाएगा। जारी रखें?',
+        rules: 'बारी-बारी से रेखाओं के कटान बिंदुओं पर पत्थर रखें। काला पहले चलता है। जो पहले अपने रंग के पाँच पत्थर बिना टूटे एक पंक्ति में लगाए, आड़ा, खड़ा या तिरछा, वह जीतता है।',
+        keyboard: 'कीबोर्ड', moveCursor: 'कर्सर खिसकाएँ', place: 'पत्थर रखें',
+        tutTitle1: 'पाँच एक पंक्ति में', tutText1: 'जो पहले एक ही रंग के पाँच पत्थर एक सीधी पंक्ति में लगाए, वह जीतता है: आड़ा, खड़ा या तिरछा।',
+        tutTitle2: 'समय पर रोकें', tutText2: 'जब विरोधी के तीन पत्थर एक पंक्ति में हों और दोनों सिरे खुले हों, तो एक सिरा बंद करें। वरना वे खुला चार बना लेंगे, और उसे फिर रोका नहीं जा सकता।',
+        tutTitle3: 'वापस', tutText3: 'मन बदल गया? वापस का बटन या U / Ctrl+Z आपकी पिछली चाल वापस ले लेता है।'
+      },
+      zh: {
+        twoPlayers: '双人', vsAi: '对战电脑',
+        you: '你', rival: '对手', player2: '玩家二', renameP2: '玩家二的名字',
+        black: '黑方', white: '白方', toMove: '轮到{c}', playerWon: '{n}获胜', draw: '平局',
+        newMatch: '新一局', undoMove: '悔棋',
+        boardLabel: '五子棋棋盘', stones: '子', placed: '落子数',
+        size9: '9×9', size13: '13×13', size15: '15×15',
+        playBlack: '你执黑', playWhite: '你执白',
+        dailyGomoku: '每日五子棋', vsMedium: '对战中等电脑',
+        resetWarn: '将结束当前对局，是否继续？',
+        rules: '双方轮流在交叉点落子，黑方先行。先在横、竖或斜方向连成五子者获胜。',
+        keyboard: '键盘', moveCursor: '移动光标', place: '落子',
+        tutTitle1: '五子连珠', tutText1: '先将五枚同色棋子连成一条直线者获胜：横、竖或斜线均可。',
+        tutTitle2: '及时防守', tutText2: '对手有两端都空的活三时，要堵住一端；否则他会形成活四，就再也挡不住了。',
+        tutTitle3: '悔棋', tutText3: '后悔了？点悔棋按钮或按 U / Ctrl+Z 撤回你的上一步。'
+      },
+      de: {
+        twoPlayers: 'Zu zweit', vsAi: 'Gegen KI',
+        you: 'Du', rival: 'Gegner', player2: 'Spieler zwei', renameP2: 'Name von Spieler zwei',
+        black: 'Schwarz', white: 'Weiß', toMove: '{c} ist am Zug', playerWon: 'Sieg: {n}', draw: 'Unentschieden',
+        newMatch: 'Neue Partie', undoMove: 'Zug zurück',
+        boardLabel: 'Gomoku-Brett', stones: 'Steine', placed: 'Gesetzte Steine',
+        size9: '9×9', size13: '13×13', size15: '15×15',
+        playBlack: 'Du Schwarz', playWhite: 'Du Weiß',
+        dailyGomoku: 'Tägliches Gomoku', vsMedium: 'gegen die mittlere KI',
+        resetWarn: 'Die aktuelle Partie endet. Weiter?',
+        rules: 'Setzt abwechselnd Steine auf die Kreuzungen. Schwarz beginnt. Wer zuerst fünf Steine seiner Farbe lückenlos in einer Reihe hat, waagerecht, senkrecht oder diagonal, gewinnt.',
+        keyboard: 'Tastatur', moveCursor: 'Cursor bewegen', place: 'Stein setzen',
+        tutTitle1: 'Fünf in einer Reihe', tutText1: 'Wer zuerst fünf Steine derselben Farbe in einer geraden Reihe hat, gewinnt – waagerecht, senkrecht oder diagonal.',
+        tutTitle2: 'Rechtzeitig blocken', tutText2: 'Hat dein Gegner drei in einer Reihe mit zwei offenen Enden, schließ ein Ende. Sonst entsteht eine offene Vier, und die ist nicht mehr aufzuhalten.',
+        tutTitle3: 'Zurücknehmen', tutText3: 'Anders überlegt? Der Zurück-Knopf oder U / Ctrl+Z nimmt deinen letzten Zug zurück.'
+      },
+      es: {
+        twoPlayers: 'Dos jugadores', vsAi: 'Contra la IA',
+        you: 'Tú', rival: 'Rival', player2: 'Jugador dos', renameP2: 'Nombre del jugador dos',
+        black: 'Negras', white: 'Blancas', toMove: 'Turno: {c}', playerWon: 'Gana: {n}', draw: 'Empate',
+        newMatch: 'Nueva partida', undoMove: 'Deshacer jugada',
+        boardLabel: 'Tablero de gomoku', stones: 'piedras', placed: 'Piedras colocadas',
+        size9: '9×9', size13: '13×13', size15: '15×15',
+        playBlack: 'Con negras', playWhite: 'Con blancas',
+        dailyGomoku: 'Gomoku diario', vsMedium: 'contra la IA media',
+        resetWarn: 'Esto termina la partida actual. ¿Seguir?',
+        rules: 'Por turnos, cada jugador coloca una piedra en un cruce de líneas. Empiezan las negras. Gana quien consiga primero cinco piedras de su color seguidas en línea, horizontal, vertical o diagonal.',
+        keyboard: 'Teclado', moveCursor: 'Mover el cursor', place: 'Colocar una piedra',
+        tutTitle1: 'Cinco en línea', tutText1: 'Gana quien alinee primero cinco piedras del mismo color en línea recta: horizontal, vertical o diagonal.',
+        tutTitle2: 'Bloquea a tiempo', tutText2: 'Cuando tu rival tenga tres en línea con los dos extremos libres, cierra uno. Si no, hará un cuatro abierto, y eso ya no se puede parar.',
+        tutTitle3: 'Deshacer', tutText3: '¿Cambiaste de idea? El botón de deshacer o U / Ctrl+Z retira tu última jugada.'
+      }
+    }
+  });
+
+  var params = new URLSearchParams(location.search);
+  var dailyDate = params.get('daily');
+  var DAILY_SIZE = 15, DAILY_LEVEL = 'medium';
+  var prefs = ctx.store.get('prefs', { mode: 'ai', level: 'medium', size: 15, color: 1, p2name: '' });
+  if (E.SIZES.indexOf(prefs.size) < 0) prefs.size = 15;
+  if (prefs.color !== 1 && prefs.color !== 2) prefs.color = 1;
+
+  var S = null, aiTimer = null;
+  var kbOn = false, cur = { r: 7, c: 7 };
+
+  var cv = document.createElement('canvas');
+  cv.className = 'gk-canvas';
+  cv.setAttribute('role', 'img');
+  cv.setAttribute('aria-label', C.t('boardLabel'));
+  var boardBox = el('div', { class: 'gk-boardbox' }, [cv]);
+  var top = el('div', { class: 'gk-top ch-above' });
+  var playersRow = el('div', { class: 'gk-players ch-above' });
+  var wrap = el('div', { class: 'gk-wrap ch-split' }, [el('div', { class: 'ch-fit' }, [boardBox]), el('div', { class: 'ch-side' }, [top, playersRow])]);
+
+  ctx.button({ icon: 'help', label: C.t('help'), onClick: showHelp });
+  ctx.button({ icon: 'undo', label: C.t('undoMove'), onClick: undo });
+  ctx.button({ icon: 'refresh', label: C.t('newMatch'), onClick: askNew });
+  ctx.main.appendChild(wrap);
+  ctx.mount();
+
+  /* ------------------------------------------------------------ setup */
+
+  // Black always moves first, as in the rules; in AI mode the player picks a colour.
+  function newGame(o) {
+    stopAi();
+    var n = o.daily ? DAILY_SIZE : o.size;
+    S = {
+      mode: o.mode, level: o.daily ? DAILY_LEVEL : o.level, n: n, human: o.mode === 'ai' && !o.daily ? o.color : 1,
+      daily: o.daily || null, board: E.emptyBoard(n), turn: 1, history: [], line: null,
+      done: false, startedAt: Date.now(), last: -1
+    };
+    if (o.daily) {
+      var op = E.dailyOpening(C.daily('gomoku', o.daily).rng, n);
+      S.board = op.board; S.turn = op.turn; S.last = op.moves[op.moves.length - 1];
+    } else {
+      prefs.mode = o.mode; prefs.level = o.level; prefs.size = o.size; prefs.color = o.color;
+      ctx.store.set('prefs', prefs);
+    }
+    cur = { r: E.midOf(n), c: E.midOf(n) };
+    render();
+    save();
+    maybeAi();
+  }
+  function fromPrefs() { return { mode: prefs.mode, level: prefs.level, size: prefs.size, color: prefs.color }; }
+  function current() { return { mode: S.mode, level: S.level, size: S.n, color: S.human }; }
+
+  function aiSide() { return 3 - S.human; }
+  function busy() { return S && S.mode === 'ai' && !S.done && S.turn === aiSide(); }
+  function stopAi() { if (aiTimer) { clearTimeout(aiTimer); aiTimer = null; } }
+
+  function maybeAi() {
+    if (!busy()) return;
+    drawPlayers();
+    aiTimer = setTimeout(function () {
+      aiTimer = null;
+      if (!busy()) return;
+      // The daily bot plays from the day's seed, so everyone meets the same opponent
+      var rnd = S.daily ? C.daily('gomoku', S.daily + '|' + S.history.length).rng : Math.random;
+      place(E.think(S.board, S.n, S.turn, S.level, rnd));
+    }, 320 + Math.random() * 200);
+  }
+
+  /* ------------------------------------------------------------- moves */
+
+  function place(i) {
+    if (!S || S.done) return;
+    var res = E.applyMove(S.board, S.n, i, S.turn);
+    if (!res) return;
+    S.history.push({ i: i, p: S.turn, last: S.last });
+    S.board = res.board;
+    S.last = i;
+    C.feedback(S.mode === 'ai' && S.turn === aiSide() ? 'soft' : 'tap');
+    if (res.won || res.draw) {
+      S.done = true;
+      S.line = res.line;
+      S.winner = res.won ? S.turn : 0;
+      render();
+      finish();
+      return;
+    }
+    S.turn = 3 - S.turn;
+    render();
+    save();
+    maybeAi();
+  }
+
+  // Against the AI one undo takes back the bot's reply and your move together,
+  // so it is your turn again; two players undo one stone at a time.
+  function undo() {
+    if (!S || S.done || !S.history.length) return;
+    stopAi();
+    var steps = S.mode === 'ai' ? (S.turn === S.human ? 2 : 1) : 1;
+    if (S.mode === 'ai' && S.history.length < steps) return;
+    for (var k = 0; k < steps; k++) {
+      var h = S.history.pop();
+      S.board[h.i] = 0;
+      S.turn = h.p;
+      S.last = h.last;
+    }
+    C.feedback('soft');
+    render();
+    save();
+    maybeAi();
+  }
+
+  /* ------------------------------------------------------------ result */
+
+  function finish() {
+    stopAi();
+    var vsAi = S.mode === 'ai';
+    var won = vsAi ? S.winner === S.human : S.winner !== 0;
+    var tie = S.winner === 0;
+    var mine = S.history.filter(function (h) { return h.p === S.human; }).length;
+    var base = vsAi ? ({ easy: 5, medium: 10, hard: 18 }[S.level] || 10) : 8;
+    var coins = Math.max(2, Math.round(won ? base : base * 0.35)) + (S.daily ? 8 : 0);
+    var points = Math.max(3, Math.round(won ? base * 4 : base * 1.2)) + (S.daily ? 25 : 0);
+    if (vsAi && won) {
+      C.achievements.unlock('gk-win');
+      if (S.level === 'hard') C.achievements.unlock('gk-hard');
+      // Fewest of your own stones in a win against the AI
+      C.stats.best('gomoku', 'stones', mine, true);
+    }
+    if (S.daily) {
+      var first = C.stats.daily('gomoku', S.daily, {
+        label: won ? C.t('won') + ' · ' + C.num(mine) + ' ' + C.t('stones') : (tie ? C.t('draw') : C.t('lost')),
+        win: won
+      });
+      if (!first) { coins = Math.round(coins * 0.2); points = Math.round(points * 0.2); }
+    }
+    ctx.clearSave();
+    ctx.finish({
+      won: vsAi ? won : null,
+      title: tie ? C.t('draw') : (vsAi ? (won ? C.t('won') : C.t('lost')) : C.t('playerWon', { n: pname(S.winner) })),
+      timeMs: Date.now() - S.startedAt, coins: coins, points: points,
+      lines: [{ label: C.t('placed'), value: C.num(S.history.length + (S.daily ? 4 : 0)) }],
+      shareText: 'چوگان · گوموکو' + (S.daily ? ('\nروزانه ' + S.daily) : '') +
+        '\n' + (tie ? C.t('draw') : pname(S.winner) + ' · ' + C.num(S.n) + '×' + C.num(S.n)),
+      paint: cardPaint(),
+      onAgain: S.daily ? null : function () { newGame(current()); }
+    });
+  }
+
+  /* ------------------------------------------------------------- saves */
+
+  ctx.autosave(function () {
+    if (!S || S.done || !S.history.length) return { inProgress: false };
+    return {
+      s: {
+        mode: S.mode, level: S.level, n: S.n, human: S.human, daily: S.daily,
+        board: S.board, turn: S.turn, history: S.history, last: S.last,
+        elapsed: Date.now() - S.startedAt
+      },
+      prefs: prefs
+    };
+  });
+  function save() { ctx.save(); }
+
+  function validSave(sv) {
+    var s = sv && sv.s;
+    return !!(s && E.SIZES.indexOf(s.n) >= 0 && Array.isArray(s.board) && s.board.length === s.n * s.n &&
+      Array.isArray(s.history) && s.history.length && (s.turn === 1 || s.turn === 2) && (s.human === 1 || s.human === 2));
+  }
+  function restore(v) {
+    S = {
+      mode: v.mode, level: v.level, n: v.n, human: v.human, daily: v.daily || null,
+      board: v.board, turn: v.turn, history: v.history, last: typeof v.last === 'number' ? v.last : -1,
+      line: null, done: false, startedAt: Date.now() - (v.elapsed || 0)
+    };
+    cur = { r: E.midOf(S.n), c: E.midOf(S.n) };
+    render();
+    maybeAi();
+  }
+
+  function askNew() {
+    var dd = S ? S.daily : null;
+    function go() { if (dd) newGame({ mode: 'ai', daily: dd }); else newGame(S ? current() : fromPrefs()); }
+    if (!S || S.done || !S.history.length) { go(); return; }
+    C.ui.confirm({ title: C.t('newMatch'), body: C.t('resetWarn'), onOk: go });
+  }
+
+  /* --------------------------------------------------------------- draw */
+
+  function colors() {
+    var cs = getComputedStyle(document.documentElement);
+    var v = function (k, f) { return cs.getPropertyValue(k).trim() || f; };
+    return {
+      wood: v('--gk-wood', '#E8C9A0'), line: v('--gk-line', 'rgba(70,45,15,.5)'),
+      black: v('--gk-black', '#1A1A1A'), white: v('--gk-white', '#F5F0E6'),
+      mark: v('--c-gold', '#D9A441'), accent: v('--game', '#C45C26')
+    };
+  }
+
+  function starPoints(n) {
+    if (n === 9) return [[2, 2], [2, 6], [4, 4], [6, 2], [6, 6]];
+    if (n === 13) return [[3, 3], [3, 9], [6, 6], [9, 3], [9, 9]];
+    return [[3, 3], [3, 11], [7, 7], [11, 3], [11, 11]];
+  }
+
+  // pad and cell are shared by drawing and by hit-testing, so a tap lands on the
+  // crossing that is drawn under it. The margin is 0.6 of a cell: a fixed 4.5% let
+  // edge stones on the 9×9 board hang off the wood.
+  function geo(W, n) { var pad = W / (n + 0.2) * 0.6; return { pad: pad, cell: (W - pad * 2) / (n - 1) }; }
+
+  function paintBoard(g, W, o, col) {
+    var n = o.n, G = geo(W, n), pad = G.pad, cell = G.cell;
+    g.fillStyle = col.wood;
+    C.rrect(g, 0, 0, W, W, Math.round(W * 0.03));
+    g.fill();
+    g.strokeStyle = col.line;
+    g.lineWidth = Math.max(1, W / 420);
+    g.beginPath();
+    for (var k = 0; k < n; k++) {
+      var p = pad + k * cell;
+      g.moveTo(pad, p); g.lineTo(W - pad, p);
+      g.moveTo(p, pad); g.lineTo(p, W - pad);
+    }
+    g.stroke();
+    g.fillStyle = col.line;
+    starPoints(n).forEach(function (s) {
+      g.beginPath(); g.arc(pad + s[1] * cell, pad + s[0] * cell, Math.max(2, cell * 0.1), 0, Math.PI * 2); g.fill();
+    });
+    var R = cell * 0.43;
+    for (var i = 0; i < o.board.length; i++) {
+      var who = o.board[i];
+      if (!who) continue;
+      var cx = pad + (i % n) * cell, cy = pad + ((i / n) | 0) * cell;
+      // the stone just placed comes down onto the board, a little large and faint first (#407)
+      var Rs = R;
+      if (o.drop && o.drop.i === i) { var de = 1 - Math.pow(1 - o.drop.k, 3); Rs = R * (1 + 0.4 * (1 - de)); g.globalAlpha = 0.3 + 0.7 * de; }
+      g.beginPath(); g.arc(cx + Rs * 0.08, cy + Rs * 0.12, Rs, 0, Math.PI * 2);
+      g.fillStyle = 'rgba(0,0,0,.22)'; g.fill();
+      g.beginPath(); g.arc(cx, cy, Rs, 0, Math.PI * 2);
+      g.fillStyle = who === 1 ? col.black : col.white; g.fill();
+      g.lineWidth = Math.max(1, R * 0.08);
+      g.strokeStyle = who === 1 ? 'rgba(255,255,255,.14)' : 'rgba(0,0,0,.28)';
+      g.stroke();
+      g.globalAlpha = 1;
+      if (i === o.last && !o.line) {
+        g.beginPath(); g.arc(cx, cy, R * 0.28, 0, Math.PI * 2);
+        g.fillStyle = col.mark; g.fill();
+      }
+    }
+    // The winning five, joined by a line, so the end of the game is obvious
+    if (o.line) {
+      var a = o.line[0], z = o.line[o.line.length - 1];
+      g.strokeStyle = col.mark;
+      g.lineWidth = Math.max(3, cell * 0.16);
+      g.lineCap = 'round';
+      g.beginPath();
+      // drawn from one end of the five to the other (#407)
+      var lk = o.lineK === undefined ? 1 : 1 - Math.pow(1 - o.lineK, 3);
+      var ax = pad + (a % n) * cell, ay = pad + ((a / n) | 0) * cell, zx = pad + (z % n) * cell, zy = pad + ((z / n) | 0) * cell;
+      g.moveTo(ax, ay);
+      g.lineTo(ax + (zx - ax) * lk, ay + (zy - ay) * lk);
+      g.stroke();
+    }
+    if (o.cursor) {
+      g.strokeStyle = col.accent;
+      g.lineWidth = Math.max(2, W / 200);
+      g.beginPath(); g.arc(pad + o.cursor.c * cell, pad + o.cursor.r * cell, R * 1.05, 0, Math.PI * 2); g.stroke();
+    }
+  }
+
+  function draw() {
+    var rect = boardBox.getBoundingClientRect();
+    var W = Math.max(1, Math.floor(Math.min(rect.width, rect.height || rect.width)));
+    var dpr = Math.min(2, window.devicePixelRatio || 1);
+    // both sides: a new canvas is 300×150, so a board exactly 300px wide kept a
+    // 150px-high backing and was drawn squashed (#359, seen in Ludo)
+    if (cv.width !== W * dpr || cv.height !== W * dpr) { cv.width = W * dpr; cv.height = W * dpr; }
+    cv.style.width = W + 'px'; cv.style.height = W + 'px';
+    var g = cv.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, W, W);
+    var m = motion(S.history.length, !!S.line);
+    paintBoard(g, W, { n: S.n, board: S.board, last: S.last, line: S.line, cursor: kbOn && !S.done ? cur : null,
+      drop: m.drop < 1 ? { i: S.last, k: m.drop } : null, lineK: m.line }, colors());
+    if (m.drop < 1 || m.line < 1) requestAnimationFrame(draw);
+  }
+
+  // #407: a stone placed since the last draw drops in (180 ms), and the winning
+  // line draws itself (450 ms). Restores, undo and reduced motion draw still.
+  var fx = { len: -1, t0: 0, line: false, lt0: 0 };
+  function motion(len, line) {
+    var now = performance.now(), still = C.ui.reduceMotion();
+    if (fx.len >= 0 && len === fx.len + 1 && !still) fx.t0 = now;
+    if (line && !fx.line) fx.lt0 = fx.len >= 0 && !still ? now : 0;
+    fx.line = line; fx.len = len;
+    return { drop: Math.min(1, (now - fx.t0) / 180), line: Math.min(1, (now - fx.lt0) / 450) };
+  }
+
+  function cardPaint() {
+    var o = { n: S.n, board: S.board.slice(), last: S.last, line: S.line };
+    return function (g, W, H) {
+      var side = Math.min(W, H);
+      g.translate((W - side) / 2, (H - side) / 2);
+      paintBoard(g, side, o, colors());
+    };
+  }
+
+  function pname(p) {
+    if (S.mode === 'ai') return p === S.human ? (C.state.profile.name || C.t('you')) : C.t('rival') + ' · ' + C.t(S.level);
+    return p === 1 ? (C.state.profile.name || C.t('black')) : (prefs.p2name || C.t('player2'));
+  }
+
+  function drawPlayers() {
+    playersRow.innerHTML = '';
+    [1, 2].forEach(function (p) {
+      var box = el('div', { class: 'gk-player' + (S.turn === p && !S.done ? ' gk-player--on' : '') }, [
+        el('div', { class: 'gk-player__stone', style: { background: p === 1 ? 'var(--gk-black)' : 'var(--gk-white)' } }),
+        el('div', { class: 'gk-player__name', text: pname(p) })
+      ]);
+      if (p === 2 && S.mode === '2p') { box.classList.add('ch-tap'); box.addEventListener('click', renameP2); }
+      if (S.mode === 'ai' && p === aiSide() && busy()) box.classList.add('gk-thinking');
+      playersRow.appendChild(box);
+    });
+  }
+
+  function renameP2() {
+    var input = el('input', {
+      type: 'text', value: prefs.p2name, maxlength: '16', placeholder: C.t('player2'),
+      style: { font: 'inherit', width: '100%', padding: '10px 14px', 'border-radius': 'var(--r-md)',
+        border: '1px solid var(--c-line)', background: 'var(--c-surface-2)', color: 'var(--c-text)' }
+    });
+    C.ui.modal({
+      title: C.t('renameP2'), body: [input],
+      actions: [{ label: C.t('cancel') }, { label: C.t('done'), kind: 'primary', onClick: function () {
+        prefs.p2name = input.value.trim().slice(0, 16);
+        ctx.store.set('prefs', prefs);
+        drawPlayers();
+      } }]
+    });
+  }
+
+  function drawTop() {
+    top.innerHTML = '';
+    if (S.daily) {
+      top.appendChild(el('span', { class: 'ch-badge ch-badge--accent' },
+        [C.icon('calendar', 14), el('span', { text: C.t('dailyGomoku') + ' — ' + C.num(S.daily) })]));
+      top.appendChild(el('span', { class: 'ch-badge', text: C.t('vsMedium') }));
+      return;
+    }
+    // Every setting starts a new game, so a game in progress asks first
+    function change(same, o) {
+      if (same) return;
+      var go = function () { newGame(o); };
+      if (S.history.length && !S.done) C.ui.confirm({ title: C.t('newMatch'), body: C.t('resetWarn'), onOk: go });
+      else go();
+    }
+    function withK(k, v) { var o = current(); o[k] = v; return o; }
+    top.appendChild(C.ui.segmented([
+      { value: 'ai', label: C.t('vsAi') }, { value: '2p', label: C.t('twoPlayers') }
+    ], S.mode, function (v) { change(v === S.mode, withK('mode', v)); }));
+    top.appendChild(C.ui.segmented([
+      { value: 9, label: C.t('size9') }, { value: 13, label: C.t('size13') }, { value: 15, label: C.t('size15') }
+    ], S.n, function (v) { change(v === S.n, withK('size', v)); }));
+    if (S.mode === 'ai') {
+      top.appendChild(C.ui.segmented([
+        { value: 'easy', label: C.t('easy') }, { value: 'medium', label: C.t('medium') }, { value: 'hard', label: C.t('hard') }
+      ], S.level, function (v) { change(v === S.level, withK('level', v)); }));
+      top.appendChild(C.ui.segmented([
+        { value: 1, label: C.t('playBlack') }, { value: 2, label: C.t('playWhite') }
+      ], S.human, function (v) { change(v === S.human, withK('color', v)); }));
+    }
+  }
+
+  function render() {
+    drawTop();
+    drawPlayers();
+    draw();
+  }
+
+  /* -------------------------------------------------------------- input */
+
+  function cellAt(x, y) {
+    var r = cv.getBoundingClientRect(), G = geo(r.width, S.n);
+    var c = Math.round((x - r.left - G.pad) / G.cell), row = Math.round((y - r.top - G.pad) / G.cell);
+    if (c < 0 || c >= S.n || row < 0 || row >= S.n) return -1;
+    return row * S.n + c;
+  }
+
+  cv.addEventListener('pointerdown', function (e) {
+    if (!S || S.done || busy()) return;
+    var i = cellAt(e.clientX, e.clientY);
+    if (i < 0 || S.board[i]) return;
+    e.preventDefault();
+    kbOn = false;
+    place(i);
+  });
+
+  window.addEventListener('keydown', function (e) {
+    if (!S || document.querySelector('.ch-scrim')) return;
+    if (C.undoKey(e)) { undo(); e.preventDefault(); return; }
+    if (S.done || busy()) return;
+    // The board is drawn left to right in every language; flipping the arrows
+    // in RTL made them run backwards in Persian (#338)
+    var k = e.key, d = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }[k];
+    if (d) {
+      e.preventDefault();
+      kbOn = true;
+      cur.r = Math.max(0, Math.min(S.n - 1, cur.r + d[0]));
+      cur.c = Math.max(0, Math.min(S.n - 1, cur.c + d[1]));
+      draw();
+      return;
+    }
+    if ((k === ' ' || k === 'Enter') && kbOn) {
+      e.preventDefault();
+      var i = cur.r * S.n + cur.c;
+      if (!S.board[i]) place(i);
+    }
+  });
+
+  // the board's size follows its slot, which changes with the window and the side column
+  if (window.ResizeObserver) new ResizeObserver(function () { if (S) draw(); }).observe(boardBox);
+  else window.addEventListener('resize', function () { if (S) draw(); });
+  if (window.matchMedia) {
+    var mq = window.matchMedia('(prefers-color-scheme: dark)');
+    if (mq.addEventListener) mq.addEventListener('change', function () { if (S) draw(); });
+  }
+
+  /* --------------------------------------------------------------- help */
+
+  function kb(k, what) {
+    return el('div', { class: 'ch-item' }, [el('div', { class: 'ch-item__label', text: what }), el('span', { class: 'ch-badge', text: k })]);
+  }
+  function showHelp() {
+    C.ui.modal({
+      title: C.t('help'),
+      body: [
+        el('p', { class: 'ch-dim', text: C.t('rules') }),
+        el('h3', { style: { 'margin-top': 'var(--s-4)' }, text: C.t('keyboard') }),
+        el('div', { class: 'ch-list' }, [
+          kb('← ↑ → ↓', C.t('moveCursor')), kb('Space / Enter', C.t('place')), kb('U / Ctrl+Z', C.t('undoMove'))
+        ])
+      ],
+      actions: [
+        { label: C.t('tutorial'), onClick: function () { ctx.showTutorial(TUT); } },
+        { label: C.t('done'), kind: 'primary' }
+      ]
+    });
+  }
+
+  function art(stones, line) {
+    var s = '<svg viewBox="0 0 220 110" width="100%"><rect x="45" y="5" width="130" height="100" rx="8" fill="var(--gk-wood)"/><g stroke="var(--gk-line)" stroke-width="1">';
+    for (var k = 0; k < 6; k++) s += '<path d="M' + (55 + k * 22) + ' 15v80M55 ' + (15 + k * 16) + 'h110"/>';
+    s += '</g>';
+    if (line) s += '<path d="M' + line + '" stroke="var(--c-gold)" stroke-width="5" stroke-linecap="round" fill="none"/>';
+    stones.forEach(function (m) {
+      s += '<circle cx="' + (55 + m[0] * 22) + '" cy="' + (15 + m[1] * 16) + '" r="7" fill="var(--gk-' + (m[2] === 1 ? 'black' : 'white') + ')" stroke="rgba(0,0,0,.3)"/>';
+    });
+    return s + '</svg>';
+  }
+  var TUT = [
+    { title: C.t('tutTitle1'), text: C.t('tutText1'), art: art([[0, 5, 1], [1, 4, 1], [2, 3, 1], [3, 2, 1], [4, 1, 1], [1, 1, 2], [3, 4, 2], [2, 2, 2]], '55 95L143 31') },
+    { title: C.t('tutTitle2'), text: C.t('tutText2'), art: art([[1, 2, 2], [2, 2, 2], [3, 2, 2], [4, 2, 1], [2, 3, 1]]) },
+    { title: C.t('tutTitle3'), text: C.t('tutText3'), art: art([[2, 2, 1], [3, 3, 2], [2, 3, 1]]) }
+  ];
+
+  /* -------------------------------------------------------------- start */
+
+  var saved = ctx.loadSave();
+  if (dailyDate) {
+    // The daily game has its own save slot, so a half-played day continues
+    if (validSave(saved) && saved.s.daily === dailyDate) restore(saved.s);
+    else newGame({ mode: 'ai', daily: dailyDate });
+    if (C.stats.dailyDone('gomoku', dailyDate)) {
+      var rec = C.stats.dailyOf(dailyDate).gomoku;
+      C.ui.toast({ icon: 'check', title: C.t('dailyDone'), sub: rec.label });
+    }
+    ctx.tutorialIfNew(TUT);
+  } else if (validSave(saved)) {
+    if (saved.prefs) prefs = saved.prefs;
+    restore(saved.s);
+  } else {
+    newGame(fromPrefs());
+    ctx.tutorialIfNew(TUT);
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1055 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#FBF6EF">
+<title>شلم — چوگان</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../lib/chogan.css">
+<script src="../../lib/early.js"></script>
+<style>
+  :root { --sh-gold: #D4A72C; --ch-pface: var(--c-surface); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --ch-pface: var(--c-surface-3); } }
+  :root[data-theme="dark"] { --ch-pface: var(--c-surface-3); }
+  /* the table and its cards grow with the game area (#359), as in Hokm */
+  .sh-wrap { --cw: clamp(40px, min(12.8cqw, (100cqh - 360px) / 6), 104px); margin-block: auto; width: 100%; max-width: max(560px, calc(var(--cw) * 9.33)); display: flex; flex-direction: column; align-items: center; gap: var(--s-2); }
+  .sh-top { display: flex; flex-wrap: wrap; gap: var(--s-2); justify-content: center; align-items: center; }
+  /* scoreboard: us · the contract · them */
+  .sh-score { width: 100%; display: grid; grid-template-columns: 1fr auto 1fr; gap: var(--s-2); align-items: stretch; }
+  .sh-team { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 6px 8px;
+    background: var(--c-surface); border-radius: var(--r-md); box-shadow: var(--sh-1); font-size: var(--fs-xs, 12px); color: var(--c-text-dim); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .sh-team b { font-size: var(--fs-sm); color: var(--c-text); }
+  .sh-team--us { box-shadow: var(--sh-1), inset 0 -3px 0 var(--game); }
+  .sh-deal { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 72px; padding: 4px 10px;
+    border-radius: var(--r-md); background: var(--ch-pface); border: 2px solid var(--sh-gold); color: var(--c-text); }
+  .sh-deal--red .sh-deal__s { color: var(--c-bad); }
+  .sh-deal__s { font-size: 24px; line-height: 1.1; }
+  .sh-deal__v { font-size: var(--fs-sm); font-weight: 800; font-variant-numeric: tabular-nums; }
+  .sh-deal__l { font-size: var(--fs-xs, 12px); color: var(--c-text-dim); font-weight: 700; }
+  /* partner on top, opponents at the sides; seats are physical places, never mirrored */
+  .sh-table { direction: ltr; width: 100%; display: grid; grid-template-columns: auto 1fr auto; grid-template-rows: auto auto;
+    grid-template-areas: "top top top" "left trick right"; gap: var(--s-2); align-items: center;
+    background: var(--c-surface-2); border-radius: var(--r-lg); padding: 10px; box-shadow: inset 0 0 0 1px var(--c-line); }
+  .sh-seat { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 52px; }
+  .sh-seat--top { grid-area: top; }
+  .sh-seat--left { grid-area: left; }
+  .sh-seat--right { grid-area: right; }
+  .sh-seat__name { display: flex; align-items: center; gap: 4px; font-weight: 800; font-size: var(--fs-sm); padding: 2px 8px; border-radius: 99px; color: var(--c-text-dim); }
+  .sh-seat--partner .sh-seat__name { color: var(--game-text, var(--game)); }
+  .sh-seat--on .sh-seat__name { background: var(--game); color: var(--game-ink, #fff); }
+  .sh-crown { color: var(--sh-gold); display: inline-flex; }
+  .sh-say { font-size: var(--fs-xs, 12px); font-weight: 800; padding: 1px 8px; border-radius: 99px; background: var(--c-surface); box-shadow: var(--sh-1); color: var(--c-text); font-variant-numeric: tabular-nums; }
+  .sh-say--pass { color: var(--c-text-dim); }
+  .sh-fan { display: flex; }
+  .sh-fan .ch-pback { width: 16px; border-width: 1px; border-radius: 3px; }
+  .sh-fan .ch-pback + .ch-pback { margin-left: -10px; }
+  .sh-seat--left .sh-fan, .sh-seat--right .sh-fan { flex-direction: column; }
+  .sh-seat--left .sh-fan .ch-pback + .sh-fan .ch-pback, .sh-seat--left .sh-fan .ch-pback + .ch-pback, .sh-seat--right .sh-fan .ch-pback + .ch-pback { margin-left: 0; margin-top: -18px; }
+  .sh-trick { grid-area: trick; position: relative; height: calc(var(--cw) * 1.4 * 2.3); min-width: calc(var(--cw) * 2.6); }
+  .sh-widow { position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex; align-items: center; justify-content: center; }
+  .sh-widow .ch-pback { width: calc(var(--cw) * .8); margin-inline: calc(var(--cw) * -.22); }
+  .sh-tcard { --pw: var(--cw); position: absolute; }
+  .sh-tcard--b { left: 50%; bottom: 0; transform: translateX(-50%); }
+  .sh-tcard--t { left: 50%; top: 0; transform: translateX(-50%); }
+  .sh-tcard--l { left: 0; top: 50%; transform: translateY(-50%); }
+  .sh-tcard--r { right: 0; top: 50%; transform: translateY(-50%); }
+  .sh-tcard--win { box-shadow: 0 0 0 3px var(--sh-gold), var(--sh-2); z-index: 2; }
+  .sh-tcard[disabled] { opacity: 1; cursor: default; }
+  /* rows of up to eight, no overlap: a tap must land on the card it is on (as in Hokm) */
+  .sh-hand { direction: ltr; width: 100%; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; padding-top: 12px;
+    min-height: calc((var(--pw, 56px) * 1.4) * 2 + 18px); align-content: flex-start; }
+  .sh-card--ok { transform: translateY(-10px); }
+  .sh-card--no { filter: brightness(.82) saturate(.6); }
+  .sh-card--cur { outline: 2px dashed var(--game); outline-offset: 2px; }
+  .sh-card--sel { transform: translateY(-14px); box-shadow: 0 0 0 3px var(--game), var(--sh-2); }
+  .sh-status { min-height: 1.6em; font-weight: 700; color: var(--c-text-dim); text-align: center; }
+  /* the bid, the cards to put back and trump are asked on the page, not in a modal:
+     a modal's backdrop hides the hand it asks about (Hokm #186) */
+  .sh-ask { width: 100%; max-width: 380px; display: flex; flex-direction: column; align-items: center; gap: var(--s-2); }
+  .sh-ask[hidden] { display: none; }
+  .sh-ask__sub { margin: 0; text-align: center; color: var(--c-text-dim); font-size: var(--fs-sm); }
+  .sh-bidrow { direction: ltr; display: flex; align-items: center; justify-content: center; gap: var(--s-2); }
+  .sh-bidval { min-width: 64px; text-align: center; font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .sh-btns { display: flex; gap: var(--s-2); justify-content: center; flex-wrap: wrap; }
+  .sh-suits { direction: ltr; width: 100%; display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--s-2); }
+  .sh-suit { min-height: 56px; border: 2px solid var(--c-line); border-radius: var(--r-md); background: var(--ch-pface); color: var(--c-text); font-size: 34px; cursor: pointer; }
+  .sh-suit--red { color: var(--c-bad); }
+  .sh-res { display: flex; justify-content: center; gap: var(--s-4); margin: var(--s-2) 0; font-weight: 800; font-size: var(--fs-lg); font-variant-numeric: tabular-nums; }
+  .sh-res--sum { font-size: var(--fs-sm); font-weight: 700; color: var(--c-text-dim); gap: var(--s-3); }
+</style>
+</head>
+<body>
+<script src="../../version.js"></script>
+<script src="../../lib/chogan.js"></script>
+
+<script>
+/* ==== ENGINE START ==== */
+/* Shelem, the Iranian partnership trick-taking game with bidding (#418). Seats as in
+   Hokm: 0 you (bottom), 1 right, 2 your partner (top), 3 left; play passes 0 → 1 → 2 → 3.
+   A card is rank << 2 | suit like the shared deck: rank 0 ace … 12 king. Aces are high.
+   The owner's rules (2026-10-23): 12 cards each and a widow of four; bids from 100 to
+   165 in fives, a pass is final; the declarer takes the widow, puts four back (they are
+   the declarer's first trick) and names trump. Aces and tens are worth 10, fives 5,
+   and every trick 5: 165 in a hand. */
+function ShelemEngineFactory() {
+  'use strict';
+  var MIN_BID = 100, MAX_BID = 165, STEP = 5, TRICK = 5, SHELEM = 330, TOTAL = 165;
+
+  function rank(c) { return c >> 2; }
+  function suit(c) { return c & 3; }
+  // ace high: 2 is 0 … king 11, ace 12
+  function power(c) { return (rank(c) + 12) % 13; }
+  function team(p) { return p & 1; }
+  // aces and tens 10, fives 5
+  function cardPoints(c) { var r = rank(c); return r === 0 || r === 9 ? 10 : r === 4 ? 5 : 0; }
+  function sumPoints(cs) { var s = 0; for (var i = 0; i < cs.length; i++) s += cardPoints(cs[i]); return s; }
+
+  function shuffled(rnd) {
+    var d = [];
+    for (var i = 0; i < 52; i++) d.push(i);
+    for (var k = 51; k > 0; k--) { var j = Math.floor(rnd() * (k + 1)); var t = d[k]; d[k] = d[j]; d[j] = t; }
+    return d;
+  }
+
+  // clubs, diamonds, spades, hearts: black and red alternate
+  var SUIT_ORDER = [0, 1, 3, 2];
+  function sortHand(h) {
+    h.sort(function (a, b) { return SUIT_ORDER[suit(a)] - SUIT_ORDER[suit(b)] || power(b) - power(a); });
+    return h;
+  }
+
+  function newMatch(rnd, target, dealer) {
+    var S = { target: target === 1165 ? 1165 : 505, score: [0, 0], dealer: dealer >= 0 ? dealer % 4 : Math.floor(rnd() * 4), handNo: 0, done: false, winner: -1 };
+    newHand(S, rnd);
+    return S;
+  }
+
+  // Twelve cards each in batches of four, starting left of the dealer; four left over
+  // are the widow. A redeal after four passes keeps the hand's number.
+  function newHand(S, rnd, redeal) {
+    var d = shuffled(rnd);
+    S.hands = [[], [], [], []];
+    for (var b = 0; b < 3; b++) for (var j = 1; j <= 4; j++) { var p = (S.dealer + j) % 4; for (var n = 0; n < 4; n++) S.hands[p].push(d.pop()); }
+    S.hands.forEach(sortHand);
+    S.widow = d;
+    S.bids = [0, 0, 0, 0];
+    S.high = 0;
+    S.declarer = -1;
+    S.turn = (S.dealer + 1) % 4;
+    S.phase = 'bid';
+    S.trump = -1;
+    S.trick = [];
+    S.lastTrick = null;
+    S.taken = [0, 0];
+    S.tricks = [0, 0];
+    S.played = [];
+    S.buried = [];
+    if (!redeal) S.handNo++;
+    S.lastHand = null;
+    return S;
+  }
+
+  function minBid(S) { return Math.max(MIN_BID, S.high + STEP); }
+  function canBid(S, p, v) {
+    return S.phase === 'bid' && S.turn === p && S.bids[p] !== -1 && v % STEP === 0 && v >= minBid(S) && v <= MAX_BID;
+  }
+  function bid(S, p, v) {
+    if (!canBid(S, p, v)) return false;
+    S.bids[p] = v; S.high = v; S.declarer = p;
+    advance(S);
+    return true;
+  }
+  function pass(S, p) {
+    if (S.phase !== 'bid' || S.turn !== p || S.bids[p] === -1) return false;
+    S.bids[p] = -1;
+    advance(S);
+    return true;
+  }
+  // The auction ends when one bidder is left, or on the top bid of 165. When all four
+  // pass, the next dealer deals again.
+  function advance(S) {
+    var live = [0, 1, 2, 3].filter(function (q) { return S.bids[q] !== -1; });
+    if (!live.length) { S.dealer = (S.dealer + 1) % 4; S.phase = 'redeal'; return; }
+    if (S.high === MAX_BID || (live.length === 1 && S.high > 0 && live[0] === S.declarer)) { takeWidow(S); return; }
+    var p = S.turn;
+    do { p = (p + 1) % 4; } while (S.bids[p] === -1);
+    S.turn = p;
+  }
+  function takeWidow(S) {
+    S.phase = 'widow';
+    S.hands[S.declarer] = sortHand(S.hands[S.declarer].concat(S.widow));
+    S.widow = [];
+    S.turn = S.declarer;
+  }
+  // The declarer puts back four cards; they are the declarer's first trick, points and all
+  function bury(S, cards) {
+    if (S.phase !== 'widow' || !cards || cards.length !== 4) return false;
+    var h = S.hands[S.declarer];
+    for (var i = 0; i < 4; i++) if (h.indexOf(cards[i]) < 0 || cards.indexOf(cards[i]) !== i) return false;
+    S.hands[S.declarer] = h.filter(function (c) { return cards.indexOf(c) < 0; });
+    S.buried = cards.slice();
+    S.taken[team(S.declarer)] += TRICK + sumPoints(cards);
+    S.phase = 'trump';
+    return true;
+  }
+  function chooseTrump(S, s) {
+    if (S.phase !== 'trump' || !(s >= 0 && s <= 3)) return false;
+    S.trump = s;
+    S.phase = 'play';
+    S.turn = S.declarer;
+    return true;
+  }
+
+  function legal(S, p) {
+    var h = S.hands[p];
+    if (S.phase !== 'play' || S.turn !== p) return [];
+    if (!S.trick.length) return h.slice();
+    var led = suit(S.trick[0].c), same = h.filter(function (c) { return suit(c) === led; });
+    return same.length ? same : h.slice();
+  }
+
+  // the card currently taking the trick
+  function trickBest(trick, trump) {
+    if (!trick.length) return null;
+    var led = suit(trick[0].c), best = trick[0];
+    for (var i = 1; i < trick.length; i++) {
+      var t = trick[i];
+      var tb = suit(best.c) === trump, tt = suit(t.c) === trump;
+      if (tt && !tb) best = t;
+      else if (tt === tb && suit(t.c) === suit(best.c) && power(t.c) > power(best.c)) best = t;
+      else if (!tt && !tb && suit(t.c) === led && suit(best.c) !== led) best = t;
+    }
+    return best;
+  }
+
+  // Plays a card. Returns null if illegal, else what happened: the trick if it closed,
+  // and the hand's result after the twelfth trick.
+  function play(S, p, c) {
+    if (legal(S, p).indexOf(c) < 0) return null;
+    var h = S.hands[p];
+    h.splice(h.indexOf(c), 1);
+    S.trick.push({ p: p, c: c });
+    S.played.push(c);
+    var out = { p: p, c: c, trickDone: false, hand: null };
+    if (S.trick.length < 4) { S.turn = (p + 1) % 4; return out; }
+    var w = trickBest(S.trick, S.trump).p;
+    S.tricks[team(w)]++;
+    S.taken[team(w)] += TRICK + sumPoints(S.trick.map(function (t) { return t.c; }));
+    S.lastTrick = { cards: S.trick.slice(), winner: w };
+    S.trick = [];
+    S.turn = w;
+    out.trickDone = true; out.winner = w;
+    if (!S.hands[0].length) out.hand = score(S);
+    return out;
+  }
+
+  // The declarer's team scores what it took if that reaches the bid, 330 for a shelem
+  // (every trick); short of the bid it loses the bid, twice over when the defenders took
+  // more. The defenders always score what they took.
+  function score(S) {
+    var dt = team(S.declarer), made = S.taken[dt], other = S.taken[1 - dt];
+    var shelem = S.tricks[dt] === 12, delta = [0, 0];
+    if (shelem) delta[dt] = SHELEM;
+    else if (made >= S.high) delta[dt] = made;
+    else delta[dt] = -(other > made ? 2 : 1) * S.high;
+    delta[1 - dt] = other;
+    S.score[0] += delta[0]; S.score[1] += delta[1];
+    var res = { declarer: S.declarer, bid: S.high, trump: S.trump, made: made, other: other, delta: delta, shelem: shelem, set: !shelem && made < S.high };
+    S.lastHand = res;
+    // the match ends when a team reaches the target; level at or past it, it goes on
+    var top = S.score[0] >= S.target || S.score[1] >= S.target;
+    if (top && S.score[0] !== S.score[1]) { S.done = true; S.phase = 'done'; S.winner = S.score[0] > S.score[1] ? 0 : 1; }
+    else { S.phase = 'handover'; S.dealer = (S.dealer + 1) % 4; }
+    return res;
+  }
+
+  /* ------------------------------------------------------------ AI */
+  // the trump a hand would name: long and high
+  function aiTrump(hand) {
+    var sc = [0, 0, 0, 0];
+    hand.forEach(function (c) { sc[suit(c)] += 4 + Math.max(0, power(c) - 7); });
+    var best = 0;
+    for (var s = 1; s < 4; s++) if (sc[s] > sc[best]) best = s;
+    return best;
+  }
+
+  // What a hand of twelve is worth to its team as declarer, in points of 165: a linear
+  // fit to the engine's own medium bots playing out 10,000 hands (#418). The partner's
+  // cards and the widow are unknown, so it misses by about 21 points either way.
+  function handValue(hand) {
+    var t = aiTrump(hand), n = [0, 0, 0, 0], aces = 0, kings = 0, tHigh = 0, tens = 0, short = 0;
+    hand.forEach(function (c) {
+      var r = rank(c), s = suit(c);
+      n[s]++;
+      if (r === 0) aces++;
+      if (r === 12) kings++;
+      if (r === 9) tens++;
+      if (s === t && (r === 0 || r >= 10)) tHigh++;
+    });
+    for (var s = 0; s < 4; s++) if (s !== t && n[s] <= 1) short++;
+    return Math.round(72 + 9 * aces + kings + 5 * n[t] + 3 * tHigh + 2 * tens + 3 * short);
+  }
+
+  // Bots bid up to what their hand is worth, one step at a time. Easy guesses widely;
+  // a bot whose partner holds the bid lets it stand unless it is much stronger.
+  function aiBid(S, p, level, rnd) {
+    // a margin of about half the estimate's miss: the bid is made about two times in three
+    var est = handValue(S.hands[p]) - 10;
+    if (level === 'easy') est += Math.round((rnd() - 0.5) * 40);
+    else if (level === 'hard') est += 3;
+    var partnerHolds = S.declarer >= 0 && team(S.declarer) === team(p) && S.declarer !== p;
+    if (partnerHolds) est -= 15;
+    var v = minBid(S);
+    return v <= MAX_BID && v <= est ? { bid: v } : { pass: true };
+  }
+
+  // Four cards to put back: never trump or an ace; first the cards that make a short
+  // side suit empty, and a ten or five with no ace behind it, whose points are safe there.
+  function aiBury(hand, trump) {
+    var n = [0, 0, 0, 0], ace = [false, false, false, false];
+    hand.forEach(function (c) { n[suit(c)]++; if (rank(c) === 0) ace[suit(c)] = true; });
+    var cost = function (c) {
+      var s = suit(c);
+      if (s === trump) return 1000 + power(c);
+      if (rank(c) === 0) return 900;
+      var k = n[s] * 6 + power(c);
+      if (cardPoints(c) && !ace[s]) k -= 12;
+      return k;
+    };
+    return hand.slice().sort(function (a, b) { return cost(a) - cost(b) || a - b; }).slice(0, 4);
+  }
+
+  // the highest card of a suit not yet played, nor held
+  function topLeft(S, s, mine) {
+    for (var pw = 12; pw >= 0; pw--) {
+      var c = ((pw + 1) % 13) << 2 | s;
+      if (S.played.indexOf(c) < 0 && mine.indexOf(c) < 0) return pw;
+    }
+    return -1;
+  }
+
+  function aiPlay(S, p, level, rnd) {
+    var L = legal(S, p);
+    if (!L.length) return null;
+    if (level === 'easy' && rnd() < 0.5) return L[Math.floor(rnd() * L.length)];
+    var hand = S.hands[p], tr = S.trump;
+    // the cheapest card: no points if possible, then the lowest
+    var low = function (cs) { return cs.slice().sort(function (a, b) { return cardPoints(a) - cardPoints(b) || power(a) - power(b); })[0]; };
+    var high = function (cs) { return cs.slice().sort(function (a, b) { return power(b) - power(a); })[0]; };
+    // a card to give the partner: the most points, then the lowest
+    var rich = function (cs) { return cs.slice().sort(function (a, b) { return cardPoints(b) - cardPoints(a) || power(a) - power(b); })[0]; };
+    var nonTrump = function (cs) { return cs.filter(function (c) { return suit(c) !== tr; }); };
+    if (!S.trick.length) {
+      // the declarer's side draws trumps while it holds more than are left outside
+      var myTr = hand.filter(function (c) { return suit(c) === tr; });
+      var outTr = 13 - myTr.length - S.played.filter(function (c) { return suit(c) === tr; }).length;
+      if (team(p) === team(S.declarer) && myTr.length && outTr > 0 && myTr.length >= outTr && (level === 'hard' || myTr.length >= 4)) return high(myTr);
+      var winners = nonTrump(L).filter(function (c) {
+        return rank(c) === 0 || (level === 'hard' && power(c) > topLeft(S, suit(c), hand));
+      });
+      if (winners.length) return high(winners);
+      var nt = nonTrump(L);
+      if (!nt.length) return low(L);
+      var bySuit = [0, 0, 0, 0];
+      nt.forEach(function (c) { bySuit[suit(c)]++; });
+      var longest = nt.map(suit).sort(function (a, b) { return bySuit[b] - bySuit[a]; })[0];
+      return low(nt.filter(function (c) { return suit(c) === longest; }));
+    }
+    var best = trickBest(S.trick, tr);
+    var partnerWins = team(best.p) === team(p);
+    var lastToPlay = S.trick.length === 3;
+    var beats = L.filter(function (c) { return trickBest(S.trick.concat([{ p: p, c: c }]), tr).p === p; });
+    var led = suit(S.trick[0].c), following = L.every(function (c) { return suit(c) === led; });
+    var sure = partnerWins && (lastToPlay || (suit(best.c) === tr ? power(best.c) > topLeft(S, tr, hand) : (suit(best.c) === led && power(best.c) > topLeft(S, led, hand) && level !== 'easy')));
+    if (sure) return following ? rich(L) : (rich(nonTrump(L).filter(function (c) { return rank(c) !== 0; })) || low(L));
+    if (partnerWins && level !== 'hard') return following ? low(L) : (low(nonTrump(L)) || low(L));
+    var onTable = sumPoints(S.trick.map(function (t) { return t.c; }));
+    if (beats.length) {
+      if (lastToPlay) return low(beats);
+      var safe = beats.filter(function (c) { return suit(c) === led && power(c) > topLeft(S, led, hand); });
+      if (safe.length) return low(safe);
+      // trump in when there is something to take, or the suit is not ours to follow
+      if (!following || onTable > 0 || level === 'hard') return low(beats);
+    }
+    return following ? low(L) : (low(nonTrump(L)) || low(L));
+  }
+
+  var api = {
+    MIN_BID: MIN_BID, MAX_BID: MAX_BID, STEP: STEP, TRICK: TRICK, SHELEM: SHELEM, TOTAL: TOTAL,
+    rank: rank, suit: suit, power: power, team: team, cardPoints: cardPoints, sumPoints: sumPoints, shuffled: shuffled, sortHand: sortHand,
+    newMatch: newMatch, newHand: newHand, minBid: minBid, canBid: canBid, bid: bid, pass: pass, bury: bury, chooseTrump: chooseTrump,
+    legal: legal, trickBest: trickBest, play: play, score: score,
+    aiTrump: aiTrump, handValue: handValue, aiBid: aiBid, aiBury: aiBury, aiPlay: aiPlay
+  };
+  return api;
+}
+if (typeof module !== 'undefined' && module.exports) module.exports = ShelemEngineFactory;
+/* ==== ENGINE END ==== */
+</script>
+
+<script>
+(function () {
+  'use strict';
+  var C = window.Chogan, el = C.el;
+  var E = ShelemEngineFactory();
+  var G = C.cards.GLYPH;
+
+  C.boot({});
+  var ctx = C.game({
+    id: 'shelem',
+    name: { fa: 'شلم', en: 'Shelem', zh: '谢勒姆', de: 'Shelem', es: 'Shelem', pl: 'Shelem', fr: 'Shelem', ar: 'شِلِم', hi: 'शेलेम' },
+    accent: '#2D8627',
+    mood: 'menu',
+    cardSpeed: true,
+    scroll: true,
+    strings: {
+      fa: {
+        you: 'تو', partner: 'یار', right: 'راست', left: 'چپ', us: 'ما', them: 'حریف',
+        trump: 'حکم', bidWord: 'خواندن', passed: 'پاس', passBtn: 'پاس', bidBtn: 'بخوان {v}', noBid: 'هنوز کسی نخوانده',
+        highBid: 'بالاترین: {v} ({n})', yourBid: 'نوبت توست که بخوانی، یا پاس بده.',
+        chooseTrump: 'حکم را انتخاب کن', chooseSub: 'خواندن را بردی. خال حکم را انتخاب کن.',
+        buryTitle: 'چهار کارت را بخوابان', burySub: 'چهار کارت را انتخاب کن تا کنار بگذاری؛ امتیازشان مال تیم تو است.', buryBtn: 'بخوابان',
+        yourTurn: 'نوبت توست', thinking: 'نوبت {n}…', mustFollow: 'باید هم‌خال بازی کنی',
+        contract: '{n} {v} خواند', allPassed: 'همه پاس دادند؛ دست از نو پخش می‌شود',
+        made: 'قرارداد گرفت', down: 'قرارداد نگرفت', shelemWin: 'شلم!',
+        resLine: 'خواند {v} · گرفت {m}', nextHand: 'دست بعد', matchTo: 'تا {n}', matchLen: 'طول مسابقه', newMatch: 'بازی تازه',
+        dailySh: 'شلم روزانه', vsHard: 'مقابل حریف سخت', points: 'امتیاز', taken: 'گرفته', handN: 'دست {n}', hand: 'دست تو', table: 'وسط میز',
+        level: 'سطح', optNote: 'از مسابقه‌ی بعد اعمال می‌شود.',
+        playKey: 'بازی کارت انتخاب‌شده', moveKey: 'جابه‌جایی بین کارت‌ها', suitKey: 'انتخاب حکم', bidKeys: 'کم و زیاد کردن خواندن',
+        rules: 'چهار نفر در دو تیم؛ یارت روبه‌رویت می‌نشیند. به هر کس دوازده کارت می‌رسد و چهار کارت وسط می‌ماند. هر کس به نوبت می‌خواند، از ۱۰۰ تا ۱۶۵ پنج‌تا‌پنج‌تا، یا پاس می‌دهد و دیگر نمی‌خواند. اگر همه پاس بدهند دست از نو پخش می‌شود. برنده‌ی خواندن چهار کارت وسط را برمی‌دارد، چهار کارت می‌خواباند (امتیازشان مال تیم خودش است)، حکم را انتخاب می‌کند و دست اول را بازی می‌کند. باید هم‌خال بازی کنی، اگر نداری هر کارتی. بالاترین حکم، وگرنه بالاترین کارت هم‌خال، دست را می‌برد؛ آس از همه بالاتر است. آس و ده ۱۰ امتیاز، پنج ۵ امتیاز و هر دست ۵ امتیاز دارد: ۱۶۵ در هر دست. اگر تیم خواننده دست‌کم به اندازه‌ی خواندنش بگیرد همه را می‌برد، اگر همه‌ی دست‌ها را بگیرد شلم است و ۳۳۰؛ وگرنه به اندازه‌ی خواندن کم می‌شود و اگر حریف بیشتر گرفته باشد دو برابر. حریف همیشه هر چه گرفته می‌برد. اولین تیمی که به ۵۰۵ (یا ۱۱۶۵) برسد برنده است.',
+        tutTitle1: 'خواندن', tutText1: 'هر کس می‌گوید تیمش چند امتیاز از ۱۶۵ می‌گیرد، از ۱۰۰ به بالا. بالاترین خواندن برنده است و پاس یعنی دیگر نمی‌خوانی.',
+        tutTitle2: 'کارت‌های امتیازدار', tutText2: 'آس و ده هر کدام ۱۰ امتیاز، پنج ۵ امتیاز، و هر دستی که ببری ۵ امتیاز. برنده‌ی خواندن چهار کارت وسط را برمی‌دارد و حکم را می‌گوید.',
+        tutTitle3: 'قرارداد', tutText3: 'اگر به خواندنت برسی همه‌ی امتیازت را می‌بری، نرسی به اندازه‌ی خواندن کم می‌شود. همه‌ی دست‌ها یعنی شلم: ۳۳۰ امتیاز.'
+      },
+      en: {
+        you: 'You', partner: 'Partner', right: 'Right', left: 'Left', us: 'Us', them: 'Them',
+        trump: 'Trump', bidWord: 'Bid', passed: 'Pass', passBtn: 'Pass', bidBtn: 'Bid {v}', noBid: 'No bid yet',
+        highBid: 'Highest: {v} ({n})', yourBid: 'Your turn to bid, or pass.',
+        chooseTrump: 'Choose trump', chooseSub: 'You won the bidding. Choose the trump suit.',
+        buryTitle: 'Put back four cards', burySub: 'Choose four cards to put aside; their points count for your team.', buryBtn: 'Put back',
+        yourTurn: 'Your turn', thinking: '{n} to play…', mustFollow: 'You must follow suit',
+        contract: 'Contract: {v} by {n}', allPassed: 'Everyone passed; a new deal',
+        made: 'Contract made', down: 'Contract down', shelemWin: 'Shelem!',
+        resLine: 'Bid {v} · took {m}', nextHand: 'Next hand', matchTo: 'To {n}', matchLen: 'Match length', newMatch: 'New match',
+        dailySh: 'Daily Shelem', vsHard: 'Against the hard AI', points: 'Points', taken: 'Taken', handN: 'Hand {n}', hand: 'Your hand', table: 'Table',
+        level: 'Level', optNote: 'Applies from the next match.',
+        playKey: 'Play the chosen card', moveKey: 'Move between cards', suitKey: 'Choose trump', bidKeys: 'Raise or lower the bid',
+        rules: 'Four players in two teams; your partner sits opposite. Everyone gets twelve cards and four stay in the middle. In turn, each player bids from 100 to 165 in steps of five, or passes and bids no more. If all four pass, the cards are dealt again. The winner of the bidding takes the four cards from the middle, puts four back (their points count for that team), names trump and leads. Follow suit if you can, otherwise play any card. The highest trump, otherwise the highest card of the suit led, takes the trick; aces are high. Aces and tens are worth 10, fives 5, and every trick 5: 165 in a hand. If the bidding team takes at least its bid, it scores all it took, 330 for a shelem (every trick); if not, it loses its bid, twice over if the other team took more. The other team always scores what it took. The first team to 505 (or 1165) wins.',
+        tutTitle1: 'Bidding', tutText1: 'Each player says how many of the 165 points their team will take, from 100 up. The highest bid wins; a pass means you bid no more.',
+        tutTitle2: 'Point cards', tutText2: 'Aces and tens are worth 10, fives 5, and every trick you take 5. The winner of the bidding takes the four middle cards and names trump.',
+        tutTitle3: 'The contract', tutText3: 'Reach your bid and you score everything you took; fall short and you lose your bid. Every trick is a shelem: 330 points.'
+      },
+      pl: {
+        you: 'Ty', partner: 'Partner', right: 'Po prawej', left: 'Po lewej', us: 'My', them: 'Oni',
+        trump: 'Kozzer', bidWord: 'Licytacja', passed: 'Pas', passBtn: 'Pas', bidBtn: 'Licytuj {v}', noBid: 'Brak licytacji',
+        highBid: 'Najwyższa: {v} ({n})', yourBid: 'Twoja kolej na licytację lub pas.',
+        chooseTrump: 'Wybierz kolor atutowy', chooseSub: 'Wygrałeś licytację. Wybierz kolor atutowy (kozerę).',
+        buryTitle: 'Odłóż cztery karty', burySub: 'Wybierz cztery karty do odłożenia; ich punkty liczą się dla Twojej drużyny.', buryBtn: 'Odłóż karty',
+        yourTurn: 'Twoja kolej', thinking: 'Gracz {n} gra…', mustFollow: 'Musisz dołożyć do koloru',
+        contract: 'Kontrakt: {v} gra {n}', allPassed: 'Wszyscy spasowali; nowe rozdanie',
+        made: 'Kontrakt ugrany', down: 'Kontrakt przegrany', shelemWin: 'Shelem!',
+        resLine: 'Deklaracja: {v} · zdobyto: {m}', nextHand: 'Następne rozdanie', matchTo: 'Do {n} punktów', matchLen: 'Długość meczu', newMatch: 'Nowy mecz',
+        dailySh: 'Codzienny Shelem', vsHard: 'Przeciwko trudnej SI', points: 'Punkty', taken: 'Wzięte', handN: 'Rozdanie {n}', hand: 'Twoja ręka', table: 'Stół',
+        level: 'Poziom', optNote: 'Obowiązuje od następnego meczu.',
+        playKey: 'Zagraj wybraną kartę', moveKey: 'Przemieść między kartami', suitKey: 'Wybierz kolor atutowy', bidKeys: 'Zwiększ lub zmniejsz deklarację',
+        rules: 'Czterech graczy w dwóch drużynach; Twój partner siedzi naprzeciwko. Każdy otrzymuje dwanaście kart, a cztery zostają na środku. Po kolei każdy gracz deklaruje od 100 do 165 punktów (skok co pięć) lub pasuje i nie licytuje dalej. Jeśli wszyscy czterej spasują, karty są rozdawane ponownie. Zwycięzca licytacji bierze cztery karty ze środka, odrzuca cztery (ich punkty liczą się dla tej drużyny), wybiera kolor atutowy i wychodzi jako pierwszy. Musisz dołożyć do koloru, jeśli możesz, w przeciwnym razie zagraj dowolną kartę. Najwyższy atut, a w jego braku najwyższa karta w kolorze wyjścia, bierze lewę; asy są najstarsze. Asy i dziesiątki są warte 10 punktów, piątki 5 punktów, a każda lewa 5 punktów: łącznie 165 w rozdaniu. Jeśli drużyna licytująca zdobędzie co najmniej tyle, ile zadeklarowała, zapisuje na swoje konto wszystkie zdobyte punkty (330 za shelem, czyli wzięcie wszystkich lew); jeśli nie, traci wartość swojej deklaracji, a nawet podwójnie, jeśli druga drużyna zdobyła więcej. Druga drużyna zawsze zapisuje to, co zdobyła. Wygrywa drużyna, która jako pierwsza zdobędzie 505 (lub 1165) punktów.',
+        tutTitle1: 'Licytacja', tutText1: 'Każdy gracz określa, ile ze 165 punktów zdobędzie jego drużyna, zaczynając od 100. Najwyższa deklaracja wygrywa; pas oznacza wycofanie się z dalszej licytacji.',
+        tutTitle2: 'Punktacja kart', tutText2: 'Asy i dziesiątki są warte 10 punktów, piątki 5 punktów, a każda wzięta lewa 5 punktów. Zwycięzca licytacji zabiera cztery karty ze środka i wybiera kolor atutowy.',
+        tutTitle3: 'Kontrakt', tutText3: 'Osiągnij swoją deklarację, a zapiszesz wszystkie zdobyte punkty; jeśli Ci się nie uda, tracisz wartość licytacji. Wzięcie wszystkich lew to shelem: 330 punktów.'
+      },
+      fr: {
+        you: 'Toi', partner: 'Partenaire', right: 'Droite', left: 'Gauche', us: 'Nous', them: 'Eux',
+        trump: 'Atout', bidWord: 'Enchère', passed: 'Passe', passBtn: 'Passer', bidBtn: 'Annoncer {v}', noBid: 'Pas encore d’enchère',
+        highBid: 'La plus haute : {v} ({n})', yourBid: 'À toi d’annoncer, ou passe.',
+        chooseTrump: 'Choisis l’atout', chooseSub: 'Tu as remporté les enchères. Choisis la couleur d’atout.',
+        buryTitle: 'Écarte quatre cartes', burySub: 'Choisis quatre cartes à mettre de côté ; leurs points comptent pour ton équipe.', buryBtn: 'Écarter',
+        yourTurn: 'À toi', thinking: 'À {n} de jouer…', mustFollow: 'Tu dois fournir la couleur',
+        contract: 'Contrat : {v} par {n}', allPassed: 'Tout le monde a passé ; nouvelle donne',
+        made: 'Contrat réussi', down: 'Contrat chuté', shelemWin: 'Shelem !',
+        resLine: 'Enchère {v} · pris {m}', nextHand: 'Donne suivante', matchTo: 'En {n}', matchLen: 'Durée du match', newMatch: 'Nouveau match',
+        dailySh: 'Shelem du jour', vsHard: 'Contre l’IA difficile', points: 'Points', taken: 'Pris', handN: 'Donne {n}', hand: 'Ta main', table: 'Table',
+        level: 'Niveau', optNote: 'S’applique dès le prochain match.',
+        playKey: 'Jouer la carte choisie', moveKey: 'Aller d’une carte à l’autre', suitKey: 'Choisir l’atout', bidKeys: 'Monter ou baisser l’enchère',
+        rules: 'Quatre joueurs en deux équipes ; ton partenaire est en face. Chacun reçoit douze cartes et quatre restent au milieu. À tour de rôle, chacun annonce de 100 à 165 par pas de cinq, ou passe et n’annonce plus. Si les quatre passent, on redistribue. Le gagnant des enchères prend les quatre cartes du milieu, en écarte quatre (leurs points comptent pour son équipe), choisit l’atout et entame. Fournis la couleur si tu peux, sinon joue n’importe quelle carte. Le plus haut atout, sinon la plus haute carte de la couleur demandée, remporte le pli ; l’as est la plus forte. Les as et les dix valent 10, les cinq 5, et chaque pli 5 : 165 par donne. Si l’équipe preneuse fait au moins son enchère, elle marque tout ce qu’elle a pris, 330 pour un shelem (tous les plis) ; sinon elle perd son enchère, le double si l’autre équipe a pris plus. L’autre équipe marque toujours ce qu’elle a pris. La première équipe à 505 (ou 1165) gagne.',
+        tutTitle1: 'Les enchères', tutText1: 'Chacun dit combien des 165 points son équipe va prendre, à partir de 100. La plus haute enchère gagne ; passer veut dire ne plus annoncer.',
+        tutTitle2: 'Cartes à points', tutText2: 'Les as et les dix valent 10, les cinq 5, et chaque pli pris 5. Le gagnant des enchères prend les quatre cartes du milieu et choisit l’atout.',
+        tutTitle3: 'Le contrat', tutText3: 'Atteins ton enchère et tu marques tout ce que tu as pris ; sinon tu perds ton enchère. Tous les plis, c’est un shelem : 330 points.'
+      },
+      ar: {
+        you: 'أنت', partner: 'الشريك', right: 'اليمين', left: 'اليسار', us: 'نحن', them: 'هم',
+        trump: 'الحكم', bidWord: 'المزايدة', passed: 'باس', passBtn: 'باس', bidBtn: 'زايد {v}', noBid: 'لا مزايدة بعد',
+        highBid: 'الأعلى: {v} ({n})', yourBid: 'دورك لتزايد، أو قل باس.',
+        chooseTrump: 'اختر الحكم', chooseSub: 'ربحت المزايدة. اختر نوع الحكم.',
+        buryTitle: 'أعد أربع أوراق', burySub: 'اختر أربع أوراق لتضعها جانبًا؛ نقاطها تُحسب لفريقك.', buryBtn: 'أعد',
+        yourTurn: 'دورك', thinking: 'دور {n}…', mustFollow: 'عليك أن تلعب من النوع نفسه',
+        contract: 'العقد: {v} لـ {n}', allPassed: 'قال الجميع باس؛ توزيع جديد',
+        made: 'تحقق العقد', down: 'سقط العقد', shelemWin: 'شِلِم!',
+        resLine: 'المزايدة {v} · أخذ {m}', nextHand: 'الجولة التالية', matchTo: 'حتى {n}', matchLen: 'طول المباراة', newMatch: 'مباراة جديدة',
+        dailySh: 'شِلِم اليوم', vsHard: 'ضد الروبوت الصعب', points: 'النقاط', taken: 'المأخوذ', handN: 'الجولة {n}', hand: 'أوراقك', table: 'الطاولة',
+        level: 'المستوى', optNote: 'يُطبَّق من المباراة التالية.',
+        playKey: 'العب الورقة المختارة', moveKey: 'التنقل بين الأوراق', suitKey: 'اختر الحكم', bidKeys: 'ارفع المزايدة أو اخفضها',
+        rules: 'أربعة لاعبين في فريقين؛ شريكك يجلس مقابلك. يأخذ كل لاعب اثنتي عشرة ورقة وتبقى أربع في الوسط. بالدور، يزايد كل لاعب من 100 إلى 165 بخطوات من خمسة، أو يقول باس ولا يزايد بعدها. إذا قال الأربعة باس، تُوزَّع الأوراق من جديد. الفائز بالمزايدة يأخذ الأوراق الأربع من الوسط، ويعيد أربعًا (نقاطها تُحسب لفريقه)، ويسمّي الحكم ويبدأ اللعب. العب من النوع المطلوب إن استطعت، وإلا فالعب أي ورقة. أعلى ورقة حكم، وإلا فأعلى ورقة من النوع المطلوب، تأخذ اللمّة؛ والآس هو الأعلى. الآسات والعشرات بـ 10، والخمسات بـ 5، وكل لمّة بـ 5: المجموع 165 في الجولة. إذا أخذ الفريق المزايد مزايدته على الأقل، يسجّل كل ما أخذه، و330 للشِلِم (كل اللمّات)؛ وإلا يخسر مزايدته، ومضاعفة إذا أخذ الفريق الآخر أكثر. الفريق الآخر يسجّل دائمًا ما أخذه. أول فريق يصل إلى 505 (أو 1165) يفوز.',
+        tutTitle1: 'المزايدة', tutText1: 'يقول كل لاعب كم سيأخذ فريقه من النقاط الـ 165، من 100 فما فوق. أعلى مزايدة تفوز؛ وقول باس يعني أنك لن تزايد بعدها.',
+        tutTitle2: 'أوراق النقاط', tutText2: 'الآسات والعشرات بـ 10، والخمسات بـ 5، وكل لمّة تأخذها بـ 5. الفائز بالمزايدة يأخذ أوراق الوسط الأربع ويسمّي الحكم.',
+        tutTitle3: 'العقد', tutText3: 'حقق مزايدتك فتسجّل كل ما أخذته؛ وإن قصّرت تخسر مزايدتك. أخذ كل اللمّات هو الشِلِم: 330 نقطة.'
+      },
+      hi: {
+        you: 'आप', partner: 'साथी', right: 'दाएँ', left: 'बाएँ', us: 'हम', them: 'वे',
+        trump: 'तुरुप', bidWord: 'बोली', passed: 'पास', passBtn: 'पास', bidBtn: 'बोली {v}', noBid: 'अभी कोई बोली नहीं',
+        highBid: 'सबसे ऊँची: {v} ({n})', yourBid: 'आपकी बोली की बारी है, या पास करें।',
+        chooseTrump: 'तुरुप चुनें', chooseSub: 'आपने बोली जीत ली। तुरुप का रंग चुनें।',
+        buryTitle: 'चार पत्ते वापस रखें', burySub: 'अलग रखने के लिए चार पत्ते चुनें; उनके अंक आपकी टीम को मिलते हैं।', buryBtn: 'वापस रखें',
+        yourTurn: 'आपकी बारी', thinking: '{n} की बारी…', mustFollow: 'आपको वही रंग चलना होगा',
+        contract: 'बोली: {v} ({n})', allPassed: 'सबने पास किया; पत्ते फिर से बँटेंगे',
+        made: 'बोली पूरी हुई', down: 'बोली टूट गई', shelemWin: 'शेलेम!',
+        resLine: 'बोली {v} · लिए {m}', nextHand: 'अगली बाज़ी', matchTo: '{n} तक', matchLen: 'मुक़ाबले की लंबाई', newMatch: 'नया मुक़ाबला',
+        dailySh: 'रोज़ का शेलेम', vsHard: 'कठिन कंप्यूटर के ख़िलाफ़', points: 'अंक', taken: 'लिए', handN: 'बाज़ी {n}', hand: 'आपके पत्ते', table: 'मेज़',
+        level: 'स्तर', optNote: 'अगले मुक़ाबले से लागू होगा।',
+        playKey: 'चुना हुआ पत्ता चलें', moveKey: 'पत्तों के बीच जाएँ', suitKey: 'तुरुप चुनें', bidKeys: 'बोली बढ़ाएँ या घटाएँ',
+        rules: 'चार खिलाड़ी, दो टीमों में; आपका साथी सामने बैठता है। हर किसी को बारह पत्ते मिलते हैं और चार बीच में रहते हैं। बारी-बारी से हर खिलाड़ी 100 से 165 तक पाँच-पाँच बढ़ाकर बोली लगाता है, या पास करता है और फिर बोली नहीं लगाता। अगर चारों पास करें, तो पत्ते फिर से बाँटे जाते हैं। बोली जीतने वाला बीच के चार पत्ते लेता है, चार वापस रखता है (उनके अंक उसकी टीम को मिलते हैं), तुरुप चुनता है और पहली चाल चलता है। हो सके तो वही रंग चलें, वरना कोई भी पत्ता चलें। सबसे ऊँचा तुरुप, नहीं तो चले गए रंग का सबसे ऊँचा पत्ता हाथ जीतता है; इक्का सबसे बड़ा है। इक्के और दहले 10 के, पंजे 5 के, और हर हाथ 5 का: एक बाज़ी में 165। अगर बोली वाली टीम कम से कम अपनी बोली जितना ले, तो उसे जो लिया सब मिलता है, शेलेम (सारे हाथ) पर 330; नहीं तो उसकी बोली कटती है, और अगर दूसरी टीम ने ज़्यादा लिया तो दुगुनी। दूसरी टीम को हमेशा उतना मिलता है जितना उसने लिया। जो टीम पहले 505 (या 1165) तक पहुँचे, वह जीतती है।',
+        tutTitle1: 'बोली', tutText1: 'हर खिलाड़ी बताता है कि 165 में से कितने अंक उसकी टीम लेगी, 100 से ऊपर। सबसे ऊँची बोली जीतती है; पास का मतलब है अब और बोली नहीं।',
+        tutTitle2: 'अंक वाले पत्ते', tutText2: 'इक्के और दहले 10 के, पंजे 5 के, और हर जीता हुआ हाथ 5 का। बोली जीतने वाला बीच के चार पत्ते लेता है और तुरुप चुनता है।',
+        tutTitle3: 'बोली पूरी करें', tutText3: 'बोली पूरी करें तो जो लिया सब आपका; कम रहे तो बोली कटती है। सारे हाथ जीतना शेलेम है: 330 अंक।'
+      },
+      zh: {
+        you: '你', partner: '搭档', right: '右家', left: '左家', us: '我方', them: '对方',
+        trump: '王牌', bidWord: '叫分', passed: '不叫', passBtn: '不叫', bidBtn: '叫 {v}', noBid: '还没人叫分',
+        highBid: '最高：{v}（{n}）', yourBid: '轮到你叫分，或者不叫。',
+        chooseTrump: '选择王牌', chooseSub: '你赢得了叫分。选择王牌花色。',
+        buryTitle: '扣下四张牌', burySub: '选四张牌扣下；其中的分数归你方。', buryBtn: '扣牌',
+        yourTurn: '轮到你', thinking: '轮到{n}…', mustFollow: '必须跟同花色',
+        contract: '{n} 叫了 {v}', allPassed: '所有人都不叫；重新发牌',
+        made: '定约完成', down: '定约失败', shelemWin: '全胜！',
+        resLine: '叫 {v} · 得 {m}', nextHand: '下一局', matchTo: '先到{n}', matchLen: '比赛长度', newMatch: '新比赛',
+        dailySh: '每日谢勒姆', vsHard: '对战困难电脑', points: '分', taken: '已得', handN: '第{n}局', hand: '你的手牌', table: '桌面',
+        level: '难度', optNote: '从下一场比赛开始生效。',
+        playKey: '打出所选的牌', moveKey: '在牌之间移动', suitKey: '选择王牌', bidKeys: '提高或降低叫分',
+        rules: '四人分两队，搭档坐在对面。每人十二张牌，中间留四张。依次叫分，从100到165，每次加5，或者不叫，之后不能再叫。四人都不叫就重新发牌。叫分最高者拿起中间四张，再扣下四张（其中分数归本方），定王牌并先出。必须跟同花色，没有时可出任意牌。最大的王牌赢得这一墩，没有王牌时同花色最大的牌获胜；A 最大。A 和 10 各10分，5 为5分，每墩5分：每局共165分。叫分方得分不少于叫分时得全部所得分，赢下所有墩为全胜，得330分；否则扣去叫分，若对方得分更多则扣双倍。对方总是得到自己的分数。先到505（或1165）分的队获胜。',
+        tutTitle1: '叫分', tutText1: '每人说出本方能从165分中拿到多少，从100起叫。最高者获胜；不叫就不能再叫。',
+        tutTitle2: '分牌', tutText2: 'A 和 10 各10分，5 为5分，每赢一墩5分。叫分最高者拿起中间四张并定王牌。',
+        tutTitle3: '定约', tutText3: '达到叫分就得全部所得；没达到就扣去叫分。赢下所有墩为全胜：330分。'
+      },
+      de: {
+        you: 'Du', partner: 'Partner', right: 'Rechts', left: 'Links', us: 'Wir', them: 'Gegner',
+        trump: 'Trumpf', bidWord: 'Gebot', passed: 'Passe', passBtn: 'Passen', bidBtn: '{v} bieten', noBid: 'Noch kein Gebot',
+        highBid: 'Höchstes: {v} ({n})', yourBid: 'Du bist mit Bieten dran, oder passe.',
+        chooseTrump: 'Trumpf wählen', chooseSub: 'Du hast die Versteigerung gewonnen. Wähle die Trumpffarbe.',
+        buryTitle: 'Vier Karten ablegen', burySub: 'Wähle vier Karten zum Ablegen; ihre Punkte zählen für dein Team.', buryBtn: 'Ablegen',
+        yourTurn: 'Du bist dran', thinking: 'Zug: {n} …', mustFollow: 'Du musst Farbe bekennen',
+        contract: 'Gebot {v}: {n}', allPassed: 'Alle haben gepasst; neu geben',
+        made: 'Gebot erfüllt', down: 'Gebot verfehlt', shelemWin: 'Shelem!',
+        resLine: 'Gebot {v} · erzielt {m}', nextHand: 'Nächste Runde', matchTo: 'Bis {n}', matchLen: 'Spiellänge', newMatch: 'Neues Spiel',
+        dailySh: 'Tägliches Shelem', vsHard: 'Gegen die starke KI', points: 'Punkte', taken: 'Erzielt', handN: 'Runde {n}', hand: 'Deine Hand', table: 'Tisch',
+        level: 'Stufe', optNote: 'Gilt ab dem nächsten Spiel.',
+        playKey: 'Gewählte Karte spielen', moveKey: 'Zwischen Karten wechseln', suitKey: 'Trumpf wählen', bidKeys: 'Gebot erhöhen oder senken',
+        rules: 'Vier Spieler in zwei Teams; dein Partner sitzt dir gegenüber. Jeder bekommt zwölf Karten, vier bleiben in der Mitte. Reihum bietet jeder von 100 bis 165 in Fünferschritten oder passt und bietet nicht mehr. Passen alle vier, wird neu gegeben. Wer die Versteigerung gewinnt, nimmt die vier Karten aus der Mitte, legt vier ab (ihre Punkte zählen für sein Team), bestimmt Trumpf und spielt aus. Wer kann, muss Farbe bekennen, sonst jede Karte. Der höchste Trumpf, sonst die höchste Karte der ausgespielten Farbe, gewinnt den Stich; Asse sind hoch. Asse und Zehnen zählen 10, Fünfen 5 und jeder Stich 5: 165 pro Runde. Erreicht das bietende Team sein Gebot, bekommt es alles, was es erzielt hat, bei einem Shelem (alle Stiche) 330; sonst verliert es sein Gebot, doppelt, wenn die Gegner mehr erzielt haben. Die Gegner bekommen immer, was sie erzielt haben. Das erste Team mit 505 (oder 1165) gewinnt.',
+        tutTitle1: 'Bieten', tutText1: 'Jeder sagt, wie viele der 165 Punkte sein Team holt, ab 100. Das höchste Gebot gewinnt; wer passt, bietet nicht mehr.',
+        tutTitle2: 'Punktkarten', tutText2: 'Asse und Zehnen zählen 10, Fünfen 5 und jeder Stich 5. Wer die Versteigerung gewinnt, nimmt die vier Karten aus der Mitte und bestimmt Trumpf.',
+        tutTitle3: 'Das Gebot', tutText3: 'Erreichst du dein Gebot, bekommst du alles, was du erzielt hast; sonst verlierst du dein Gebot. Alle Stiche sind ein Shelem: 330 Punkte.'
+      },
+      es: {
+        you: 'Tú', partner: 'Pareja', right: 'Derecha', left: 'Izquierda', us: 'Nosotros', them: 'Rivales',
+        trump: 'Triunfo', bidWord: 'Apuesta', passed: 'Paso', passBtn: 'Pasar', bidBtn: 'Apostar {v}', noBid: 'Aún nadie apuesta',
+        highBid: 'Más alta: {v} ({n})', yourBid: 'Te toca apostar, o pasa.',
+        chooseTrump: 'Elige el triunfo', chooseSub: 'Ganaste la subasta. Elige el palo de triunfo.',
+        buryTitle: 'Devuelve cuatro cartas', burySub: 'Elige cuatro cartas para apartar; sus puntos cuentan para tu equipo.', buryBtn: 'Apartar',
+        yourTurn: 'Tu turno', thinking: 'Turno de {n}…', mustFollow: 'Debes seguir el palo',
+        contract: 'Apuesta {v}: {n}', allPassed: 'Todos pasaron; se reparte de nuevo',
+        made: 'Contrato cumplido', down: 'Contrato fallido', shelemWin: '¡Shelem!',
+        resLine: 'Apuesta {v} · hizo {m}', nextHand: 'Siguiente mano', matchTo: 'A {n}', matchLen: 'Duración', newMatch: 'Nueva partida',
+        dailySh: 'Shelem diario', vsHard: 'Contra la IA difícil', points: 'Puntos', taken: 'Hechos', handN: 'Mano {n}', hand: 'Tu mano', table: 'Mesa',
+        level: 'Nivel', optNote: 'Se aplica desde la próxima partida.',
+        playKey: 'Jugar la carta elegida', moveKey: 'Moverse entre cartas', suitKey: 'Elegir triunfo', bidKeys: 'Subir o bajar la apuesta',
+        rules: 'Cuatro jugadores en dos equipos; tu pareja se sienta enfrente. Cada uno recibe doce cartas y cuatro quedan en el centro. Por turnos, cada jugador apuesta de 100 a 165 de cinco en cinco, o pasa y ya no apuesta más. Si los cuatro pasan, se reparte de nuevo. Quien gana la subasta toma las cuatro cartas del centro, aparta cuatro (sus puntos cuentan para su equipo), elige el triunfo y sale. Hay que seguir el palo si se puede; si no, cualquier carta. El triunfo más alto, o si no la carta más alta del palo de salida, gana la baza; el as es la más alta. Ases y dieces valen 10, cincos 5 y cada baza 5: 165 por mano. Si el equipo que apostó llega a su apuesta, suma todo lo que hizo, 330 con un shelem (todas las bazas); si no, pierde su apuesta, el doble si los rivales hicieron más. Los rivales siempre suman lo que hicieron. Gana el primer equipo en llegar a 505 (o 1165).',
+        tutTitle1: 'La subasta', tutText1: 'Cada uno dice cuántos de los 165 puntos hará su equipo, desde 100. Gana la apuesta más alta; quien pasa ya no apuesta.',
+        tutTitle2: 'Cartas con puntos', tutText2: 'Ases y dieces valen 10, cincos 5 y cada baza que ganes 5. Quien gana la subasta toma las cuatro cartas del centro y elige el triunfo.',
+        tutTitle3: 'El contrato', tutText3: 'Si llegas a tu apuesta sumas todo lo que hiciste; si no, pierdes la apuesta. Todas las bazas son un shelem: 330 puntos.'
+      }
+    }
+  });
+
+  var params = new URLSearchParams(location.search);
+  var dailyDate = params.get('daily');
+  var LEVELS = ['easy', 'medium', 'hard'];
+  var prefs = ctx.store.get('prefs', { level: 'medium', target: 505 });
+  if (LEVELS.indexOf(prefs.level) < 0) prefs.level = 'medium';
+  if ([505, 1165].indexOf(prefs.target) < 0) prefs.target = 505;
+
+  var S = null, aiTimer = null, cur = -1, holdTrick = null, myBid = 0, sel = [];
+  // cards already in your hand on screen, so only newly dealt ones fly in (#407)
+  var handSeen = [];
+
+  var top = el('div', { class: 'sh-top' });
+  var board = el('div', { class: 'sh-score' });
+  var seatTop = el('div', { class: 'sh-seat sh-seat--top' });
+  var seatLeft = el('div', { class: 'sh-seat sh-seat--left' });
+  var seatRight = el('div', { class: 'sh-seat sh-seat--right' });
+  var trickBox = el('div', { class: 'sh-trick', role: 'group', 'aria-label': C.t('table') });
+  var table = el('div', { class: 'sh-table' }, [seatTop, seatLeft, trickBox, seatRight]);
+  var handRow = el('div', { class: 'sh-hand', role: 'group', 'aria-label': C.t('hand') });
+  var status = el('div', { class: 'sh-status', 'aria-live': 'polite' });
+  var askBox = el('div', { class: 'sh-ask', hidden: '' });
+  var wrap = el('div', { class: 'sh-wrap' }, [top, board, table, askBox, handRow, status]);
+  ctx.button({ icon: 'help', label: C.t('help'), onClick: showHelp });
+  ctx.button({ icon: 'refresh', label: C.t('newMatch'), onClick: askNew });
+  ctx.main.appendChild(wrap);
+  ctx.mount();
+
+  var SEAT_NAME = ['you', 'right', 'partner', 'left'];
+  function pname(p) { return p === 0 ? (C.state.profile.name || C.t('you')) : C.t(SEAT_NAME[p]); }
+  function rngFor(tag) { return S && S.daily ? C.daily('shelem', S.daily + '|' + tag).rng : Math.random; }
+
+  /* ------------------------------------------------------------ start */
+  function newMatch(level, target, daily) {
+    stopAi();
+    S = E.newMatch(daily ? C.daily('shelem', daily).rng : Math.random, target, daily ? 3 : -1);
+    S.level = level; S.daily = daily || null; S.startedAt = Date.now();
+    resetHand();
+    render(); save(); step();
+  }
+  function resetHand() { cur = -1; holdTrick = null; sel = []; myBid = 0; }
+  function nextHand(redeal) {
+    if (!S) return;
+    E.newHand(S, rngFor('h' + S.handNo + (redeal ? 'r' + S.dealer : '')), redeal);
+    resetHand();
+    render(); save(); step();
+  }
+
+  /* ------------------------------------------------------------- flow */
+  // Moves the game on whenever it isn't the player's decision
+  function step() {
+    stopAi();
+    if (!S || S.done) return;
+    if (S.phase === 'redeal') {
+      C.ui.toast({ title: C.t('allPassed') });
+      aiTimer = setTimeout(function () { nextHand(true); }, C.cards.pace(900));
+      return;
+    }
+    if (S.phase === 'bid' && S.turn !== 0) {
+      aiTimer = setTimeout(function () {
+        var p = S.turn, m = E.aiBid(S, p, S.level, rngFor('b' + S.handNo + '|' + p + '|' + S.high));
+        if (m.bid) E.bid(S, p, m.bid); else E.pass(S, p);
+        afterBid();
+      }, C.cards.pace(650));
+      return;
+    }
+    if (S.phase === 'widow' && S.declarer !== 0) {
+      aiTimer = setTimeout(function () {
+        var p = S.declarer, s = E.aiTrump(S.hands[p]);
+        E.bury(S, E.aiBury(S.hands[p], s));
+        E.chooseTrump(S, s);
+        C.ui.toast({ title: C.t('contract', { v: C.num(S.high), n: pname(p) }) + ' · ' + C.t('trump') + ' ' + G[s] });
+        render(); save(); step();
+      }, C.cards.pace(900));
+      return;
+    }
+    // a daily is one hand; restored on its result, it ends there
+    if (S.phase === 'handover') { if (S.daily) finish(); else showHandOver(); return; }
+    if (S.phase === 'play' && S.turn !== 0) {
+      aiTimer = setTimeout(function () {
+        var p = S.turn;
+        doPlay(p, E.aiPlay(S, p, S.level, rngFor(S.handNo + '|' + S.played.length)));
+      }, C.cards.pace(holdTrick ? 950 : 600));
+    }
+  }
+  function stopAi() { if (aiTimer) { clearTimeout(aiTimer); aiTimer = null; } }
+
+  function afterBid() {
+    C.audio.sfx('tap');
+    if (S.phase === 'widow' && S.declarer === 0) C.feedback('good');
+    render(); save(); step();
+  }
+  function humanBid(v) {
+    if (!S || S.phase !== 'bid' || S.turn !== 0) return;
+    if (v ? !E.bid(S, 0, v) : !E.pass(S, 0)) { C.feedback('bad'); return; }
+    myBid = 0;
+    afterBid();
+  }
+
+  function seatOf(p) { return [handRow, seatRight, seatTop, seatLeft][p]; }
+  function doPlay(p, c) {
+    var src = p === 0 ? handRow.children[S.hands[0].indexOf(c)] : seatOf(p);
+    var from = src && src.getBoundingClientRect ? src.getBoundingClientRect() : null;
+    var r = E.play(S, p, c);
+    if (!r) return;
+    C.audio.sfx('place');
+    if (p === 0) C.haptic('tap');
+    cur = -1;
+    if (r.trickDone) {
+      holdTrick = S.lastTrick;
+      if (r.hand && r.hand.shelem && E.team(r.hand.declarer) === 0) C.achievements.unlock('sh-shelem');
+    } else holdTrick = null;
+    save();
+    paint();
+    C.ui.fly(trickBox.querySelector('[data-p="' + p + '"]'), from, { flip: p !== 0, ms: 260 });
+    if (r.trickDone) {
+      aiTimer = setTimeout(function () { sweep(function () { holdTrick = null; if (S.done || (S.daily && r.hand)) { finish(); return; } paint(); step(); }); }, C.cards.pace(950));
+      return;
+    }
+    step();
+  }
+
+  // After the hold, the trick slides to the player who took it (#407)
+  function sweep(then) {
+    var mine = S, w = holdTrick ? holdTrick.winner : -1, last = null;
+    var cards = trickBox.querySelectorAll('.sh-tcard');
+    for (var i = 0; i < cards.length && w >= 0; i++) last = C.ui.sendTo(cards[i], seatOf(w), { delay: i * 30 }) || last;
+    if (!last) { then(); return; }
+    var go = function () { if (S === mine) then(); };
+    last.onfinish = go;
+    last.oncancel = go;
+  }
+
+  function toggleSel(c) {
+    var i = sel.indexOf(c);
+    if (i >= 0) sel.splice(i, 1);
+    else if (sel.length < 4) sel.push(c);
+    else { C.feedback('bad'); return; }
+    C.feedback('select');
+    paint();
+  }
+  function humanBury() {
+    if (!S || S.phase !== 'widow' || S.declarer !== 0 || sel.length !== 4) return;
+    var rects = sel.map(function (c) { var n = handRow.children[S.hands[0].indexOf(c)]; return n ? n.getBoundingClientRect() : null; });
+    if (!E.bury(S, sel)) { C.feedback('bad'); return; }
+    sel = [];
+    C.audio.sfx('place');
+    render(); save();
+    // the four cards go face down to the middle
+    rects.forEach(function (r) { if (r && trickBox.firstChild) C.ui.fly(trickBox.firstChild, r, { ms: 260 }); });
+    step();
+  }
+  function pickTrump(s) {
+    if (!S || S.phase !== 'trump' || S.declarer !== 0) return;
+    E.chooseTrump(S, s);
+    C.feedback('select');
+    render(); save(); step();
+  }
+
+  function showHandOver() {
+    var r = S.lastHand;
+    var title = r.shelem ? C.t('shelemWin') : (r.set ? C.t('down') : C.t('made'));
+    paint();
+    if (r.delta[0] > r.delta[1]) C.feedback('good');
+    // a signed number stays in one piece inside Persian text
+    var num = function (n, signed) { return el('bdi', { dir: 'ltr', text: (signed && n > 0 ? '+' : n < 0 ? '−' : '') + C.num(Math.abs(n)) }); };
+    var pair = function (t, n, signed) { return el('span', {}, [el('span', { text: C.t(t) + ' ' }), num(n, signed)]); };
+    C.ui.modal({
+      title: title,
+      body: [el('p', { class: 'ch-dim', text: pname(r.declarer) + ' · ' + C.t('resLine', { v: C.num(r.bid), m: C.num(r.made) }) }),
+        el('p', { class: 'sh-res' }, [pair('us', r.delta[0], true), pair('them', r.delta[1], true)]),
+        el('p', { class: 'sh-res sh-res--sum' }, [el('span', { text: C.t('points') }), pair('us', S.score[0]), pair('them', S.score[1])])],
+      actions: [{ label: C.t('nextHand'), kind: 'primary' }],
+      // dealing lives in onClose only; with both, one tap dealt two hands (as in Hokm)
+      onClose: function () { if (S.phase === 'handover') nextHand(false); }
+    });
+  }
+
+  function finish() {
+    stopAi();
+    var r = S.lastHand;
+    var won = S.daily ? r.delta[0] > r.delta[1] : S.winner === 0;
+    var base = { easy: 6, medium: 12, hard: 20 }[S.level] || 12;
+    if (S.target === 1165) base = Math.round(base * 1.8);
+    var coins = Math.max(2, Math.round(won ? base : base * 0.35)) + (S.daily ? 8 : 0);
+    var points = Math.max(3, Math.round(won ? base * 4 : base * 1.2)) + (S.daily ? 25 : 0);
+    if (won) { C.achievements.unlock('sh-win'); if (S.level === 'hard' && !S.daily) C.achievements.unlock('sh-hard'); }
+    var a = S.daily ? r.delta[0] : S.score[0], b = S.daily ? r.delta[1] : S.score[1];
+    if (S.daily) {
+      var firstDaily = C.stats.daily('shelem', S.daily, { label: C.num(a) + ' - ' + C.num(b), win: won });
+      if (!firstDaily) { coins = Math.round(coins * 0.2); points = Math.round(points * 0.2); }
+    }
+    ctx.clearSave();
+    var level = S.level, target = S.target;
+    ctx.finish({
+      won: won, title: won ? C.t('won') : C.t('lost'),
+      timeMs: Date.now() - S.startedAt, coins: coins, points: points,
+      lines: [
+        { label: C.t('us') + ' - ' + C.t('them'), value: C.num(a) + ' - ' + C.num(b) },
+        { label: C.t('handN', { n: C.num(S.handNo) }), value: C.t(level) }
+      ],
+      shareText: 'چوگان · شلم' + (S.daily ? ('\nروزانه ' + S.daily) : '') + '\n' + C.num(a) + ' - ' + C.num(b),
+      paint: function (g, w, h, col) {
+        g.fillStyle = col.surface2; C.rrect(g, 0, 0, w, h, 18); g.fill();
+        g.fillStyle = col.game; g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.font = '800 ' + Math.round(h * 0.3) + 'px Vazirmatn, system-ui, sans-serif';
+        g.fillText(C.num(a) + ' - ' + C.num(b), w / 2, h / 2);
+      },
+      onAgain: S.daily ? null : function () { newMatch(level, target); }
+    });
+  }
+
+  /* ----------------------------------------------------------- render */
+  function render() {
+    top.innerHTML = '';
+    if (S.daily) {
+      top.appendChild(el('span', { class: 'ch-badge ch-badge--accent' }, [C.icon('calendar', 14), el('span', { text: C.t('dailySh') + ' — ' + C.num(S.daily) })]));
+      top.appendChild(el('span', { class: 'ch-badge', text: C.t('vsHard') }));
+    } else {
+      top.appendChild(el('span', { class: 'ch-badge', text: C.t('handN', { n: C.num(S.handNo) }) }));
+      top.appendChild(el('span', { class: 'ch-badge', text: C.t('matchTo', { n: C.num(S.target) }) }));
+    }
+    top.appendChild(C.cards.backPicker());
+    // options behind a gear, never in «?» (#409)
+    var gear = el('button', { class: 'ch-iconbtn', type: 'button', 'aria-label': C.t('settings'), title: C.t('settings') }, [C.icon('gear', 20)]);
+    gear.addEventListener('click', showSettings);
+    top.appendChild(gear);
+    paint();
+  }
+
+  function seat(box, p) {
+    box.innerHTML = '';
+    var on = !S.done && (S.phase === 'play' || S.phase === 'bid') && S.turn === p && !holdTrick;
+    box.className = box.className.replace(/ sh-seat--on| sh-seat--partner/g, '') + (on ? ' sh-seat--on' : '') + (p === 2 ? ' sh-seat--partner' : '');
+    var name = el('div', { class: 'sh-seat__name' }, [el('span', { text: pname(p) })]);
+    if (S.declarer === p && S.phase !== 'bid') name.appendChild(el('span', { class: 'sh-crown', title: C.t('bidWord'), 'aria-label': C.t('bidWord') }, [C.icon('crown', 14)]));
+    box.appendChild(name);
+    var fan = el('div', { class: 'sh-fan' });
+    for (var k = 0; k < Math.min(S.hands[p].length, 16); k++) fan.appendChild(C.cards.back());
+    box.appendChild(fan);
+    if (S.phase === 'bid' && S.bids[p]) box.appendChild(sayTag(p));
+  }
+  function sayTag(p) {
+    var b = S.bids[p];
+    return el('span', { class: 'sh-say' + (b < 0 ? ' sh-say--pass' : ''), text: b < 0 ? C.t('passed') : C.num(b) });
+  }
+
+  function paint() {
+    if (!S) return;
+    board.innerHTML = '';
+    var inPlay = S.phase === 'play' || S.phase === 'trump' || S.phase === 'widow' || S.phase === 'handover' || S.phase === 'done';
+    var teamBox = function (t) {
+      return el('div', { class: 'sh-team' + (t === 0 ? ' sh-team--us' : '') }, [el('b', { text: C.t(t === 0 ? 'us' : 'them') }),
+        el('span', { text: C.t('points') + ' ' + C.num(S.score[t]) }),
+        el('span', { text: inPlay ? C.t('taken') + ' ' + C.num(S.taken[t]) : ' ' })]);
+    };
+    board.appendChild(teamBox(0));
+    var dealKids = [];
+    if (S.trump >= 0) dealKids.push(el('span', { class: 'sh-deal__s', text: G[S.trump] }));
+    dealKids.push(el('span', { class: 'sh-deal__v', text: S.high ? C.num(S.high) : '—' }));
+    dealKids.push(el('span', { class: 'sh-deal__l', text: S.trump >= 0 ? C.t('trump') : C.t('bidWord') }));
+    board.appendChild(el('div', { class: 'sh-deal' + (S.trump === 1 || S.trump === 2 ? ' sh-deal--red' : '') }, dealKids));
+    board.appendChild(teamBox(1));
+
+    seat(seatTop, 2); seat(seatLeft, 3); seat(seatRight, 1);
+
+    trickBox.innerHTML = '';
+    if (S.phase === 'bid' || S.phase === 'redeal' || S.phase === 'widow' || S.phase === 'trump') {
+      // the widow face down in the middle, then the four cards put back
+      var w = el('div', { class: 'sh-widow', 'aria-hidden': 'true' });
+      var n = S.phase === 'bid' || S.phase === 'redeal' ? S.widow.length : S.phase === 'trump' ? 4 : 0;
+      for (var k = 0; k < n; k++) w.appendChild(C.cards.back());
+      trickBox.appendChild(w);
+    }
+    var shown = holdTrick ? holdTrick.cards : S.trick;
+    var POS = ['b', 'r', 't', 'l'];
+    shown.forEach(function (t) {
+      var b = C.cards.el(t.c, 'sh-tcard sh-tcard--' + POS[t.p] + (holdTrick && holdTrick.winner === t.p ? ' sh-tcard--win' : ''));
+      b.disabled = true;
+      b.setAttribute('data-p', t.p);
+      trickBox.appendChild(b);
+    });
+
+    paintAsk();
+    paintHand();
+
+    var msg = '';
+    if (S.phase === 'bid') msg = S.turn === 0 ? C.t('yourBid') : C.t('thinking', { n: pname(S.turn) });
+    else if (S.phase === 'widow') msg = S.declarer === 0 ? C.t('burySub') : C.t('thinking', { n: pname(S.declarer) });
+    else if (S.phase === 'trump') msg = S.declarer === 0 ? C.t('chooseTrump') : '';
+    else if (S.phase === 'play' && !holdTrick) {
+      if (S.turn === 0) {
+        var legal = E.legal(S, 0);
+        msg = C.t('yourTurn') + (S.trick.length && legal.length && legal.length < S.hands[0].length ? ' · ' + C.t('mustFollow') : '');
+      } else msg = C.t('thinking', { n: pname(S.turn) });
+    }
+    status.textContent = msg;
+  }
+
+  function paintHand() {
+    handRow.innerHTML = '';
+    var mine = S.hands[0];
+    var legal = S.phase === 'play' && S.turn === 0 && !holdTrick ? E.legal(S, 0) : [];
+    var burying = S.phase === 'widow' && S.declarer === 0;
+    // up to eight to a row, as wide as the row allows, never below the 44px touch target
+    var w = handRow.clientWidth || 360, per = mine.length > 14 ? 8 : 7;
+    var cw = Math.max(44, Math.min(64, Math.floor((w - (per - 1) * 4) / per)));
+    handRow.style.setProperty('--pw', cw + 'px');
+    mine.forEach(function (c, i) {
+      var ok = burying || legal.indexOf(c) >= 0;
+      var cls = 'sh-card' + (legal.length && !ok ? ' sh-card--no' : '') + (legal.length && ok ? ' sh-card--ok' : '') +
+        (sel.indexOf(c) >= 0 ? ' sh-card--sel' : '') + (i === cur ? ' sh-card--cur' : '');
+      var b = C.cards.el(c, cls);
+      b.disabled = !ok;
+      if (burying) b.setAttribute('aria-pressed', sel.indexOf(c) >= 0 ? 'true' : 'false');
+      b.addEventListener('click', function () { if (burying) toggleSel(c); else if (ok) doPlay(0, c); });
+      handRow.appendChild(b);
+    });
+    // a deal, or the widow: new cards come from the middle of the table, turning over
+    var fresh = mine.filter(function (c) { return handSeen.indexOf(c) < 0; });
+    if (fresh.length > 1) fresh.forEach(function (c, k) { C.ui.fly(handRow.children[mine.indexOf(c)], trickBox, { flip: true, ms: 280, delay: k * 40 }); });
+    handSeen = mine.slice();
+  }
+
+  // the question on the page: a bid, the four cards to put back, or trump
+  function paintAsk() {
+    askBox.innerHTML = '';
+    var kids = null;
+    if (S.phase === 'bid' && S.turn === 0) {
+      var lo = E.minBid(S);
+      if (myBid < lo || myBid > E.MAX_BID) myBid = lo;
+      var canRaise = lo <= E.MAX_BID;
+      var valEl = el('span', { class: 'sh-bidval', text: C.num(myBid) });
+      var minus = el('button', { class: 'ch-iconbtn', type: 'button', 'aria-label': '−5', text: '−' });
+      var plus = el('button', { class: 'ch-iconbtn', type: 'button', 'aria-label': '+5', text: '+' });
+      minus.disabled = myBid <= lo; plus.disabled = myBid >= E.MAX_BID;
+      minus.addEventListener('click', function () { if (myBid > lo) { myBid -= E.STEP; C.feedback('tap'); paint(); } });
+      plus.addEventListener('click', function () { if (myBid < E.MAX_BID) { myBid += E.STEP; C.feedback('tap'); paint(); } });
+      var bidB = el('button', { class: 'ch-btn ch-btn--primary', type: 'button', text: C.t('bidBtn', { v: C.num(myBid) }) });
+      bidB.addEventListener('click', function () { humanBid(myBid); });
+      var passB = el('button', { class: 'ch-btn ch-btn--soft', type: 'button', text: C.t('passBtn') });
+      passB.addEventListener('click', function () { humanBid(0); });
+      kids = [el('p', { class: 'sh-ask__sub', text: S.high ? C.t('highBid', { v: C.num(S.high), n: pname(S.declarer) }) : C.t('noBid') })];
+      if (canRaise) kids.push(el('div', { class: 'sh-bidrow' }, [minus, valEl, plus]));
+      kids.push(el('div', { class: 'sh-btns' }, canRaise ? [bidB, passB] : [passB]));
+    } else if (S.phase === 'widow' && S.declarer === 0) {
+      var go = el('button', { class: 'ch-btn ch-btn--primary', type: 'button', text: C.t('buryBtn') + ' (' + C.num(sel.length) + '/' + C.num(4) + ')' });
+      go.disabled = sel.length !== 4;
+      go.addEventListener('click', humanBury);
+      kids = [el('p', { class: 'sh-ask__sub', text: C.t('buryTitle') }), go];
+    } else if (S.phase === 'trump' && S.declarer === 0) {
+      var row = el('div', { class: 'sh-suits' });
+      [0, 1, 3, 2].forEach(function (s) {
+        var b = el('button', { class: 'sh-suit' + (s === 1 || s === 2 ? ' sh-suit--red' : ''), type: 'button', 'aria-label': C.t('trump') + ' ' + G[s], text: G[s] });
+        b.addEventListener('click', function () { pickTrump(s); });
+        row.appendChild(b);
+      });
+      kids = [el('p', { class: 'sh-ask__sub', text: C.t('chooseSub') }), row];
+    }
+    if (!kids) { askBox.setAttribute('hidden', ''); return; }
+    askBox.removeAttribute('hidden');
+    kids.forEach(function (k) { askBox.appendChild(k); });
+  }
+
+  /* --------------------------------------------------------- keyboard */
+  window.addEventListener('keydown', function (e) {
+    if (!S || document.querySelector('.ch-scrim')) return;
+    var k = e.key;
+    if (S.phase === 'trump' && S.declarer === 0 && /^[1-4]$/.test(k)) { pickTrump([0, 1, 3, 2][+k - 1]); e.preventDefault(); return; }
+    if (S.phase === 'bid' && S.turn === 0) {
+      var lo = E.minBid(S);
+      if (k === 'ArrowUp' && myBid < E.MAX_BID) { myBid += E.STEP; paint(); e.preventDefault(); }
+      else if (k === 'ArrowDown' && myBid > lo) { myBid -= E.STEP; paint(); e.preventDefault(); }
+      else if (k === 'Enter' && lo <= E.MAX_BID) { humanBid(myBid); e.preventDefault(); }
+      else if (C.keyIs(e, 'p')) { humanBid(0); e.preventDefault(); }
+      return;
+    }
+    var mine = S.hands[0], burying = S.phase === 'widow' && S.declarer === 0;
+    if (!burying && (S.phase !== 'play' || S.turn !== 0 || holdTrick)) return;
+    var choices = burying ? mine.slice() : E.legal(S, 0);
+    var idx = choices.map(function (c) { return mine.indexOf(c); }).sort(function (a, b) { return a - b; });
+    if (!idx.length) return;
+    if (k === 'ArrowRight' || k === 'ArrowLeft') {
+      var at = idx.indexOf(cur);
+      at = at < 0 ? 0 : (at + (k === 'ArrowRight' ? 1 : idx.length - 1)) % idx.length;
+      cur = idx[at]; paint(); e.preventDefault(); return;
+    }
+    if ((k === ' ' || k === 'Enter') && cur >= 0) {
+      if (burying) { if (k === 'Enter' && sel.length === 4) humanBury(); else toggleSel(mine[cur]); }
+      else if (choices.indexOf(mine[cur]) >= 0) doPlay(0, mine[cur]);
+      e.preventDefault();
+    }
+  });
+
+  var resizeT = null;
+  window.addEventListener('resize', function () { clearTimeout(resizeT); resizeT = setTimeout(paint, 120); });
+
+  /* ------------------------------------------------------------- help */
+  function showSettings() {
+    var seg1 = C.ui.segmented(LEVELS.map(function (l) { return { value: l, label: C.t(l) }; }), prefs.level, function (v) { prefs.level = v; ctx.store.set('prefs', prefs); });
+    var seg2 = C.ui.segmented([505, 1165].map(function (n) { return { value: n, label: C.num(n) }; }), prefs.target, function (v) { prefs.target = v; ctx.store.set('prefs', prefs); });
+    C.ui.modal({
+      title: C.t('settings'),
+      body: [el('div', { class: 'ch-list' }, [
+        el('div', { class: 'ch-item' }, [el('div', { class: 'ch-item__label', text: C.t('level') }), seg1]),
+        el('div', { class: 'ch-item' }, [el('div', { class: 'ch-item__label', text: C.t('matchLen') }), seg2]),
+        C.cards.speedRow()
+      ]), el('p', { class: 'ch-dim', text: C.t('optNote') })],
+      actions: [{ label: C.t('done'), kind: 'primary' }]
+    });
+  }
+  function showHelp() {
+    C.ui.modal({
+      title: C.t('help'),
+      body: [
+        el('p', { class: 'ch-dim', text: C.t('rules') }),
+        el('h3', { style: { 'margin-top': 'var(--s-4)' }, text: C.t('keyboard') }),
+        el('div', { class: 'ch-list' }, [kb('↑ ↓ · Enter · P', C.t('bidKeys')), kb('← →', C.t('moveKey')), kb('Space / Enter', C.t('playKey')), kb('1 2 3 4', C.t('suitKey'))])
+      ],
+      actions: [{ label: C.t('tutorial'), onClick: function () { ctx.showTutorial(TUT); } }, { label: C.t('done'), kind: 'primary' }]
+    });
+  }
+  function kb(k, what) { return el('div', { class: 'ch-item' }, [el('div', { class: 'ch-item__label', text: what }), el('span', { class: 'ch-badge', text: k })]); }
+  function askNew() {
+    if (S && S.daily) { C.feedback('bad'); return; }
+    var go = function () { newMatch(prefs.level, prefs.target); };
+    if (!S || S.done || (S.handNo <= 1 && S.phase === 'bid' && !S.high)) { go(); return; }
+    C.ui.confirm({ title: C.t('newMatch'), body: C.t('resetWarn'), onOk: go });
+  }
+  function art(cards) {
+    var s = '<svg viewBox="0 0 200 110" width="100%" direction="ltr">';
+    cards.forEach(function (c) {
+      s += '<g><rect x="' + c[0] + '" y="' + c[1] + '" width="34" height="48" rx="6" fill="var(--c-surface)" stroke="' + (c[3] ? 'var(--game)' : 'var(--c-line)') + '" stroke-width="' + (c[3] ? 3 : 1) + '"/>' +
+        '<text x="' + (c[0] + 17) + '" y="' + (c[1] + 31) + '" text-anchor="middle" font-size="14" font-weight="800" fill="' + (/[♦♥]/.test(c[2]) ? 'var(--c-bad)' : 'var(--c-text)') + '">' + c[2] + '</text></g>';
+    });
+    return s + '</svg>';
+  }
+  var TUT = [
+    { title: C.t('tutTitle1'), text: C.t('tutText1'), art: '<svg viewBox="0 0 200 110" width="100%"><text x="100" y="66" text-anchor="middle" font-size="40" font-weight="800" fill="var(--game)" direction="ltr">' + C.num(120) + '</text></svg>' },
+    { title: C.t('tutTitle2'), text: C.t('tutText2'), art: art([[30, 31, 'A' + G[3], true], [83, 31, '10' + G[2], true], [136, 31, '5' + G[0], true]]) },
+    { title: C.t('tutTitle3'), text: C.t('tutText3'), art: '<svg viewBox="0 0 200 110" width="100%"><text x="100" y="66" text-anchor="middle" font-size="40" font-weight="800" fill="var(--game)" direction="ltr">' + C.num(330) + '</text></svg>' }
+  ];
+
+  /* ------------------------------------------------------------- save */
+  ctx.autosave(function () {
+    if (!S || S.done || (S.handNo <= 1 && S.phase === 'bid' && !S.high && !S.bids.some(function (b) { return b; }))) return { inProgress: false };
+    var copy = JSON.parse(JSON.stringify(S));
+    copy.elapsed = Date.now() - S.startedAt;
+    return { s: copy };
+  });
+  function save() { ctx.save(); }
+
+  function restore(v) {
+    S = v; S.startedAt = Date.now() - (v.elapsed || 0);
+    resetHand();
+    handSeen = S.hands[0].slice();
+    render(); step();
+  }
+  function validSave(s) {
+    if (!s || !Array.isArray(s.hands) || s.hands.length !== 4 || !Array.isArray(s.score) || !Array.isArray(s.bids)) return false;
+    var seen = {}, n = 0, ok = true;
+    var add = function (c) { if (typeof c !== 'number' || c < 0 || c > 51 || seen[c]) ok = false; seen[c] = 1; n++; };
+    s.hands.forEach(function (h) { h.forEach(add); });
+    (s.widow || []).forEach(add); (s.buried || []).forEach(add); (s.played || []).forEach(add);
+    return ok && n === 52 && ['bid', 'redeal', 'widow', 'trump', 'play', 'handover'].indexOf(s.phase) >= 0;
+  }
+  var saved = ctx.loadSave();
+  var ok = saved && validSave(saved.s);
+  if (dailyDate) {
+    if (ok && saved.s.daily === dailyDate) restore(saved.s);
+    else newMatch('hard', 505, dailyDate);
+    if (C.stats.dailyDone('shelem', dailyDate)) {
+      var rec = C.stats.dailyOf(dailyDate).shelem;
+      C.ui.toast({ icon: 'check', title: C.t('dailyDone'), sub: rec && rec.label });
+    }
+    ctx.tutorialIfNew(TUT);
+  } else if (ok && !saved.s.daily) restore(saved.s);
+  else {
+    newMatch(prefs.level, prefs.target);
+    ctx.tutorialIfNew(TUT);
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,705 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#FBF6EF">
+<title>پینگ‌پنگ — چوگان</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../lib/chogan.css">
+<script src="../../lib/early.js"></script>
+<style>
+  .pp-wrap > .ch-fit { --fit-ar: calc(360 / 640); }
+  .ch-fit > .pp-box { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
+  .pp-canvas { display: block; touch-action: none; border-radius: var(--r-lg); direction: ltr; }
+  .pp-top { display: flex; justify-content: center; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
+  .pp-players { display: flex; justify-content: space-between; gap: var(--s-2); width: 100%; max-width: 420px; direction: ltr; }
+  .pp-player { flex: 1; display: flex; align-items: center; gap: var(--s-2); padding: 6px 10px; border-radius: var(--r-md); background: var(--c-surface-2); font-weight: 700; min-width: 0; }
+  .pp-player:last-child { flex-direction: row-reverse; }
+  .pp-player--serve { box-shadow: inset 0 0 0 2px var(--game); }
+  .pp-player__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; text-align: start; }
+  .pp-player:last-child .pp-player__name { text-align: end; }
+  .pp-player__score { font-size: var(--fs-lg); font-weight: 800; font-variant-numeric: tabular-nums; min-width: 2ch; text-align: center; }
+  .pp-status { min-height: 1.6em; font-weight: 700; color: var(--c-text-dim); text-align: center; font-size: var(--fs-sm); }
+  .pp-wrap { touch-action: none; user-select: none; -webkit-user-select: none; }
+</style>
+</head>
+<body>
+<script src="../../version.js"></script>
+<script src="../../lib/chogan.js"></script>
+<script>
+/* ==== ENGINE START ==== */
+function PingPongEngineFactory() {
+  'use strict';
+
+  // A table seen from above, 360 × 640 units, y down. Seat 0 plays at the bottom,
+  // seat 1 at the top. The match runs in fixed steps, so the bots and the tests see the
+  // very physics the page draws.
+  var W = 360, H = 640, DT = 1 / 120;
+  var PW = 64, PH = 10, PY = 46, R = 7;          // paddle width, thickness, distance of its face from the end; ball radius
+  var V0 = 300, VUP = 16, VMAX = 700, SPIN = 62; // serve speed, more per hit, top speed, the steepest return (degrees)
+  var HAND = 1500, WAIT = 0.9, WIN = 11;        // a finger's top paddle speed; the pause before a serve
+  var BOT = {
+    easy:   { speed: 230, err: 34, react: 0.30, predict: false, aim: 0 },
+    medium: { speed: 320, err: 20, react: 0.16, predict: true, aim: 0.35 },
+    hard:   { speed: 440, err: 13, react: 0.08, predict: true, aim: 0.8 }
+  };
+
+  function faceY(seat) { return seat === 0 ? H - PY : PY; }
+
+  // Who serves: two serves each, then one each from ten all, as in table tennis
+  function server(S) {
+    var a = S.score[0], b = S.score[1], n = a + b;
+    var turn = a >= WIN - 1 && b >= WIN - 1 ? n : Math.floor(n / 2);
+    return (S.first + turn) % 2;
+  }
+
+  function match(first) {
+    var S = {
+      score: [0, 0], first: first ? 1 : 0, phase: 'serve', wait: WAIT, winner: -1,
+      ball: { x: W / 2, y: 0, vx: 0, vy: 0, speed: V0 },
+      pad: [{ x: W / 2, vx: 0 }, { x: W / 2, vx: 0 }],
+      hits: 0, longest: 0, last: -1, t: 0,
+      bot: [null, null]
+    };
+    placeServe(S);
+    return S;
+  }
+  function placeServe(S) {
+    var s = server(S), b = S.ball;
+    b.x = S.pad[s].x; b.y = s === 0 ? faceY(0) - R - 2 : faceY(1) + R + 2; b.vx = b.vy = 0; b.speed = V0;
+    S.phase = S.winner >= 0 ? 'done' : 'serve'; S.wait = WAIT; S.hits = 0; S.last = -1;
+  }
+  // The serve leaves the server's paddle at up to 25° off straight, the side drawn
+  function serve(S, rnd) {
+    var s = server(S), a = (rnd() * 2 - 1) * 25 * Math.PI / 180, b = S.ball;
+    b.vx = Math.sin(a) * V0; b.vy = (s === 0 ? -1 : 1) * Math.cos(a) * V0; b.speed = V0;
+    S.phase = 'play'; S.last = s;
+  }
+
+  // Where the ball will cross a paddle's face, its bounces off the sides included
+  function predictX(S, seat) {
+    var b = S.ball, fy = faceY(seat) + (seat === 0 ? -R : R);
+    if (!b.vy || (seat === 0) !== (b.vy > 0)) return null;
+    var t = (fy - b.y) / b.vy, x = b.x + b.vx * t, lo = R, span = W - 2 * R;
+    var u = ((x - lo) % (2 * span) + 2 * span) % (2 * span);
+    return lo + (u > span ? 2 * span - u : u);
+  }
+
+  // A bot plans once each time the ball turns its way: where to stand, with an error that
+  // shrinks level by level, and on medium and hard an offset that sends the return away
+  // from the other paddle. It waits a moment first, as a person would.
+  function plan(S, seat, level, rnd) {
+    var L = BOT[level] || BOT.medium, other = S.pad[1 - seat].x;
+    // off is where the ball should meet the paddle, from its middle: the return goes
+    // the way of off, so it is set against the side the other paddle stands on
+    // the error grows with the ball's speed: in the first draft hard and medium bots never
+    // missed a fast ball, and their rallies ran on for minutes
+    var off = (rnd() * 2 - 1) * L.err * Math.pow(S.ball.speed / V0, 1.6);
+    if (L.aim && rnd() < L.aim) off += (other > W / 2 ? -1 : 1) * (PW / 2) * (0.45 + 0.35 * rnd());
+    S.bot[seat] = { level: level, delay: L.react, off: off };
+  }
+  function botTarget(S, seat) {
+    var B = S.bot[seat], L = BOT[B.level] || BOT.medium, b = S.ball;
+    var coming = S.phase === 'play' && (seat === 0 ? b.vy > 0 : b.vy < 0);
+    if (!coming) return W / 2 + (b.x - W / 2) * 0.25;
+    if (B.delay > 0) return null;
+    var x = L.predict ? predictX(S, seat) : b.x;
+    return x == null ? null : x - B.off;
+  }
+
+  function movePad(p, target, top, dt) {
+    if (target == null) { p.vx = 0; return; }
+    target = Math.max(PW / 2, Math.min(W - PW / 2, target));
+    var d = target - p.x, m = top * dt;
+    var nx = Math.abs(d) <= m ? target : p.x + Math.sign(d) * m;
+    p.vx = (nx - p.x) / dt; p.x = nx;
+  }
+
+  // One fixed step. input[seat] is where a person wants that paddle (null: leave it);
+  // a seat with a bot (S.bot[seat] set) ignores input. rnd plans the bots' next return.
+  function step(S, input, rnd) {
+    var ev = [];
+    if (S.phase === 'done') return ev;
+    S.t += DT;
+    for (var s = 0; s < 2; s++) {
+      if (S.bot[s]) {
+        if (S.bot[s].delay > 0) S.bot[s].delay -= DT;
+        movePad(S.pad[s], botTarget(S, s), (BOT[S.bot[s].level] || BOT.medium).speed, DT);
+      } else movePad(S.pad[s], input ? input[s] : null, HAND, DT);
+    }
+    var b = S.ball;
+    if (S.phase === 'serve') {
+      var sv = server(S);
+      b.x = S.pad[sv].x;
+      S.wait -= DT;
+      if (S.wait <= 0 && (S.bot[sv] || S.go)) { S.go = false; serve(S, rnd); ev.push('serve'); turned(S, rnd); }
+      return ev;
+    }
+    b.x += b.vx * DT; b.y += b.vy * DT;
+    if (b.x < R) { b.x = 2 * R - b.x; b.vx = Math.abs(b.vx); ev.push('wall'); }
+    else if (b.x > W - R) { b.x = 2 * (W - R) - b.x; b.vx = -Math.abs(b.vx); ev.push('wall'); }
+    for (s = 0; s < 2; s++) {
+      var fy = faceY(s), toward = s === 0 ? b.vy > 0 : b.vy < 0;
+      var at = s === 0 ? b.y + R >= fy && b.y - R <= fy + PH : b.y - R <= fy && b.y + R >= fy - PH;
+      if (!toward || !at) continue;
+      var off = (b.x - S.pad[s].x) / (PW / 2 + R);
+      if (Math.abs(off) > 1) continue;
+      // the return's angle comes from where the ball met the paddle, a little from the
+      // paddle's own sideways motion, and it is a little faster every hit
+      var ang = Math.max(-1, Math.min(1, off + S.pad[s].vx / 2400)) * SPIN * Math.PI / 180;
+      b.speed = Math.min(VMAX, b.speed + VUP);
+      b.vx = Math.sin(ang) * b.speed;
+      b.vy = (s === 0 ? -1 : 1) * Math.cos(ang) * b.speed;
+      b.y = s === 0 ? fy - R : fy + R;
+      S.hits++; S.longest = Math.max(S.longest, S.hits); S.last = s;
+      ev.push('hit');
+      turned(S, rnd);
+    }
+    if (b.y < -R * 3 || b.y > H + R * 3) {
+      var who = b.y < 0 ? 0 : 1;
+      S.score[who]++;
+      ev.push('point' + who);
+      var a = S.score[0], c = S.score[1];
+      if ((a >= WIN || c >= WIN) && Math.abs(a - c) >= 2) { S.winner = a > c ? 0 : 1; ev.push('win'); }
+      placeServe(S);
+    }
+    return ev;
+  }
+  // the ball has just turned towards a seat: its bot, if it has one, plans
+  function turned(S, rnd) {
+    var seat = S.ball.vy > 0 ? 0 : 1;
+    if (S.bot[seat]) plan(S, seat, S.bot[seat].level, rnd);
+  }
+
+  function setBot(S, seat, level) { S.bot[seat] = level ? { level: level, delay: 0, off: 0 } : null; }
+
+  // Saves are taken between points only: the score and who served first
+  function snapshot(S) { return { score: S.score.slice(), first: S.first, longest: S.longest }; }
+  function restore(o) {
+    if (!o || !Array.isArray(o.score) || o.score.length !== 2 || !o.score.every(function (v) { return v === (v | 0) && v >= 0 && v < 60; })) return null;
+    var S = match(o.first === 1);
+    S.score = o.score.slice(); S.longest = o.longest | 0;
+    var a = S.score[0], c = S.score[1];
+    if ((a >= WIN || c >= WIN) && Math.abs(a - c) >= 2) return null;
+    placeServe(S);
+    return S;
+  }
+
+  return {
+    W: W, H: H, DT: DT, PW: PW, PH: PH, PY: PY, R: R, WIN: WIN, V0: V0, VMAX: VMAX,
+    match: match, step: step, server: server, setBot: setBot, predictX: predictX, faceY: faceY,
+    snapshot: snapshot, restore: restore
+  };
+}
+if (typeof module !== 'undefined') module.exports = PingPongEngineFactory;
+/* ==== ENGINE END ==== */
+</script>
+<script>
+(function () {
+  'use strict';
+  var C = window.Chogan, el = C.el;
+  var E = PingPongEngineFactory();
+  var LEVELS = ['easy', 'medium', 'hard'];
+
+  C.boot({});
+  var ctx = C.game({
+    id: 'pingpong',
+    name: { fa: 'پینگ‌پنگ', en: 'Ping Pong', zh: '乒乓球', de: 'Pingpong', es: 'Ping-pong', pl: 'Ping-Pong', fr: 'Ping-pong', ar: 'تنس الطاولة', hi: 'पिंग पोंग' },
+    accent: '#E2231A',
+    mood: 'menu',
+    strings: {
+      fa: {
+        table: 'میز پینگ‌پنگ از بالا', vsBot: 'مقابل ربات', people: 'دو نفره', bot: 'ربات', playerN: 'بازیکن {n}', newMatch: 'مسابقه‌ی تازه',
+        yourServe: 'سرویس توست — بزن تا شروع شود', serveOf: 'سرویس {n}', howBot: 'انگشتت را روی صفحه بکش؛ راکتت دنبالش می‌آید.',
+        howTwo: 'هر کس نیمه‌ی خودش از صفحه را می‌کشد.', tapGo: 'بزن تا ادامه بدهی', pointTo: 'امتیاز برای {n}', deuce: 'مساوی؛ دو امتیاز اختلاف لازم است',
+        playerWon: '{n} برد', dailyPp: 'پینگ‌پنگ روزانه', ppScore: 'امتیازها', ppRally: 'بلندترین رالی', hitsN: '{n} ضربه',
+        kMove: 'حرکت راکت پایین', kMove2: 'حرکت راکت بالا (دونفره)', kServe: 'سرویس یا ادامه',
+        rules: 'میز را از بالا می‌بینی؛ راکت تو پایین است و حریف بالا. توپ از دو لبه‌ی میز برمی‌گردد. اگر توپ از کنار راکت تو رد شود، امتیاز مال حریف است. هر جای راکت که توپ بخورد زاویه‌ی برگشت را تعیین می‌کند: وسط راکت صاف، لبه‌ها کج. هر ضربه توپ را کمی تندتر می‌کند. هر نفر دو سرویس می‌زند و از ده‌ده یک سرویس. کسی که اول به ۱۱ برسد با دو امتیاز اختلاف برنده است. چالش روزانه مسابقه‌ای با ربات متوسط است.',
+        tutTitle1: 'هدف', tutText1: 'توپ را برگردان تا از کنار راکت حریف رد شود. اول ۱۱ امتیاز، با دو اختلاف.',
+        tutTitle2: 'راکت', tutText2: 'انگشتت را هر جای صفحه بکش؛ راکت پایین دنبالش می‌آید. در بازی دونفره هر کس نیمه‌ی خودش را می‌کشد.',
+        tutTitle3: 'زاویه', tutText3: 'وسط راکت توپ را صاف برمی‌گرداند و لبه‌هایش کج. با لبه توپ را از حریف دور کن.'
+      },
+      en: {
+        table: 'Ping pong table seen from above', vsBot: 'Against the bot', people: 'Two players', bot: 'Bot', playerN: 'Player {n}', newMatch: 'New match',
+        yourServe: 'Your serve — tap to start', serveOf: '{n} serves', howBot: 'Slide your finger anywhere; your paddle follows it.',
+        howTwo: 'Each player slides on their own half of the screen.', tapGo: 'Tap to go on', pointTo: 'Point to {n}', deuce: 'Deuce: win by two',
+        playerWon: '{n} wins', dailyPp: 'Daily Ping Pong', ppScore: 'Score', ppRally: 'Longest rally', hitsN: '{n} hits',
+        kMove: 'Move the bottom paddle', kMove2: 'Move the top paddle (two players)', kServe: 'Serve or go on',
+        rules: 'You see the table from above: your paddle at the bottom, the other at the top. The ball bounces off both sides of the table. If it gets past your paddle, the point goes to the other side. Where the ball meets the paddle sets the return: straight from the middle, angled from the edges. Every hit makes the ball a little faster. Each player serves twice, then once each from ten all. First to 11, winning by two, takes the match. The daily challenge is a match against the medium bot.',
+        tutTitle1: 'The goal', tutText1: 'Return the ball until it gets past the other paddle. First to 11, by two.',
+        tutTitle2: 'Your paddle', tutText2: 'Slide your finger anywhere on the screen; the bottom paddle follows it. With two players each slides on their own half.',
+        tutTitle3: 'Angles', tutText3: 'The middle of the paddle sends the ball straight, the edges at an angle. Use the edges to send it away from the other player.'
+      },
+      pl: {
+        table: 'Stół do ping-ponga widziany z góry', vsBot: 'Przeciwko botowi', people: 'Dwóch graczy', bot: 'Bot', playerN: 'Gracz {n}', newMatch: 'Nowy mecz',
+        yourServe: 'Twój serwis — dotknij, aby rozpocząć', serveOf: 'Serwuje gracz {n}', howBot: 'Przesuwaj palec w dowolnym miejscu; Twoja paletka podąży za nim.',
+        howTwo: 'Każdy gracz przesuwa palec na swojej połowie ekranu.', tapGo: 'Dotknij, aby kontynuować', pointTo: 'Punkt dla gracza {n}', deuce: 'Równowaga: przewaga dwóch punktów do wygranej',
+        playerWon: '{n} wygrywa', dailyPp: 'Codzienny Ping-pong', ppScore: 'Wynik', ppRally: 'Najdłuższa wymiana', hitsN: 'Uderzenia: {n}',
+        kMove: 'Rusz dolną paletką', kMove2: 'Rusz górną paletką (dwóch graczy)', kServe: 'Serwuj lub kontynuuj',
+        rules: 'Widzisz stół z góry: Twoja paletka znajduje się na dole, a paletka przeciwnika na górze. Piłka odbija się od obu stron stołu. Jeśli minie Twoją paletkę, punkt zdobywa przeciwnik. Miejsce kontaktu piłki z paletką decyduje o kierunku odbicia: prosto ze środka, pod kątem od krawędzi. Każde uderzenie sprawia, że piłka leci nieco szybciej. Każdy gracz serwuje dwa razy, a od stanu po dziesięć – na zmianę po jednym razie. Mecz wygrywa ten, kto pierwszy zdobędzie 11 punktów z przewagą dwóch. Codzienne wyzwanie to mecz przeciwko średniemu botowi.',
+        tutTitle1: 'Cel gry', tutText1: 'Odbijaj piłkę, dopóki nie minie paletki przeciwnika. Wygrywa ten, kto pierwszy zdobędzie 11 punktów, zachowując dwa punkty przewagi.',
+        tutTitle2: 'Twoja paletka', tutText2: 'Przesuwaj palec w dowolnym miejscu na ekranie; dolna paletka podąży za nim. W przypadku dwóch graczy każdy przesuwa palec na własnej połowie.',
+        tutTitle3: 'Kąty odbicia', tutText3: 'Środek paletki posyła piłkę prosto, a krawędzie pod kątem. Używaj krawędzi, aby skierować piłkę z dala od drugiego gracza.'
+      },
+      fr: {
+        table: 'Table de ping-pong vue de dessus', vsBot: 'Contre le robot', people: 'Deux joueurs', bot: 'Robot', playerN: 'Joueur {n}', newMatch: 'Nouveau match',
+        yourServe: 'À toi de servir — touche pour lancer', serveOf: '{n} sert', howBot: 'Glisse ton doigt n’importe où ; ta raquette le suit.',
+        howTwo: 'Chaque joueur glisse sur sa moitié de l’écran.', tapGo: 'Touche pour continuer', pointTo: 'Point pour {n}', deuce: 'Égalité : deux points d’écart',
+        playerWon: '{n} gagne', dailyPp: 'Ping-pong du jour', ppScore: 'Score', ppRally: 'Plus long échange', hitsN: '{n} frappes',
+        kMove: 'Déplacer la raquette du bas', kMove2: 'Déplacer la raquette du haut (deux joueurs)', kServe: 'Servir ou continuer',
+        rules: 'Tu vois la table de dessus : ta raquette en bas, l’autre en haut. La balle rebondit sur les deux côtés de la table. Si elle passe ta raquette, le point va à l’autre camp. L’endroit où la balle touche la raquette décide du renvoi : droit au milieu, en biais sur les bords. Chaque frappe accélère un peu la balle. Chaque joueur sert deux fois, puis une fois chacun à partir de dix partout. Le premier à 11, avec deux points d’écart, gagne le match. Le défi du jour est un match contre le robot moyen.',
+        tutTitle1: 'Le but', tutText1: 'Renvoie la balle jusqu’à ce qu’elle passe l’autre raquette. Premier à 11, avec deux d’écart.',
+        tutTitle2: 'Ta raquette', tutText2: 'Glisse ton doigt n’importe où sur l’écran ; la raquette du bas le suit. À deux, chacun glisse sur sa moitié.',
+        tutTitle3: 'Les angles', tutText3: 'Le milieu de la raquette renvoie la balle droit, les bords en biais. Utilise les bords pour l’éloigner de l’autre joueur.'
+      },
+      ar: {
+        table: 'طاولة تنس الطاولة من الأعلى', vsBot: 'ضد الروبوت', people: 'لاعبان', bot: 'الروبوت', playerN: 'اللاعب {n}', newMatch: 'مباراة جديدة',
+        yourServe: 'إرسالك — انقر للبدء', serveOf: 'إرسال {n}', howBot: 'اسحب إصبعك في أي مكان، والمضرب يتبعه.',
+        howTwo: 'كل لاعب يسحب في نصفه من الشاشة.', tapGo: 'انقر للمتابعة', pointTo: 'نقطة لـ {n}', deuce: 'تعادل: الفوز بفارق نقطتين',
+        playerWon: 'فاز {n}', dailyPp: 'تنس الطاولة اليومي', ppScore: 'النتيجة', ppRally: 'أطول تبادل', hitsN: '{n} ضربة',
+        kMove: 'حرّك المضرب السفلي', kMove2: 'حرّك المضرب العلوي (لاعبان)', kServe: 'أرسل أو تابع',
+        rules: 'ترى الطاولة من الأعلى: مضربك في الأسفل والآخر في الأعلى. ترتد الكرة عن جانبي الطاولة. إذا تجاوزت الكرة مضربك، تذهب النقطة للطرف الآخر. مكان التقاء الكرة بالمضرب يحدد اتجاه الرد: مستقيمة من الوسط ومائلة من الأطراف. كل ضربة تجعل الكرة أسرع قليلًا. يرسل كل لاعب مرتين، ثم مرة واحدة لكل منهما بعد التعادل 10-10. أول من يصل إلى 11 بفارق نقطتين يفوز بالمباراة. تحدي اليوم مباراة ضد الروبوت المتوسط.',
+        tutTitle1: 'الهدف', tutText1: 'أعد الكرة حتى تتجاوز المضرب الآخر. الفوز لمن يصل إلى 11 بفارق نقطتين.',
+        tutTitle2: 'مضربك', tutText2: 'اسحب إصبعك في أي مكان على الشاشة، والمضرب السفلي يتبعه. مع لاعبين، يسحب كل لاعب في نصفه.',
+        tutTitle3: 'الزوايا', tutText3: 'وسط المضرب يرسل الكرة مستقيمة، والأطراف ترسلها بزاوية. استخدم الأطراف لإبعادها عن اللاعب الآخر.'
+      },
+      hi: {
+        table: 'ऊपर से दिखती पिंग पोंग की मेज़', vsBot: 'बॉट से', people: 'दो खिलाड़ी', bot: 'बॉट', playerN: 'खिलाड़ी {n}', newMatch: 'नया मुक़ाबला',
+        yourServe: 'आपकी सर्विस — शुरू करने के लिए छुएँ', serveOf: '{n} की सर्विस', howBot: 'उँगली कहीं भी खिसकाएँ; आपका पैडल उसके पीछे चलता है।',
+        howTwo: 'हर खिलाड़ी स्क्रीन के अपने आधे हिस्से पर उँगली खिसकाता है।', tapGo: 'आगे बढ़ने के लिए छुएँ', pointTo: '{n} को अंक', deuce: 'ड्यूस: दो अंक से जीतें',
+        playerWon: '{n} जीत गए', dailyPp: 'रोज़ का पिंग पोंग', ppScore: 'स्कोर', ppRally: 'सबसे लंबी रैली', hitsN: '{n} शॉट',
+        kMove: 'नीचे का पैडल हिलाएँ', kMove2: 'ऊपर का पैडल हिलाएँ (दो खिलाड़ी)', kServe: 'सर्विस करें या आगे बढ़ें',
+        rules: 'आप मेज़ को ऊपर से देखते हैं: आपका पैडल नीचे, दूसरा ऊपर। गेंद मेज़ के दोनों किनारों से टकराकर लौटती है। अगर गेंद आपके पैडल से निकल जाए, तो अंक दूसरी तरफ़ जाता है। गेंद पैडल पर जहाँ लगती है, उसी से वापसी तय होती है: बीच से सीधी, किनारों से तिरछी। हर शॉट से गेंद थोड़ी तेज़ होती है। हर खिलाड़ी दो बार सर्विस करता है, फिर 10-10 के बाद एक-एक बार। जो पहले 11 अंक दो अंक के अंतर से बनाए, वह मुक़ाबला जीतता है। रोज़ की चुनौती मध्यम बॉट के ख़िलाफ़ एक मुक़ाबला है।',
+        tutTitle1: 'लक्ष्य', tutText1: 'गेंद तब तक लौटाते रहें जब तक वह दूसरे पैडल से निकल न जाए। पहले 11 अंक, दो के अंतर से।',
+        tutTitle2: 'आपका पैडल', tutText2: 'स्क्रीन पर कहीं भी उँगली खिसकाएँ; नीचे का पैडल उसके पीछे चलता है। दो खिलाड़ियों में हर कोई अपने आधे हिस्से पर खिसकाता है।',
+        tutTitle3: 'कोण', tutText3: 'पैडल का बीच गेंद को सीधा भेजता है, किनारे तिरछा। गेंद को दूसरे खिलाड़ी से दूर भेजने के लिए किनारों का इस्तेमाल करें।'
+      },
+      zh: {
+        table: '俯视的乒乓球桌', vsBot: '对战电脑', people: '双人', bot: '电脑', playerN: '玩家 {n}', newMatch: '新比赛',
+        yourServe: '轮到你发球——点击开始', serveOf: '{n} 发球', howBot: '在屏幕上任意位置滑动手指，球拍会跟着走。',
+        howTwo: '两位玩家各自在自己的半边屏幕上滑动。', tapGo: '点击继续', pointTo: '{n} 得分', deuce: '平分：需领先两分',
+        playerWon: '{n} 获胜', dailyPp: '每日乒乓球', ppScore: '比分', ppRally: '最长回合', hitsN: '{n} 次击球',
+        kMove: '移动下方球拍', kMove2: '移动上方球拍（双人）', kServe: '发球或继续',
+        rules: '从上方俯视球桌：你的球拍在下方，对手在上方。球会从球桌两侧弹回。球越过你的球拍，对手得分。球碰到球拍的位置决定回球角度：中间直，边缘斜。每次击球球都会稍快一些。每人发两个球，十平后每人一个。先到 11 分且领先两分者获胜。每日挑战是与中等电脑的比赛。',
+        tutTitle1: '目标', tutText1: '把球打回去，直到它越过对方的球拍。先到 11 分，领先两分。',
+        tutTitle2: '球拍', tutText2: '在屏幕上任意位置滑动手指，下方球拍会跟随。双人时各自滑动自己的半边。',
+        tutTitle3: '角度', tutText3: '球拍中间把球打直，边缘打斜。用边缘把球送离对手。'
+      },
+      de: {
+        table: 'Tischtennisplatte von oben', vsBot: 'Gegen den Bot', people: 'Zwei Spieler', bot: 'Bot', playerN: 'Spieler {n}', newMatch: 'Neues Spiel',
+        yourServe: 'Dein Aufschlag – tippe zum Start', serveOf: '{n} schlägt auf', howBot: 'Wisch mit dem Finger irgendwo; dein Schläger folgt ihm.',
+        howTwo: 'Jeder wischt auf seiner eigenen Hälfte des Bildschirms.', tapGo: 'Tippe zum Weiterspielen', pointTo: 'Punkt für {n}', deuce: 'Einstand: zwei Punkte Vorsprung nötig',
+        playerWon: 'Sieg: {n}', dailyPp: 'Tages-Pingpong', ppScore: 'Punkte', ppRally: 'Längster Ballwechsel', hitsN: '{n} Schläge',
+        kMove: 'Unteren Schläger bewegen', kMove2: 'Oberen Schläger bewegen (zwei Spieler)', kServe: 'Aufschlag oder weiter',
+        rules: 'Du siehst den Tisch von oben: dein Schläger unten, der andere oben. Der Ball prallt von beiden Seiten des Tisches ab. Kommt er an deinem Schläger vorbei, geht der Punkt an die andere Seite. Wo der Ball den Schläger trifft, bestimmt die Rückgabe: gerade aus der Mitte, schräg von den Rändern. Jeder Schlag macht den Ball etwas schneller. Jeder schlägt zweimal auf, ab zehn beide einmal. Wer zuerst 11 Punkte mit zwei Vorsprung hat, gewinnt. Die Tagesaufgabe ist ein Spiel gegen den mittleren Bot.',
+        tutTitle1: 'Das Ziel', tutText1: 'Spiel den Ball zurück, bis er am anderen Schläger vorbeigeht. Zuerst 11, mit zwei Vorsprung.',
+        tutTitle2: 'Dein Schläger', tutText2: 'Wisch irgendwo auf dem Bildschirm; der untere Schläger folgt. Zu zweit wischt jeder auf seiner Hälfte.',
+        tutTitle3: 'Winkel', tutText3: 'Die Mitte des Schlägers spielt gerade, die Ränder schräg. Mit den Rändern spielst du am Gegner vorbei.'
+      },
+      es: {
+        table: 'Mesa de ping-pong vista desde arriba', vsBot: 'Contra el bot', people: 'Dos jugadores', bot: 'Bot', playerN: 'Jugador {n}', newMatch: 'Nueva partida',
+        yourServe: 'Tu saque: toca para empezar', serveOf: 'Saca {n}', howBot: 'Desliza el dedo por cualquier sitio; tu pala lo sigue.',
+        howTwo: 'Cada jugador desliza en su mitad de la pantalla.', tapGo: 'Toca para seguir', pointTo: 'Punto para {n}', deuce: 'Iguales: hay que ganar por dos',
+        playerWon: 'Gana {n}', dailyPp: 'Ping-pong diario', ppScore: 'Marcador', ppRally: 'Peloteo más largo', hitsN: '{n} golpes',
+        kMove: 'Mover la pala de abajo', kMove2: 'Mover la pala de arriba (dos jugadores)', kServe: 'Sacar o seguir',
+        rules: 'Ves la mesa desde arriba: tu pala abajo y la otra arriba. La pelota rebota en los dos lados de la mesa. Si pasa tu pala, el punto es para el otro lado. El punto de la pala donde da la pelota decide la devolución: recta desde el centro, en ángulo desde los bordes. Cada golpe la hace un poco más rápida. Cada jugador saca dos veces y, desde diez iguales, una vez cada uno. Gana quien llegue antes a 11 con dos de ventaja. El reto diario es una partida contra el bot medio.',
+        tutTitle1: 'El objetivo', tutText1: 'Devuelve la pelota hasta que pase la otra pala. Gana quien llegue a 11, por dos.',
+        tutTitle2: 'Tu pala', tutText2: 'Desliza el dedo por cualquier sitio; la pala de abajo lo sigue. Con dos jugadores cada uno usa su mitad.',
+        tutTitle3: 'Ángulos', tutText3: 'El centro de la pala la devuelve recta, los bordes en ángulo. Usa los bordes para alejarla del otro jugador.'
+      }
+    }
+  });
+
+  var params = new URLSearchParams(location.search);
+  var dailyDate = params.get('daily');
+  var prefs = ctx.store.get('prefs', null);
+  if (!prefs) prefs = { mode: 'bot', level: 'medium' };
+  if (prefs.mode !== 'bot' && prefs.mode !== 'people') prefs.mode = 'bot';
+  if (LEVELS.indexOf(prefs.level) < 0) prefs.level = 'medium';
+
+  // G: the match. mode/level as chosen; waiting: held until a tap (a fresh load or a
+  // return from the background never drops a player straight into a rally)
+  var G = null, raf = 0, last = 0, acc = 0, paused = false, waiting = false, ended = false, msg = '';
+  var want = [null, null], keys = { l: false, r: false, a: false, d: false }, touches = {};
+
+  var cv = el('canvas', { class: 'pp-canvas', role: 'img', 'aria-label': C.t('table') });
+  var box = el('div', { class: 'pp-box' }, [cv]);
+  var top = el('div', { class: 'pp-top ch-above' });
+  var players = el('div', { class: 'pp-players ch-above' });
+  var status = el('div', { class: 'pp-status', role: 'status', 'aria-live': 'polite' });
+  var wrap = el('div', { class: 'pp-wrap ch-split' }, [el('div', { class: 'ch-fit' }, [box]), el('div', { class: 'ch-side' }, [top, players, status])]);
+
+  ctx.button({ icon: 'help', label: C.t('help'), onClick: showHelp });
+  ctx.button({ icon: 'refresh', label: C.t('newMatch'), onClick: askNew });
+  ctx.main.appendChild(wrap);
+  ctx.mount();
+
+  /* ------------------------------------------------------------ setup */
+
+  function rngFor(tag) {
+    if (G && G.daily) return C.daily('pingpong', G.daily + '|' + tag).rng;
+    return Math.random;
+  }
+  function pointRng() { return rngFor('pt' + (G.S.score[0] + G.S.score[1])); }
+  var rnd = Math.random;
+
+  function newGame(o) {
+    var daily = o.daily || null;
+    G = { mode: daily ? 'bot' : o.mode, level: daily ? 'medium' : o.level, daily: daily, startedAt: Date.now() };
+    G.S = E.match(false);
+    if (G.mode === 'bot') E.setBot(G.S, 1, G.level);
+    if (!daily) { prefs.mode = o.mode; prefs.level = o.level; ctx.store.set('prefs', prefs); }
+    rnd = pointRng();
+    ended = false; msg = ''; waiting = false;
+    render(); kick();
+  }
+  function current() { return { mode: G.mode, level: G.level }; }
+  function fromPrefs() { return { mode: prefs.mode, level: prefs.level }; }
+  function isBot(seat) { return G.mode === 'bot' && seat === 1; }
+  function pname(seat) {
+    if (seat === 0) return G.mode === 'people' ? C.t('playerN', { n: C.num(1) }) : (C.state.profile.name || C.t('you'));
+    return isBot(seat) ? C.t('bot') : C.t('playerN', { n: C.num(2) });
+  }
+
+  /* -------------------------------------------------------------- loop */
+
+  function tick(now) {
+    raf = 0;
+    if (!G) return;
+    var blocked = paused || waiting || ended || document.hidden || !!document.querySelector('.ch-scrim');
+    if (!last || blocked) last = now;
+    acc += Math.min(0.1, (now - last) / 1000);
+    last = now;
+    if (blocked) acc = 0;
+    var ev = [];
+    var input = [target(0), target(1)];
+    while (acc >= E.DT) {
+      acc -= E.DT;
+      ev = ev.concat(E.step(G.S, input, rnd));
+      if (G.S.winner >= 0) break;
+    }
+    if (ev.length) events(ev);
+    draw();
+    if (!ended) raf = requestAnimationFrame(tick);
+  }
+  function kick() { if (!raf) raf = requestAnimationFrame(tick); }
+
+  // Keys move a paddle at a steady pace; a finger puts it where the finger is
+  var KEY_SPEED = 420;
+  function target(seat) {
+    var S = G.S, k = 0;
+    if (seat === 0) k = (keys.r ? 1 : 0) - (keys.l ? 1 : 0) + (G.mode === 'bot' ? (keys.d ? 1 : 0) - (keys.a ? 1 : 0) : 0);
+    else if (G.mode === 'people') k = (keys.d ? 1 : 0) - (keys.a ? 1 : 0);
+    if (k) return S.pad[seat].x + Math.sign(k) * KEY_SPEED * E.DT * 4;
+    return want[seat];
+  }
+
+  function events(ev) {
+    if (ev.indexOf('hit') >= 0) C.audio.sfx('tap');
+    if (ev.indexOf('wall') >= 0 && ev.indexOf('hit') < 0) C.audio.sfx('select');
+    var p0 = ev.indexOf('point0') >= 0, p1 = ev.indexOf('point1') >= 0;
+    if (p0 || p1) {
+      var who = p0 ? 0 : 1;
+      C.feedback(G.mode === 'bot' ? (who === 0 ? 'good' : 'bad') : 'thud');
+      msg = C.t('pointTo', { n: pname(who) });
+      rnd = pointRng();
+      if (G.S.winner >= 0) { ended = true; render(); ctx.clearSave(); setTimeout(finish, C.ui.reduceMotion() ? 200 : 900); return; }
+      save();
+      render();
+    }
+    if (ev.indexOf('serve') >= 0) { msg = ''; renderStatus(); }
+  }
+
+  /* ------------------------------------------------------------ result */
+
+  function finish() {
+    var S = G.S, w = S.winner, won = G.mode === 'people' ? null : w === 0;
+    var coins = 6, points = 15;
+    if (G.mode === 'bot') {
+      var base = { easy: 6, medium: 12, hard: 20 }[G.level];
+      coins = won ? base : Math.max(2, Math.round(base * 0.3));
+      points = won ? base * 4 : Math.round(base * 1.2);
+      if (won) {
+        C.achievements.unlock('pp-win');
+        if (G.level === 'hard') C.achievements.unlock('pp-hard');
+      }
+    }
+    if (S.longest >= 20) C.achievements.unlock('pp-rally');
+    var label = C.num(S.score[0]) + '–' + C.num(S.score[1]);
+    if (G.daily) {
+      var first = C.stats.daily('pingpong', G.daily, { label: label, win: won });
+      if (!first) { coins = Math.round(coins * 0.2); points = Math.round(points * 0.2); }
+    }
+    ctx.finish({
+      won: won,
+      title: G.mode === 'people' ? C.t('playerWon', { n: pname(w) }) : (won ? C.t('won') : C.t('lost')),
+      timeMs: Date.now() - G.startedAt, coins: coins, points: points,
+      lines: [
+        { label: C.t('ppScore'), value: label },
+        { label: C.t('ppRally'), value: C.t('hitsN', { n: C.num(S.longest) }) }
+      ],
+      shareText: 'چوگان · پینگ‌پنگ' + (G.daily ? ('\nروزانه ' + G.daily) : '') + '\n' + label,
+      paint: cardPaint(),
+      onAgain: G.daily ? null : function () { newGame(current()); }
+    });
+  }
+
+  /* ------------------------------------------------------------- saves */
+
+  // Saved after every point: the score, who served first and the longest rally
+  ctx.autosave(function () {
+    if (!G || ended || G.S.winner >= 0 || G.S.score[0] + G.S.score[1] === 0) return { inProgress: false };
+    return { g: { mode: G.mode, level: G.level, daily: G.daily, s: E.snapshot(G.S), elapsed: Date.now() - G.startedAt } };
+  });
+  function save() { ctx.save(); }
+  function restore(sv) {
+    var g = sv && sv.g;
+    if (!g || (g.mode !== 'bot' && g.mode !== 'people') || LEVELS.indexOf(g.level) < 0) return false;
+    var S = E.restore(g.s);
+    if (!S) return false;
+    G = { mode: g.mode, level: g.level, daily: g.daily || null, S: S, startedAt: Date.now() - (g.elapsed || 0) };
+    if (G.mode === 'bot') E.setBot(S, 1, G.level);
+    rnd = pointRng();
+    ended = false; msg = ''; waiting = true;
+    render(); kick();
+    return true;
+  }
+
+  function askNew() {
+    if (!G || !G.daily) { settings(); return; }
+    var dd = G.daily;
+    if (ended || G.S.score[0] + G.S.score[1] === 0) { newGame({ daily: dd }); return; }
+    C.ui.confirm({ title: C.t('newMatch'), body: C.t('resetWarn'), onOk: function () { newGame({ daily: dd }); } });
+  }
+  function settings() {
+    var o = G ? current() : fromPrefs(), body = el('div', { class: 'ch-col', style: { gap: 'var(--s-3)', 'align-items': 'center' } });
+    function rows() {
+      body.innerHTML = '';
+      body.appendChild(C.ui.segmented([{ value: 'bot', label: C.t('vsBot') }, { value: 'people', label: C.t('people') }], o.mode, function (v) { o.mode = v; rows(); }));
+      if (o.mode === 'bot') body.appendChild(C.ui.segmented(LEVELS.map(function (l) { return { value: l, label: C.t(l) }; }), o.level, function (v) { o.level = v; }));
+      if (G && !ended && G.S.score[0] + G.S.score[1] > 0) body.appendChild(el('p', { class: 'ch-xs ch-dim', text: C.t('resetWarn') }));
+    }
+    rows();
+    C.ui.modal({
+      title: C.t('newMatch'), closeButton: true, body: [body],
+      actions: [{ label: C.t('cancel') }, { label: C.t('start'), kind: 'primary', onClick: function () { newGame(o); } }]
+    });
+  }
+
+  /* --------------------------------------------------------------- draw */
+
+  function dark() {
+    var t = document.documentElement.getAttribute('data-theme');
+    if (t === 'dark') return true;
+    if (t === 'light') return false;
+    return window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+  // The table is a game's own colour (blue, as on a real table), darker at night
+  function palette() {
+    return dark()
+      ? { table: '#173A63', line: 'rgba(255,255,255,.55)', net: 'rgba(255,255,255,.75)', ball: '#FFB347', p0: '#E5574A', p1: '#3A3A3A', p1rim: '#9AA0A6', score: 'rgba(255,255,255,.14)', text: '#F4EEE4' }
+      : { table: '#1F5E9E', line: 'rgba(255,255,255,.8)', net: '#FFFFFF', ball: '#FF9E1B', p0: '#E2231A', p1: '#22252A', p1rim: '#22252A', score: 'rgba(255,255,255,.18)', text: '#1F1A17' };
+  }
+  var view = { w: 0, h: 0, k: 1 };
+  function size() {
+    // the slot's own size, both sides (#359, #474)
+    var r = box.getBoundingClientRect(), h = Math.floor(Math.min(r.height, r.width * E.H / E.W));
+    h = Math.max(120, h || 0);
+    return { w: Math.round(h * E.W / E.H), h: h };
+  }
+  function draw() {
+    if (!G) return;
+    var Z = size(), dpr = Math.min(2, window.devicePixelRatio || 1);
+    if (cv.width !== Math.round(Z.w * dpr) || cv.height !== Math.round(Z.h * dpr)) { cv.width = Math.round(Z.w * dpr); cv.height = Math.round(Z.h * dpr); }
+    cv.style.width = Z.w + 'px'; cv.style.height = Z.h + 'px';
+    view = { w: Z.w, h: Z.h, k: Z.w / E.W };
+    var g = cv.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.save(); g.scale(view.k, view.k);
+    paint(g, G.S);
+    g.restore();
+  }
+  function paint(g, S) {
+    var P = palette(), W = E.W, H = E.H;
+    g.fillStyle = P.table; g.fillRect(0, 0, W, H);
+    g.strokeStyle = P.line; g.lineWidth = 4; g.strokeRect(2, 2, W - 4, H - 4);
+    g.lineWidth = 1.5; g.beginPath(); g.moveTo(W / 2, 0); g.lineTo(W / 2, H); g.stroke();
+    // with two players, each one's score large and faint in their half, upright for them:
+    // the one across the phone can't read the row beside the table
+    if (G.mode === 'people') {
+      g.fillStyle = P.score; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.font = '800 96px ' + (getComputedStyle(document.body).fontFamily || 'sans-serif');
+      g.fillText(C.num(S.score[0]), W / 2, H * 0.75);
+      g.save(); g.translate(W / 2, H * 0.25); g.rotate(Math.PI); g.fillText(C.num(S.score[1]), 0, 0); g.restore();
+    }
+    // the net
+    g.fillStyle = P.net; g.fillRect(0, H / 2 - 3, W, 6);
+    g.fillStyle = 'rgba(0,0,0,.18)'; g.fillRect(0, H / 2 + 3, W, 3);
+    // paddles: a rounded bar with a handle towards its player
+    for (var s = 0; s < 2; s++) {
+      var p = S.pad[s], fy = E.faceY(s), y0 = s === 0 ? fy : fy - E.PH;
+      g.fillStyle = s === 0 ? P.p0 : P.p1;
+      C.rrect(g, p.x - E.PW / 2, y0, E.PW, E.PH, 5); g.fill();
+      if (s === 1 && P.p1rim !== P.p1) { g.strokeStyle = P.p1rim; g.lineWidth = 1.5; g.stroke(); }
+      g.fillStyle = '#8A5A2B';
+      g.fillRect(p.x - 4, s === 0 ? fy + E.PH : fy - E.PH - 14, 8, 14);
+    }
+    // the ball, with a small shadow
+    var b = S.ball;
+    g.fillStyle = 'rgba(0,0,0,.25)'; g.beginPath(); g.arc(b.x + 3, b.y + 4, E.R, 0, Math.PI * 2); g.fill();
+    g.fillStyle = P.ball; g.beginPath(); g.arc(b.x, b.y, E.R, 0, Math.PI * 2); g.fill();
+  }
+  function cardPaint() {
+    var S = G.S;
+    return function (g, W, H) {
+      var w = Math.min(W, H * E.W / E.H), h = w * E.H / E.W;
+      g.save(); g.translate((W - w) / 2, (H - h) / 2); g.scale(w / E.W, w / E.W);
+      paint(g, S);
+      g.restore();
+    };
+  }
+
+  /* ----------------------------------------------------------------- ui */
+
+  function renderTop() {
+    top.innerHTML = '';
+    if (G.daily) top.appendChild(el('span', { class: 'ch-badge ch-badge--accent' }, [C.icon('calendar', 14), el('span', { text: C.t('dailyPp') + ' — ' + C.num(G.daily) })]));
+    else top.appendChild(el('button', { class: 'ch-badge ch-tap', type: 'button', onclick: askNew, text: G.mode === 'bot' ? C.t('vsBot') + ' · ' + C.t(G.level) : C.t('people') }));
+  }
+  function renderPlayers() {
+    players.innerHTML = '';
+    var sv = E.server(G.S);
+    for (var s = 0; s < 2; s++) {
+      players.appendChild(el('div', { class: 'pp-player' + (sv === s && !ended ? ' pp-player--serve' : '') }, [
+        el('span', { class: 'pp-player__name', text: pname(s) }),
+        el('span', { class: 'pp-player__score', text: C.num(G.S.score[s]) })
+      ]));
+    }
+  }
+  function renderStatus() {
+    var S = G.S, sv = E.server(S), deuce = S.score[0] >= E.WIN - 1 && S.score[1] >= E.WIN - 1 && S.score[0] === S.score[1];
+    var t;
+    if (ended) t = msg;
+    else if (waiting) t = C.t('tapGo');
+    else if (S.phase === 'serve' && !isBot(sv)) t = (msg ? msg + ' · ' : '') + (G.mode === 'people' ? C.t('serveOf', { n: pname(sv) }) + ' — ' + C.t('tapGo') : C.t('yourServe'));
+    else if (msg) t = msg + (deuce ? ' · ' + C.t('deuce') : '');
+    else t = C.t(G.mode === 'people' ? 'howTwo' : 'howBot');
+    status.textContent = t;
+  }
+  function render() { if (!G) return; renderTop(); renderPlayers(); renderStatus(); draw(); }
+
+  /* -------------------------------------------------------------- input */
+
+  // A tap starts a serve that waits for a person, or lets a held match go on
+  function go() {
+    if (!G || ended) return;
+    if (waiting) { waiting = false; last = 0; renderStatus(); kick(); return; }
+    var S = G.S;
+    if (S.phase === 'serve' && !isBot(E.server(S))) { S.go = true; }
+  }
+
+  // Against the bot a finger anywhere moves the bottom paddle; with two players each
+  // half of the table belongs to the player on that side
+  function seatOf(e) {
+    if (G.mode !== 'people') return 0;
+    var r = cv.getBoundingClientRect();
+    return e.clientY < r.top + r.height / 2 ? 1 : 0;
+  }
+  function tableX(e) { var r = cv.getBoundingClientRect(); return (e.clientX - r.left) / (r.width || 1) * E.W; }
+  function syncWant() {
+    want = [null, null];
+    for (var id in touches) want[touches[id].seat] = touches[id].x;
+  }
+  wrap.addEventListener('pointerdown', function (e) {
+    if (!G || (e.target.closest && e.target.closest('button, .ch-badge'))) return;
+    e.preventDefault();
+    go();
+    touches[e.pointerId] = { seat: seatOf(e), x: tableX(e) }; syncWant();
+    try { wrap.setPointerCapture(e.pointerId); } catch (er) { /* old browsers */ }
+  });
+  wrap.addEventListener('pointermove', function (e) {
+    var t = touches[e.pointerId];
+    if (t) { t.x = tableX(e); syncWant(); }
+    // a mouse moves the paddle without a button held
+    else if (e.pointerType === 'mouse' && G && G.mode === 'bot') { want[0] = tableX(e); }
+  });
+  function lift(e) { delete touches[e.pointerId]; syncWant(); }
+  wrap.addEventListener('pointerup', lift);
+  wrap.addEventListener('pointercancel', lift);
+  wrap.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+  window.addEventListener('keydown', function (e) {
+    if (document.querySelector('.ch-scrim')) return;
+    var k = e.key;
+    if (k === 'ArrowLeft') keys.l = true;
+    else if (k === 'ArrowRight') keys.r = true;
+    else if (C.keyIs(e, 'a')) keys.a = true;
+    else if (C.keyIs(e, 'd')) keys.d = true;
+    else if (k === ' ' || k === 'Enter') { if (e.target && e.target.tagName === 'BUTTON') return; go(); }
+    else return;
+    e.preventDefault();
+    want = [null, null];
+  });
+  window.addEventListener('keyup', function (e) {
+    if (e.key === 'ArrowLeft') keys.l = false;
+    else if (e.key === 'ArrowRight') keys.r = false;
+    else if (C.keyIs(e, 'a')) keys.a = false;
+    else if (C.keyIs(e, 'd')) keys.d = false;
+  });
+
+  // Away from the app a rally holds, and it waits for a tap when the app comes back
+  C.onPause(function () { paused = true; touches = {}; syncWant(); keys = { l: false, r: false, a: false, d: false }; if (G && !ended) { waiting = true; renderStatus(); } });
+  C.onResume(function () { paused = false; last = 0; kick(); });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) { last = 0; kick(); } });
+  if (window.ResizeObserver) new ResizeObserver(function () { draw(); }).observe(box);
+  if (window.matchMedia) { try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw); } catch (er) { /* old WebViews */ } }
+
+  /* --------------------------------------------------------------- help */
+
+  function kb(k, what) { return el('div', { class: 'ch-item' }, [el('div', { class: 'ch-item__label', text: what }), el('span', { class: 'ch-badge', text: k })]); }
+  function showHelp() {
+    C.ui.modal({
+      title: C.t('help'),
+      body: [
+        el('p', { class: 'ch-dim', text: C.t('rules') }),
+        el('h3', { style: { 'margin-top': 'var(--s-4)' }, text: C.t('keyboard') }),
+        el('div', { class: 'ch-list' }, [kb('← →', C.t('kMove')), kb('A D', C.t('kMove2')), kb('Space / Enter', C.t('kServe'))])
+      ],
+      actions: [{ label: C.t('tutorial'), onClick: function () { ctx.showTutorial(TUT); } }, { label: C.t('done'), kind: 'primary' }]
+    });
+  }
+  function tArt(kind) {
+    var s = '<svg viewBox="0 0 200 110" width="100%" direction="ltr"><rect width="200" height="110" rx="10" fill="#1F5E9E"/>' +
+      '<rect x="4" y="4" width="192" height="102" rx="7" fill="none" stroke="#fff" stroke-width="2"/><rect x="98" y="4" width="4" height="102" fill="#fff"/>';
+    var pad = function (x, y, c) { return '<rect x="' + x + '" y="' + y + '" width="8" height="34" rx="4" fill="' + c + '"/>'; };
+    if (kind === 1) s += pad(14, 38, '#E2231A') + pad(178, 60, '#22252A') + '<circle cx="150" cy="30" r="6" fill="#FF9E1B"/><path d="M28 56 L144 32" stroke="#FF9E1B" stroke-width="2" stroke-dasharray="4 4"/>';
+    if (kind === 2) s += pad(14, 38, '#E2231A') + '<path d="M40 30 L40 80" stroke="#fff" stroke-width="2" stroke-dasharray="3 4"/><circle cx="50" cy="70" r="9" fill="rgba(255,255,255,.6)"/>';
+    if (kind === 3) s += pad(14, 38, '#E2231A') + '<circle cx="28" cy="55" r="5" fill="#FF9E1B"/><path d="M30 55 L110 55" stroke="#FF9E1B" stroke-width="2"/><path d="M30 42 L100 14" stroke="#FF9E1B" stroke-width="2" stroke-dasharray="4 4"/><path d="M30 68 L100 96" stroke="#FF9E1B" stroke-width="2" stroke-dasharray="4 4"/>';
+    return s + '</svg>';
+  }
+  var TUT = [
+    { title: C.t('tutTitle1'), text: C.t('tutText1'), art: tArt(1) },
+    { title: C.t('tutTitle2'), text: C.t('tutText2'), art: tArt(2) },
+    { title: C.t('tutTitle3'), text: C.t('tutText3'), art: tArt(3) }
+  ];
+
+  /* -------------------------------------------------------------- start */
+
+  var saved = ctx.loadSave();
+  if (dailyDate) {
+    // the daily match has its own slot, so a half-played day goes on
+    if (!(saved && saved.g && saved.g.daily === dailyDate && restore(saved))) newGame({ daily: dailyDate });
+    if (C.stats.dailyDone('pingpong', dailyDate)) {
+      var rec = C.stats.dailyOf(dailyDate).pingpong;
+      C.ui.toast({ icon: 'check', title: C.t('dailyDone'), sub: rec && rec.label });
+    }
+  } else if (!(saved && saved.g && !saved.g.daily && restore(saved))) {
+    newGame(fromPrefs());
+  }
+  ctx.tutorialIfNew(TUT);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { if (G) draw(); });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1070 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#FBF6EF">
+<title>دارت — چوگان</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../lib/chogan.css">
+<script src="../../lib/early.js"></script>
+<style>
+  /* Player colours mark whose darts are on the board; red and green are left out
+     because the board itself is red and green. */
+  :root { --dt-c0: #2F6FDE; --dt-c1: #E8A317; }
+  .dt-top { display: flex; gap: var(--s-2); flex-wrap: wrap; justify-content: center; width: 100%; max-width: 560px; }
+  .dt-top .ch-tap { border: 0; font: inherit; font-size: var(--fs-sm); font-weight: 700; min-height: 44px; padding-inline: var(--s-4); cursor: pointer; }
+  .dt-players { width: 100%; max-width: 560px; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: var(--s-2); }
+  .dt-player {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'name rem' 'darts darts';
+    align-items: center; gap: 4px 8px; min-width: 0;
+    background: var(--c-surface); border-radius: var(--r-md); padding: 6px 12px;
+    box-shadow: var(--sh-1); border: 2px solid transparent;
+    transition: border-color var(--t-mid) var(--ease), transform var(--t-mid) var(--ease);
+  }
+  .dt-player--on { border-color: var(--pc); transform: translateY(-2px); box-shadow: var(--sh-2); }
+  .dt-player__name { grid-area: name; display: flex; align-items: center; gap: 6px; min-width: 0; font-weight: 700; font-size: var(--fs-sm); }
+  .dt-player__name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dt-player__dot { width: 12px; height: 12px; border-radius: 50%; flex: 0 0 12px; background: var(--pc); }
+  .dt-player__rem { grid-area: rem; font-size: 28px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
+  .dt-player__darts { grid-area: darts; display: flex; gap: 4px; min-height: 20px; }
+  .dt-player__darts b { flex: 1; min-width: 0; text-align: center; font-size: var(--fs-xs); font-weight: 700; border-radius: 6px; padding: 1px 4px; background: var(--c-surface-2); color: var(--c-text-dim); direction: ltr; }
+  /* each dart says what it scored, the bull too (#404) */
+  .dt-player__darts b.dt-hit { color: var(--c-text); font-weight: 800; }
+  /* the visit just finished stays on its player's card, dimmed, with its total */
+  .dt-player__darts--last b { opacity: .75; }
+  .dt-player__total { flex: 0 0 auto; font-size: var(--fs-xs); font-weight: 800; padding: 1px 4px; color: var(--pc); font-variant-numeric: tabular-nums; }
+  .dt-thinking { animation: dt-blink 900ms infinite; }
+  @keyframes dt-blink { 50% { opacity: .55; } }
+  .ch-fit > .dt-boardbox { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
+  .dt-canvas { display: block; touch-action: none; cursor: crosshair; border-radius: 50%; }
+  .dt-status { width: 100%; max-width: 560px; min-height: 44px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  .dt-status__main { font-weight: 700; font-size: var(--fs-sm); color: var(--c-text-dim); }
+  .dt-status__hint { font-size: var(--fs-xs); color: var(--c-text-faint); }
+</style>
+</head>
+<body>
+<script src="../../version.js"></script>
+<script src="../../lib/chogan.js"></script>
+<script>
+/* ==== ENGINE START ==== */
+function DartsEngineFactory() {
+  'use strict';
+
+  // Numbers clockwise from the top, as on every standard board
+  var ORDER = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5];
+  // Ring edges as fractions of the double ring's outer edge (170 mm on a real board)
+  var R = { bull: 6.35 / 170, outer: 15.9 / 170, tIn: 99 / 170, tOut: 107 / 170, dIn: 162 / 170, dOut: 1 };
+
+  function mk(n, m) {
+    var label = !m ? 'MISS' : n === 25 ? (m === 2 ? 'BULL' : '25') : (m === 3 ? 'T' : m === 2 ? 'D' : 'S') + n;
+    return { n: n, m: m, score: n * m, label: label };
+  }
+
+  // What a dart at (x, y) scores; the board's centre is (0, 0), y points down
+  function hit(x, y) {
+    var r = Math.hypot(x, y);
+    if (r <= R.bull) return mk(25, 2);
+    if (r <= R.outer) return mk(25, 1);
+    if (r > R.dOut) return mk(0, 0);
+    var ang = Math.atan2(x, -y) * 180 / Math.PI;
+    var n = ORDER[Math.floor(((ang + 369) % 360) / 18)];
+    return mk(n, r >= R.dIn ? 2 : (r >= R.tIn && r <= R.tOut ? 3 : 1));
+  }
+
+  // The middle of a bed, where a player aims for it
+  function aimPoint(label) {
+    if (label === 'BULL') return [0, 0];
+    if (label === '25') return [0, -(R.bull + R.outer) / 2];
+    var m = label[0], n = +label.slice(1), i = ORDER.indexOf(n), a = i * 18 * Math.PI / 180;
+    var r = m === 'T' ? (R.tIn + R.tOut) / 2 : m === 'D' ? (R.dIn + R.dOut) / 2 : (R.tOut + R.dIn) / 2;
+    return [r * Math.sin(a), -r * Math.cos(a)];
+  }
+
+  var THROWS = [];
+  for (var t = 20; t >= 1; t--) THROWS.push(mk(t, 3));
+  THROWS.push(mk(25, 2), mk(25, 1));
+  for (t = 20; t >= 1; t--) THROWS.push(mk(t, 1));
+  for (t = 20; t >= 1; t--) THROWS.push(mk(t, 2));
+  // Finishing doubles, the ones players like best first
+  var DOUBLES = [20, 16, 18, 12, 10, 8, 14, 6, 4, 2, 19, 17, 15, 13, 11, 9, 7, 5, 3, 1].map(function (n) { return mk(n, 2); });
+  DOUBLES.push(mk(25, 2));
+
+  // A way to finish rem with at most `darts` darts, the last one a double (the
+  // bull counts as one), as labels; null when there is none
+  function checkout(rem, darts) {
+    if (rem < 2 || rem > 170) return null;
+    for (var k = 1; k <= darts; k++) {
+      for (var d = 0; d < DOUBLES.length; d++) {
+        var need = rem - DOUBLES[d].score;
+        if (k === 1) { if (need === 0) return [DOUBLES[d].label]; continue; }
+        if (need <= 0) continue;
+        for (var a = 0; a < THROWS.length; a++) {
+          if (k === 2) { if (THROWS[a].score === need) return [THROWS[a].label, DOUBLES[d].label]; continue; }
+          var rest = need - THROWS[a].score;
+          if (rest <= 0) continue;
+          for (var b = 0; b < THROWS.length; b++) {
+            if (THROWS[b].score === rest) return [THROWS[a].label, THROWS[b].label, DOUBLES[d].label];
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  // players: 1 (the daily, alone) to 2; start: 301 or 501
+  function newGame(players, start) {
+    var rem = [], thrown = [];
+    for (var i = 0; i < players; i++) { rem.push(start); thrown.push(0); }
+    return { start: start, rem: rem, thrown: thrown, turn: 0, darts: [], turnStart: start, winner: -1, turns: 0, last: null };
+  }
+
+  function copy(S) {
+    return {
+      start: S.start, rem: S.rem.slice(), thrown: S.thrown.slice(), turn: S.turn, darts: S.darts.slice(),
+      turnStart: S.turnStart, winner: S.winner, turns: S.turns, last: S.last
+    };
+  }
+
+  // One dart. A turn is three darts; it ends early on a bust (below zero, on
+  // one, or on zero without a double: the score goes back to the turn's start)
+  // or on the win.
+  function throwDart(S, h) {
+    if (S.winner >= 0) return null;
+    var N = copy(S), me = N.turn, left = N.rem[me] - h.score, bust = false;
+    N.thrown[me]++;
+    N.darts.push(h.label);
+    if (left < 0 || left === 1 || (left === 0 && h.m !== 2)) bust = true;
+    else N.rem[me] = left;
+    if (!bust && left === 0) N.winner = me;
+    var over = bust || N.winner >= 0 || N.darts.length === 3;
+    if (over) {
+      N.last = { seat: me, darts: N.darts, bust: bust, total: bust ? 0 : N.turnStart - N.rem[me] };
+      if (bust) N.rem[me] = N.turnStart;
+      if (N.winner < 0) {
+        N.turn = (me + 1) % N.rem.length;
+        N.darts = [];
+        N.turnStart = N.rem[N.turn];
+        N.turns++;
+      }
+    }
+    return { state: N, bust: bust, won: N.winner >= 0, over: over };
+  }
+
+  // Where a bot aims: a finish when it has one, treble 20 while far away, and
+  // otherwise a throw that leaves a double it likes.
+  var LEAVES = [32, 40, 16, 36, 24, 20, 8, 12, 28, 4];
+  function think(S) {
+    var rem = S.rem[S.turn], co = checkout(rem, 3 - S.darts.length);
+    if (co) return co[0];
+    if (rem - 60 >= 42) return 'T20';
+    var best = 'T20', bestV = -1;
+    for (var i = 0; i < THROWS.length; i++) {
+      var th = THROWS[i], leave = rem - th.score;
+      if (leave < 2 || th.m === 2) continue;
+      var k = LEAVES.indexOf(leave), v = k >= 0 ? 20 - k : (checkout(leave, 1) ? 5 : (checkout(leave, 2) ? 2 : 0));
+      // a single is the safer throw, so it wins a tie
+      v += th.m === 1 ? 0.5 : 0;
+      if (v > bestV) { bestV = v; best = th.label; }
+    }
+    return best;
+  }
+
+  // Scatter of a thrown dart, as a standard deviation in board radii: a 501
+  // takes a median of about 53, 33 and 22 darts
+  var SPREAD = { easy: 0.2, medium: 0.11, hard: 0.07 };
+
+  function gauss(rnd) {
+    var u = Math.max(1e-9, rnd()), v = rnd();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  }
+  // A dart thrown at (x, y) with the given spread
+  function land(x, y, sigma, rnd) {
+    var px = x + gauss(rnd) * sigma, py = y + gauss(rnd) * sigma;
+    return { x: px, y: py, hit: hit(px, py) };
+  }
+
+  // How a dart is drawn, in board radii. The first drawing was 0.19 long with a
+  // 0.026 barrel, and on a phone the owner could barely see it (#358).
+  var DART = { barrel: 0.2, shaft: 0.1, width: 0.06, fin: 0.17 };
+  // Where a thrown dart is at time t (0..1) on its way from the hand (x0, y0) to
+  // the board (x1, y1): a straight run with a lift of h at the middle, so it rises
+  // and drops in, like a real throw rather than the first straight line (#358).
+  // Returns the point and the direction of travel (radians, 0 = straight up).
+  function arc(t, x0, y0, x1, y1, h) {
+    var x = x0 + (x1 - x0) * t, y = y0 + (y1 - y0) * t - 4 * h * t * (1 - t);
+    var dx = x1 - x0, dy = (y1 - y0) - 4 * h * (1 - 2 * t);
+    return { x: x, y: y, dir: Math.atan2(dx, -dy) };
+  }
+
+  // The aiming bars (#372): where a bar is after u sweeps, running from -1 to 1
+  // and straight back at an even speed, so stopping it is timing, not luck
+  function sweep(u) {
+    var f = u - Math.floor(u / 2) * 2;
+    return f < 1 ? -1 + 2 * f : 3 - 2 * f;
+  }
+
+  var api = {
+    ORDER: ORDER, R: R, SPREAD: SPREAD, hit: hit, aimPoint: aimPoint, checkout: checkout,
+    newGame: newGame, copy: copy, throwDart: throwDart, think: think, land: land, mk: mk,
+    DART: DART, arc: arc, sweep: sweep
+  };
+  if (typeof self !== 'undefined') self.DartsEngine = api;
+  return api;
+}
+if (typeof module !== 'undefined' && module.exports) module.exports = DartsEngineFactory;
+/* ==== ENGINE END ==== */
+</script>
+
+<script>
+(function () {
+  'use strict';
+  var C = window.Chogan, el = C.el;
+  var E = DartsEngineFactory();
+
+  C.boot({});
+  var ctx = C.game({
+    id: 'darts',
+    name: { fa: 'دارت', en: 'Darts', zh: '飞镖', de: 'Darts', es: 'Dardos', pl: 'Rzutki', fr: 'Fléchettes', ar: 'رمي السهام', hi: 'डार्ट्स' },
+    accent: '#B8322A',
+    mood: 'menu',
+    strings: {
+      fa: {
+        vsBot: 'با ربات', people: 'دو نفره', you: 'تو', playerN: 'بازیکن {n}', bot: 'ربات',
+        newMatch: 'دست تازه', resetWarn: 'دست فعلی تمام می‌شود. ادامه؟', boardLabel: 'صفحه‌ی دارت',
+        aim: 'نشانه بگیر و رها کن', aimTouch: 'انگشتت را بکش؛ نشانه کمی بالاتر از انگشت است', botThrows: '{n} پرتاب می‌کند',
+        bust: 'سوخت! امتیاز برمی‌گردد', turnTotal: 'این نوبت: {n}', finish: 'پایان', noFinish: 'هنوز پایانی نیست',
+        miss: 'بیرون', bull: 'خال', outerBull: '۲۵', turnOf: 'نوبت {n}', yourTurn: 'نوبت توست', playerWon: '{n} برد',
+        dailyDarts: 'دارت روزانه', dailySolo: '۳۰۱ تنها، با کمترین دارت', dartsLabel: 'دارت‌های تو', bestTurn: 'بهترین نوبت',
+        outOf: 'دارت‌ها تمام شد', checkoutLabel: 'امتیاز پایانی',
+        rules: 'هر کس از ۵۰۱ (یا ۳۰۱) شروع می‌کند و هر نوبت سه دارت می‌اندازد؛ امتیاز هر دارت از عددش کم می‌شود. حلقه‌ی بیرونی دو برابر است و حلقه‌ی وسطی سه برابر؛ خال وسط ۵۰ و حلقه‌ی دورش ۲۵. باید دقیقاً به صفر برسی و دارت آخر روی دوبرابر یا خال وسط بنشیند. اگر از صفر رد شوی، به یک برسی یا صفر را با دارت غیردوبرابر بزنی، نوبتت می‌سوزد و امتیاز به اول نوبت برمی‌گردد. اولین کسی که به صفر برسد می‌برد.',
+        keyboard: 'صفحه‌کلید', aimKey: 'جابه‌جا کردن نشانه', throwKey: 'پرتاب',
+        aimMode: 'نشانه‌گیری', aimDrag: 'کشیدن', aimBars: 'دو خط', barX: 'بزن تا خط عمودی بایستد', barY: 'دوباره بزن تا خط افقی بایستد', stopKey: 'ایستاندن خط',
+        aimHelp: 'دو روش نشانه‌گیری هست و با دکمه‌ی بالای صفحه عوض می‌شود. کشیدن: انگشتت را بکش و رها کن. دو خط: یک بار بزن تا خط عمودی بایستد و بار دوم تا خط افقی؛ دارت به جایی می‌رود که دو خط به هم می‌رسند.',
+        tutTitle1: 'نشانه بگیر', tutText1: 'انگشتت را روی صفحه بکش و رها کن تا دارت پرتاب شود. دست کمی می‌لرزد؛ لحظه‌ی رها کردن مهم است.',
+        tutTitle2: 'دو برابر و سه برابر', tutText2: 'حلقه‌ی بیرونی امتیاز را دو برابر می‌کند و حلقه‌ی وسطی سه برابر. سه‌برابر ۲۰ بیشترین امتیاز است.',
+        tutTitle3: 'روی دوبرابر تمام کن', tutText3: 'باید دقیقاً به صفر برسی و دارت آخر دوبرابر یا خال وسط باشد. پیشنهاد پایان زیر صفحه نشان داده می‌شود.'
+      },
+      en: {
+        vsBot: 'Versus bot', people: 'Two players', you: 'You', playerN: 'Player {n}', bot: 'Bot',
+        newMatch: 'New game', resetWarn: 'This ends the current game. Continue?', boardLabel: 'Dartboard',
+        aim: 'Aim and let go', aimTouch: 'Drag your finger; the sight sits a little above it', botThrows: '{n} throwing',
+        bust: 'Bust! The score goes back', turnTotal: 'This turn: {n}', finish: 'Finish', noFinish: 'No finish yet',
+        miss: 'Miss', bull: 'Bull', outerBull: '25', turnOf: "{n}'s turn", yourTurn: 'Your turn', playerWon: '{n} wins',
+        dailyDarts: 'Daily darts', dailySolo: '301 alone, in as few darts as you can', dartsLabel: 'Your darts', bestTurn: 'Best turn',
+        outOf: 'Out of darts', checkoutLabel: 'Checkout',
+        rules: 'Everyone starts at 501 (or 301) and throws three darts a turn; each dart\'s score comes off. The outer ring doubles, the middle ring trebles; the bullseye is 50 and the ring round it 25. You must reach exactly zero, with the last dart on a double or the bullseye. Going below zero, reaching one, or hitting zero without a double is a bust: the turn ends and the score goes back to where it started. The first to reach zero wins.',
+        keyboard: 'Keyboard', aimKey: 'Move the sight', throwKey: 'Throw',
+        aimMode: 'Aim', aimDrag: 'Drag', aimBars: 'Two lines', barX: 'Tap to stop the upright line', barY: 'Tap again to stop the level line', stopKey: 'Stop the line',
+        aimHelp: 'There are two ways to aim; switch with the button above the board. Drag: drag your finger and let go. Two lines: tap once to stop the upright line and again to stop the level one; the dart goes where they cross.',
+        tutTitle1: 'Take aim', tutText1: 'Drag your finger over the board and let go to throw. Your hand wobbles a little; when you let go matters.',
+        tutTitle2: 'Doubles and trebles', tutText2: 'The outer ring doubles a number, the middle ring trebles it. Treble 20 is the biggest score.',
+        tutTitle3: 'Finish on a double', tutText3: 'Reach exactly zero, with the last dart on a double or the bullseye. A suggested finish shows under the board.'
+      },
+      pl: {
+        vsBot: 'Przeciwko botowi', people: 'Dwóch graczy', you: 'Ty', playerN: 'Gracz {n}', bot: 'Bot',
+        newMatch: 'Nowa gra', resetWarn: 'To zakończy bieżącą grę. Kontynuować?', boardLabel: 'Tarcza do darta',
+        aim: 'Wyceluj i puść', aimTouch: 'Przeciągnij palcem – celownik znajduje się nieco powyżej niego', botThrows: '{n} rzuca',
+        bust: 'Fura! Wynik wraca do poprzedniego stanu', turnTotal: 'W tej turze: {n}', finish: 'Koniec', noFinish: 'Brak możliwości zakończenia',
+        miss: 'Pudło', bull: 'Środek (Bull)', outerBull: '25', turnOf: 'Ruch gracza {n}', yourTurn: 'Twoja kolej', playerWon: '{n} wygrywa',
+        dailyDarts: 'Codzienny rzut', dailySolo: '301 samotnie, w jak najmniejszej liczbie rzutów', dartsLabel: 'Twoje rzutki', bestTurn: 'Najlepsza tura',
+        outOf: 'Koniec rzutek', checkoutLabel: 'Zakończenie',
+        rules: 'Każdy gracz zaczyna z liczbą 501 (lub 301) punktów i wykonuje trzy rzuty w turze; punkty z każdej rzutki są odejmowane od wyniku. Zewnętrzny pierścień podwaja punkty, a środkowy potraja. Środek tarczy jest wart 50 punktów, a pierścień wokół niego 25. Musisz zejść do dokładnie zera punktów, kończąc ostatni rzut podwojeniem lub środkiem tarczy. Zejście poniżej zera, uzyskanie wyniku równego 1 lub osiągnięcie zera bez podwojenia to tzw. „fura” – tura natychmiast się kończy, a wynik wraca do stanu sprzed jej rozpoczęcia. Wygrywa ten, kto pierwszy osiągnie dokładnie zero punktów.',
+        keyboard: 'Klawiatura', aimKey: 'Ruch celownikiem', throwKey: 'Rzut',
+        aimMode: 'Celowanie', aimDrag: 'Przeciąganie', aimBars: 'Dwie linie', barX: 'Dotknij, aby zatrzymać pionową linię', barY: 'Dotknij ponownie, aby zatrzymać poziomą linię', stopKey: 'Zatrzymaj linię',
+        aimHelp: 'Istnieją dwa sposoby celowania – możesz je przełączać przyciskiem nad tarczą. Przeciąganie: przeciągnij palcem i puść, aby rzucić. Dwie linie: dotknij raz, aby zatrzymać pionową linię, i drugi raz, aby zatrzymać poziomą; rzutka poleci w miejsce ich przecięcia.',
+        tutTitle1: 'Wyceluj', tutText1: 'Przeciągnij palcem po tarczy i puść, aby wykonać rzut. Twoja ręka lekko drży, więc moment puszczenia ma kluczowe znaczenie.',
+        tutTitle2: 'Podwojenia i potrojenia', tutText2: 'Zewnętrzny pierścień podwaja wartość pola, a środkowy ją potraja. Potrójna dwudziestka (treble 20) daje najwyższy możliwy wynik.',
+        tutTitle3: 'Kończ podwojeniem', tutText3: 'Musisz osiągnąć dokładnie zero punktów, kończąc ostatni rzut podwojeniem lub środkiem tarczy. Sugerowana ścieżka zakończenia wyświetla się pod tarczą.'
+      },
+      fr: {
+        vsBot: 'Contre le robot', people: 'Deux joueurs', you: 'Toi', playerN: 'Joueur {n}', bot: 'Robot',
+        newMatch: 'Nouvelle partie', resetWarn: 'Cela met fin à la partie en cours. Continuer ?', boardLabel: 'Cible de fléchettes',
+        aim: 'Vise et lâche', aimTouch: 'Fais glisser ton doigt ; le viseur est un peu au-dessus', botThrows: '{n} lance',
+        bust: 'Dépassé ! Le score revient', turnTotal: 'Ce tour : {n}', finish: 'Finish', noFinish: 'Pas encore de finish',
+        miss: 'Raté', bull: 'Bull', outerBull: '25', turnOf: 'Au tour de {n}', yourTurn: 'À toi', playerWon: '{n} gagne',
+        dailyDarts: 'Fléchettes du jour', dailySolo: '301 seul, en le moins de fléchettes possible', dartsLabel: 'Tes fléchettes', bestTurn: 'Meilleur tour',
+        outOf: 'Plus de fléchettes', checkoutLabel: 'Finish',
+        rules: 'Chacun part de 501 (ou 301) et lance trois fléchettes par tour ; le score de chaque fléchette est retiré. L’anneau extérieur double, l’anneau du milieu triple ; le centre vaut 50 et l’anneau autour 25. Tu dois arriver pile à zéro, avec la dernière fléchette sur un double ou au centre. Passer sous zéro, arriver à un, ou atteindre zéro sans double, c’est dépassé : le tour s’arrête et le score revient à son point de départ. Le premier à zéro gagne.',
+        keyboard: 'Clavier', aimKey: 'Déplacer le viseur', throwKey: 'Lancer',
+        aimMode: 'Visée', aimDrag: 'Glisser', aimBars: 'Deux lignes', barX: 'Touche pour arrêter la ligne verticale', barY: 'Touche encore pour arrêter la ligne horizontale', stopKey: 'Arrêter la ligne',
+        aimHelp: 'Il y a deux façons de viser ; change avec le bouton au-dessus de la cible. Glisser : fais glisser ton doigt et lâche. Deux lignes : touche une fois pour arrêter la ligne verticale et encore pour l’horizontale ; la fléchette va où elles se croisent.',
+        tutTitle1: 'Vise', tutText1: 'Fais glisser ton doigt sur la cible et lâche pour lancer. Ta main tremble un peu ; le moment où tu lâches compte.',
+        tutTitle2: 'Doubles et triples', tutText2: 'L’anneau extérieur double un nombre, l’anneau du milieu le triple. Le triple 20 est le plus gros score.',
+        tutTitle3: 'Finis sur un double', tutText3: 'Arrive pile à zéro, avec la dernière fléchette sur un double ou au centre. Un finish conseillé s’affiche sous la cible.'
+      },
+      ar: {
+        vsBot: 'ضد الروبوت', people: 'لاعبان', you: 'أنت', playerN: 'اللاعب {n}', bot: 'الروبوت',
+        newMatch: 'لعبة جديدة', resetWarn: 'سينهي هذا اللعبة الحالية. هل تتابع؟', boardLabel: 'لوحة السهام',
+        aim: 'صوّب ثم أفلت', aimTouch: 'اسحب إصبعك؛ المنظار فوقه بقليل', botThrows: '{n} يرمي',
+        bust: 'تجاوز! تعود النقاط', turnTotal: 'هذا الدور: {n}', finish: 'الإنهاء', noFinish: 'لا إنهاء بعد',
+        miss: 'خطأ', bull: 'المركز', outerBull: '25', turnOf: 'دور {n}', yourTurn: 'دورك', playerWon: 'فاز {n}',
+        dailyDarts: 'سهام اليوم', dailySolo: '301 وحدك، بأقل عدد ممكن من السهام', dartsLabel: 'سهامك', bestTurn: 'أفضل دور',
+        outOf: 'نفدت السهام', checkoutLabel: 'الإنهاء',
+        rules: 'يبدأ الجميع من 501 (أو 301) ويرمي كل لاعب ثلاثة سهام في الدور؛ وتُطرح نقاط كل سهم. الحلقة الخارجية تضاعف الرقم، والحلقة الوسطى تضاعفه ثلاث مرات؛ المركز 50 والحلقة حوله 25. يجب أن تصل إلى الصفر تمامًا، ويكون السهم الأخير في حلقة المضاعفة أو في المركز. النزول تحت الصفر، أو الوصول إلى 1، أو بلوغ الصفر دون مضاعفة يُعد تجاوزًا: ينتهي الدور وتعود النقاط إلى ما كانت عليه في بدايته. أول من يصل إلى الصفر يفوز.',
+        keyboard: 'لوحة المفاتيح', aimKey: 'حرّك المنظار', throwKey: 'ارمِ',
+        aimMode: 'التصويب', aimDrag: 'سحب', aimBars: 'خطان', barX: 'انقر لإيقاف الخط العمودي', barY: 'انقر مجددًا لإيقاف الخط الأفقي', stopKey: 'أوقف الخط',
+        aimHelp: 'للتصويب طريقتان؛ بدّل بينهما بالزر فوق اللوحة. السحب: اسحب إصبعك ثم أفلته. الخطان: انقر مرة لإيقاف الخط العمودي ومرة أخرى لإيقاف الخط الأفقي؛ يذهب السهم إلى نقطة تقاطعهما.',
+        tutTitle1: 'صوّب', tutText1: 'اسحب إصبعك على اللوحة وأفلته لترمي. يدك تهتز قليلًا؛ لحظة الإفلات مهمة.',
+        tutTitle2: 'المضاعفة والتثليث', tutText2: 'الحلقة الخارجية تضاعف الرقم، والحلقة الوسطى تضاعفه ثلاث مرات. ثلاثة أضعاف 20 هي أعلى نتيجة.',
+        tutTitle3: 'أنهِ بالمضاعفة', tutText3: 'صل إلى الصفر تمامًا، ويكون السهم الأخير في حلقة المضاعفة أو في المركز. يظهر إنهاء مقترح تحت اللوحة.'
+      },
+      hi: {
+        vsBot: 'बॉट से', people: 'दो खिलाड़ी', you: 'आप', playerN: 'खिलाड़ी {n}', bot: 'बॉट',
+        newMatch: 'नया खेल', resetWarn: 'इससे मौजूदा खेल ख़त्म हो जाएगा। जारी रखें?', boardLabel: 'डार्टबोर्ड',
+        aim: 'निशाना लगाएँ और छोड़ें', aimTouch: 'उँगली खींचें; निशाना उससे थोड़ा ऊपर रहता है', botThrows: '{n} का थ्रो',
+        bust: 'बस्ट! स्कोर वापस गया', turnTotal: 'इस बारी: {n}', finish: 'फ़िनिश', noFinish: 'अभी कोई फ़िनिश नहीं',
+        miss: 'चूक', bull: 'बुल', outerBull: '25', turnOf: '{n} की बारी', yourTurn: 'आपकी बारी', playerWon: '{n} की जीत',
+        dailyDarts: 'रोज़ के डार्ट्स', dailySolo: 'अकेले 301, जितने कम डार्ट में हो सके', dartsLabel: 'आपके डार्ट', bestTurn: 'सबसे अच्छी बारी',
+        outOf: 'डार्ट ख़त्म', checkoutLabel: 'चेकआउट',
+        rules: 'सब 501 (या 301) से शुरू करते हैं और हर बारी में तीन डार्ट फेंकते हैं; हर डार्ट का स्कोर घटता है। बाहरी छल्ला दुगुना करता है, बीच का छल्ला तिगुना; बीच का बुल 50 का है और उसके चारों ओर का छल्ला 25 का। आपको ठीक शून्य तक पहुँचना है, आख़िरी डार्ट डबल या बुल पर। शून्य से नीचे जाना, एक पर पहुँचना, या बिना डबल के शून्य पर पहुँचना बस्ट है: बारी ख़त्म होती है और स्कोर वहीं लौट जाता है जहाँ से बारी शुरू हुई थी। जो पहले शून्य पर पहुँचे, वह जीतता है।',
+        keyboard: 'कीबोर्ड', aimKey: 'निशाना हिलाएँ', throwKey: 'फेंकें',
+        aimMode: 'निशाना', aimDrag: 'खींचें', aimBars: 'दो रेखाएँ', barX: 'खड़ी रेखा रोकने के लिए छुएँ', barY: 'पड़ी रेखा रोकने के लिए फिर छुएँ', stopKey: 'रेखा रोकें',
+        aimHelp: 'निशाना लगाने के दो तरीक़े हैं; बोर्ड के ऊपर वाले बटन से बदलें। खींचें: उँगली खींचें और छोड़ें। दो रेखाएँ: खड़ी रेखा रोकने के लिए एक बार छुएँ और पड़ी रेखा के लिए फिर से; डार्ट वहाँ जाता है जहाँ दोनों मिलती हैं।',
+        tutTitle1: 'निशाना लगाएँ', tutText1: 'बोर्ड पर उँगली खींचें और फेंकने के लिए छोड़ें। आपका हाथ थोड़ा काँपता है; छोड़ने का पल मायने रखता है।',
+        tutTitle2: 'डबल और ट्रेबल', tutText2: 'बाहरी छल्ला अंक को दुगुना करता है, बीच का छल्ला तिगुना। ट्रेबल 20 सबसे बड़ा स्कोर है।',
+        tutTitle3: 'डबल पर ख़त्म करें', tutText3: 'ठीक शून्य तक पहुँचें, आख़िरी डार्ट डबल या बुल पर। सुझाया गया फ़िनिश बोर्ड के नीचे दिखता है।'
+      },
+      zh: {
+        vsBot: '对战电脑', people: '双人', you: '你', playerN: '玩家{n}', bot: '电脑',
+        newMatch: '新一局', resetWarn: '将结束当前对局，是否继续？', boardLabel: '飞镖盘',
+        aim: '瞄准后松手', aimTouch: '拖动手指；准星在手指上方一点', botThrows: '{n}正在投掷',
+        bust: '爆镖！分数退回', turnTotal: '本轮：{n}', finish: '收镖', noFinish: '暂无收镖路线',
+        miss: '脱靶', bull: '红心', outerBull: '25', turnOf: '轮到{n}', yourTurn: '轮到你', playerWon: '{n}获胜',
+        dailyDarts: '每日飞镖', dailySolo: '单人301，用尽量少的飞镖', dartsLabel: '你的飞镖数', bestTurn: '最佳一轮',
+        outOf: '飞镖用完了', checkoutLabel: '收镖分数',
+        rules: '每人从501（或301）开始，每轮投三支飞镖，每支的分数从中扣除。外圈双倍，中圈三倍；红心50分，红心外圈25分。必须正好减到零，且最后一镖落在双倍区或红心。减到零以下、剩下1分、或不用双倍减到零都算爆镖：本轮结束，分数退回本轮开始时。先减到零者获胜。',
+        keyboard: '键盘', aimKey: '移动准星', throwKey: '投掷',
+        aimMode: '瞄准', aimDrag: '拖动', aimBars: '两条线', barX: '点击停住竖线', barY: '再点击停住横线', stopKey: '停住线',
+        aimHelp: '有两种瞄准方式，可用镖盘上方的按钮切换。拖动：拖动手指后松手。两条线：点一下停住竖线，再点一下停住横线；飞镖落在两线交点。',
+        tutTitle1: '瞄准', tutText1: '在镖盘上拖动手指，松手即投掷。手会轻微晃动，松手的时机很重要。',
+        tutTitle2: '双倍和三倍', tutText2: '外圈让分数翻倍，中圈让分数翻三倍。三倍20是最高分。',
+        tutTitle3: '用双倍收镖', tutText3: '正好减到零，且最后一镖落在双倍区或红心。镖盘下方会提示收镖路线。'
+      },
+      de: {
+        vsBot: 'Gegen Bot', people: 'Zu zweit', you: 'Du', playerN: 'Spieler {n}', bot: 'Bot',
+        newMatch: 'Neue Partie', resetWarn: 'Die aktuelle Partie endet. Weiter?', boardLabel: 'Dartscheibe',
+        aim: 'Zielen und loslassen', aimTouch: 'Finger ziehen; das Visier sitzt etwas darüber', botThrows: 'Wurf: {n}',
+        bust: 'Überworfen! Der Stand geht zurück', turnTotal: 'Diese Aufnahme: {n}', finish: 'Finish', noFinish: 'Noch kein Finish',
+        miss: 'Daneben', bull: 'Bull', outerBull: '25', turnOf: 'Am Zug: {n}', yourTurn: 'Du bist dran', playerWon: 'Sieg: {n}',
+        dailyDarts: 'Tägliches Darts', dailySolo: '301 allein, mit so wenig Darts wie möglich', dartsLabel: 'Deine Darts', bestTurn: 'Beste Aufnahme',
+        outOf: 'Keine Darts mehr', checkoutLabel: 'Checkout',
+        rules: 'Alle starten bei 501 (oder 301) und werfen drei Darts pro Aufnahme; jeder Wurf wird abgezogen. Der äußere Ring zählt doppelt, der mittlere dreifach; das Bullseye zählt 50, der Ring darum 25. Du musst genau auf null kommen, mit dem letzten Dart auf einem Doppel oder dem Bullseye. Unter null, auf eins oder auf null ohne Doppel ist überworfen: Die Aufnahme endet und der Stand geht zurück. Wer zuerst null erreicht, gewinnt.',
+        keyboard: 'Tastatur', aimKey: 'Visier bewegen', throwKey: 'Werfen',
+        aimMode: 'Zielen', aimDrag: 'Ziehen', aimBars: 'Zwei Linien', barX: 'Tippen, um die senkrechte Linie anzuhalten', barY: 'Noch einmal tippen für die waagerechte Linie', stopKey: 'Linie anhalten',
+        aimHelp: 'Es gibt zwei Arten zu zielen; der Knopf über der Scheibe wechselt. Ziehen: Finger ziehen und loslassen. Zwei Linien: einmal tippen hält die senkrechte Linie an, ein zweites Mal die waagerechte; der Dart fliegt dorthin, wo sie sich kreuzen.',
+        tutTitle1: 'Zielen', tutText1: 'Zieh den Finger über die Scheibe und lass los, um zu werfen. Die Hand zittert ein wenig; der Moment des Loslassens zählt.',
+        tutTitle2: 'Doppel und Triple', tutText2: 'Der äußere Ring verdoppelt eine Zahl, der mittlere verdreifacht sie. Triple 20 bringt am meisten.',
+        tutTitle3: 'Mit Doppel beenden', tutText3: 'Komm genau auf null, mit dem letzten Dart auf einem Doppel oder dem Bullseye. Unter der Scheibe steht ein Finish-Vorschlag.'
+      },
+      es: {
+        vsBot: 'Contra el bot', people: 'Dos jugadores', you: 'Tú', playerN: 'Jugador {n}', bot: 'Bot',
+        newMatch: 'Nueva partida', resetWarn: 'Esto termina la partida actual. ¿Seguir?', boardLabel: 'Diana',
+        aim: 'Apunta y suelta', aimTouch: 'Arrastra el dedo; la mira queda un poco por encima', botThrows: 'Lanza: {n}',
+        bust: '¡Te pasaste! La puntuación vuelve', turnTotal: 'Este turno: {n}', finish: 'Cierre', noFinish: 'Aún no hay cierre',
+        miss: 'Fuera', bull: 'Diana', outerBull: '25', turnOf: 'Turno: {n}', yourTurn: 'Tu turno', playerWon: 'Gana: {n}',
+        dailyDarts: 'Dardos diarios', dailySolo: '301 en solitario, con los menos dardos posibles', dartsLabel: 'Tus dardos', bestTurn: 'Mejor turno',
+        outOf: 'Sin dardos', checkoutLabel: 'Cierre',
+        rules: 'Todos empiezan en 501 (o 301) y lanzan tres dardos por turno; cada dardo se resta. El anillo exterior es doble y el del medio triple; el centro vale 50 y el anillo que lo rodea 25. Hay que llegar justo a cero, con el último dardo en un doble o en el centro. Pasar de cero, quedarse en uno o llegar a cero sin doble es pasarse: el turno termina y la puntuación vuelve a la del inicio. Gana quien llegue antes a cero.',
+        keyboard: 'Teclado', aimKey: 'Mover la mira', throwKey: 'Lanzar',
+        aimMode: 'Apuntar', aimDrag: 'Arrastrar', aimBars: 'Dos líneas', barX: 'Toca para parar la línea vertical', barY: 'Toca otra vez para parar la horizontal', stopKey: 'Parar la línea',
+        aimHelp: 'Hay dos formas de apuntar; el botón sobre la diana cambia entre ellas. Arrastrar: arrastra el dedo y suelta. Dos líneas: toca una vez para parar la línea vertical y otra para la horizontal; el dardo va adonde se cruzan.',
+        tutTitle1: 'Apunta', tutText1: 'Arrastra el dedo por la diana y suelta para lanzar. La mano tiembla un poco; el momento de soltar importa.',
+        tutTitle2: 'Dobles y triples', tutText2: 'El anillo exterior dobla el número y el del medio lo triplica. El triple 20 es la mayor puntuación.',
+        tutTitle3: 'Cierra con un doble', tutText3: 'Llega justo a cero, con el último dardo en un doble o en el centro. Bajo la diana aparece un cierre sugerido.'
+      }
+    }
+  });
+
+  var params = new URLSearchParams(location.search);
+  var dailyDate = params.get('daily');
+  var LEVELS = ['easy', 'medium', 'hard'];
+  // The daily is 301 alone with at most this many darts, so it always ends
+  var DAILY_DARTS = 60;
+  // The hand's wobble and the scatter on release, in board radii. The treble
+  // and double rings are 0.047 wide. Modelled with perfect aim and a release at
+  // a random moment, a smaller wobble finished 501 in 14 darts, better than any
+  // bot; at these values a well-timed player lands near the hard bot.
+  var WOBBLE = 0.09, SCATTER = 0.025;
+  // The two-line control (#372): a line crosses this far each side of the
+  // centre, in board radii (1 is the double ring), in BAR_MS one way. A tap
+  // late by 45 ms, a steady hand, puts the line about 0.08 off: near the
+  // drag control's wobble, so neither control is the easy one.
+  var BAR_REACH = 1.15, BAR_MS = 1300;
+
+  var prefs = ctx.store.get('prefs', { mode: 'bot', level: 'medium', start: 501, aim: 'drag' });
+  if (prefs.aim !== 'bars') prefs.aim = 'drag';
+  if (prefs.mode !== 'bot' && prefs.mode !== 'people') prefs.mode = 'bot';
+  if (LEVELS.indexOf(prefs.level) < 0) prefs.level = 'medium';
+  if (prefs.start !== 301 && prefs.start !== 501) prefs.start = 501;
+
+  // G: the game. phase: 'aim' (a person throws), 'busy' (a dart flies or a bot
+  // throws), 'done'.
+  var G = null, timer = null, aiming = null, flight = null, raf = 0, kbAim = null, marks = [];
+  // bars: the two-line aim while it runs, { stage: 0 or 1, x: the stopped upright line, t0, ph }
+  var bars = null;
+
+  var cv = document.createElement('canvas');
+  cv.className = 'dt-canvas';
+  cv.setAttribute('role', 'img');
+  cv.setAttribute('aria-label', C.t('boardLabel'));
+  var boardBox = el('div', { class: 'dt-boardbox' }, [cv]);
+  var top = el('div', { class: 'dt-top ch-above' });
+  var playersRow = el('div', { class: 'dt-players ch-above' });
+  var statusMain = el('div', { class: 'dt-status__main', role: 'status', 'aria-live': 'polite' });
+  var statusHint = el('div', { class: 'dt-status__hint' });
+  var status = el('div', { class: 'dt-status' }, [statusMain, statusHint]);
+  var wrap = el('div', { class: 'dt-wrap ch-split' }, [el('div', { class: 'ch-fit' }, [boardBox]), el('div', { class: 'ch-side' }, [top, playersRow, status])]);
+
+  ctx.button({ icon: 'help', label: C.t('help'), onClick: showHelp });
+  ctx.button({ icon: 'refresh', label: C.t('newMatch'), onClick: askNew });
+  ctx.main.appendChild(wrap);
+  ctx.mount();
+
+  /* ------------------------------------------------------------ setup */
+
+  function newGame(o) {
+    stop();
+    var daily = o.daily || null;
+    G = {
+      mode: daily ? 'solo' : o.mode, level: daily ? 'medium' : o.level, start: daily ? 301 : o.start, daily: daily,
+      phase: 'aim', msg: '', bestTurn: 0, startedAt: Date.now(), done: false
+    };
+    G.s = E.newGame(G.mode === 'solo' ? 1 : 2, G.start);
+    marks = [];
+    if (!daily) {
+      prefs.mode = o.mode; prefs.level = o.level; prefs.start = o.start;
+      ctx.store.set('prefs', prefs);
+    }
+    render();
+    save();
+    startTurn();
+  }
+  function current() { return { mode: G.mode, level: G.level, start: G.start }; }
+  function fromPrefs() { return { mode: prefs.mode, level: prefs.level, start: prefs.start }; }
+
+  var VISIT_MS = 1700, BOT_DART_MS = 1000;
+  function isBot(seat) { return G.mode === 'bot' && seat === 1; }
+  function stop() { if (timer) { clearTimeout(timer); timer = null; } }
+  function later(fn, ms) { stop(); timer = setTimeout(function () { timer = null; fn(); }, ms); }
+
+  /* ------------------------------------------------------------- turns */
+
+  function startTurn() {
+    if (!G || G.done) return;
+    G.phase = isBot(G.s.turn) ? 'busy' : 'aim';
+    render();
+    if (isBot(G.s.turn)) later(botThrow, 750);
+  }
+
+  function botThrow() {
+    if (!G || G.done || !isBot(G.s.turn)) return;
+    var at = E.aimPoint(E.think(G.s));
+    var d = E.land(at[0], at[1], E.SPREAD[G.level], Math.random);
+    fly(d.x, d.y, d.hit);
+  }
+
+  // The daily's scatter comes from the day's seed and the dart number; the
+  // wobble still follows the clock, so the timing of the release is the skill.
+  function release(x, y) {
+    var rnd = G.daily ? C.daily('darts', G.daily + '|' + G.s.thrown[0]).rng : Math.random;
+    var d = E.land(x, y, SCATTER, rnd);
+    fly(d.x, d.y, d.hit);
+  }
+
+  function fly(x, y, h) {
+    G.phase = 'busy';
+    bars = null;
+    G.msg = '';
+    C.feedback('whoosh');
+    flight = { x: x, y: y, h: h, t0: performance.now(), dur: C.ui.reduceMotion() ? 60 : 420 };
+    kick();
+    later(function () { landed(x, y, h); }, flight.dur);
+  }
+
+  function landed(x, y, h) {
+    flight = null;
+    var who = G.s.turn, r = E.throwDart(G.s, h);
+    if (!r) return;
+    marks.push({ x: x, y: y, seat: who, score: h.score });
+    C.feedback(h.m ? 'thud' : 'tap');
+    G.s = r.state;
+    G.msg = label(h) + (h.score ? ' · ' + C.num(h.score) : '');
+    if (r.over && G.s.last) {
+      // the dart that ended the visit is named before the total, not replaced by it (#404)
+      if (r.bust) { G.msg += ' — ' + C.t('bust'); C.feedback('bad'); }
+      else G.msg += ' — ' + C.t('turnTotal', { n: C.num(G.s.last.total) });
+      if (who === 0 && !r.bust) {
+        G.bestTurn = Math.max(G.bestTurn, G.s.last.total);
+        if (G.s.last.total === 180 && G.mode !== 'people') C.achievements.unlock('dt-180');
+      }
+    }
+    if (r.won) {
+      G.done = true;
+      G.checkout = h.score && G.s.last ? G.s.last.total : 0;
+      C.feedback('good');
+      render();
+      later(finish, 900);
+      return;
+    }
+    if (G.mode === 'solo' && G.s.thrown[0] >= DAILY_DARTS) {
+      G.done = true; G.msg = C.t('outOf');
+      render();
+      later(finish, 900);
+      return;
+    }
+    save();
+    render();
+    // a finished visit and each of the bot's darts stay long enough to read (#404)
+    if (r.over) later(function () { marks = []; startTurn(); }, VISIT_MS);
+    else if (isBot(who)) later(botThrow, BOT_DART_MS);
+    else { G.phase = 'aim'; render(); }
+  }
+
+  /* ------------------------------------------------------------ result */
+
+  function finish() {
+    stop();
+    var w = G.s.winner, mine = G.s.thrown[0];
+    var won = G.mode === 'people' ? null : w === 0;
+    var coins, points;
+    if (G.mode === 'bot') {
+      var base = { easy: 6, medium: 12, hard: 20 }[G.level] + (G.start === 501 ? 4 : 0);
+      coins = won ? base : Math.max(2, Math.round(base * 0.3));
+      points = won ? base * 4 : Math.round(base * 1.2);
+      if (won) {
+        C.achievements.unlock('dr-win');
+        if (G.level === 'hard') C.achievements.unlock('dr-hard');
+        if (G.start === 501) C.stats.best('darts', 'darts501', mine, true);
+      }
+    } else if (G.mode === 'solo') {
+      // fewer darts, more points: a nine-darter would be the most
+      coins = won ? 10 : 3;
+      points = won ? Math.max(20, 120 - mine * 2) : 10;
+    } else { coins = 6; points = 15; }
+    if (G.daily) {
+      var first = C.stats.daily('darts', G.daily, { label: won ? C.num(mine) + ' ' + C.t('dartsLabel') : C.t('outOf'), win: won });
+      if (!first) { coins = Math.round(coins * 0.2); points = Math.round(points * 0.2); }
+    }
+    var lines = [{ label: C.t('dartsLabel'), value: C.num(mine) }, { label: C.t('bestTurn'), value: C.num(G.bestTurn) }];
+    if (w === 0 && G.checkout) lines.push({ label: C.t('checkoutLabel'), value: C.num(G.checkout) });
+    ctx.clearSave();
+    ctx.finish({
+      won: won,
+      title: G.mode === 'people' ? C.t('playerWon', { n: pname(w) }) : (won ? C.t('won') : C.t('lost')),
+      timeMs: Date.now() - G.startedAt, coins: coins, points: points, lines: lines,
+      shareText: 'چوگان · دارت' + (G.daily ? ('\nروزانه ' + G.daily + ' · ' + mine + ' دارت') : ''),
+      paint: cardPaint(),
+      onAgain: G.daily ? null : function () { newGame(current()); }
+    });
+  }
+
+  /* ------------------------------------------------------------- saves */
+
+  // Saved after every dart; the darts already on the board come back with it
+  ctx.autosave(function () {
+    if (!G || G.done || !G.s.thrown.some(function (n) { return n > 0; })) return { inProgress: false };
+    return {
+      g: { mode: G.mode, level: G.level, start: G.start, daily: G.daily, s: G.s, marks: marks, bestTurn: G.bestTurn, elapsed: Date.now() - G.startedAt },
+      prefs: prefs
+    };
+  });
+  function save() { ctx.save(); }
+
+  function validSave(sv) {
+    var g = sv && sv.g, s = g && g.s;
+    return !!(g && ['bot', 'people', 'solo'].indexOf(g.mode) >= 0 && LEVELS.indexOf(g.level) >= 0 && (g.start === 301 || g.start === 501) &&
+      s && Array.isArray(s.rem) && s.rem.length === (g.mode === 'solo' ? 1 : 2) && Array.isArray(s.darts) && s.darts.length < 3 &&
+      s.winner < 0 && s.turn >= 0 && s.turn < s.rem.length);
+  }
+  function restore(g) {
+    G = {
+      mode: g.mode, level: g.level, start: g.start, daily: g.daily || null, s: g.s, phase: 'aim', msg: '',
+      bestTurn: g.bestTurn || 0, startedAt: Date.now() - (g.elapsed || 0), done: false
+    };
+    marks = Array.isArray(g.marks) && G.s.darts.length ? g.marks.slice(-G.s.darts.length) : [];
+    render();
+    startTurn();
+  }
+
+  function askNew() {
+    if (!G || !G.daily) { settings(); return; }
+    var dd = G.daily;
+    if (G.done || !G.s.thrown[0]) { newGame({ daily: dd }); return; }
+    C.ui.confirm({ title: C.t('newMatch'), body: C.t('resetWarn'), onOk: function () { newGame({ daily: dd }); } });
+  }
+
+  function settings() {
+    var o = G && G.mode !== 'solo' ? current() : fromPrefs(), body = el('div', { class: 'ch-col', style: { gap: 'var(--s-3)', 'align-items': 'center' } });
+    function rows() {
+      body.innerHTML = '';
+      body.appendChild(C.ui.segmented([{ value: 'bot', label: C.t('vsBot') }, { value: 'people', label: C.t('people') }],
+        o.mode, function (v) { o.mode = v; rows(); }));
+      if (o.mode === 'bot') body.appendChild(C.ui.segmented(LEVELS.map(function (l) { return { value: l, label: C.t(l) }; }), o.level, function (v) { o.level = v; }));
+      body.appendChild(C.ui.segmented([{ value: 301, label: C.num(301) }, { value: 501, label: C.num(501) }], o.start, function (v) { o.start = v; }));
+      if (G && !G.done && G.s.thrown.some(function (n) { return n > 0; })) body.appendChild(el('p', { class: 'ch-xs ch-dim', text: C.t('resetWarn') }));
+    }
+    rows();
+    C.ui.modal({
+      title: C.t('newMatch'), closeButton: true, body: [body],
+      actions: [{ label: C.t('cancel') }, { label: C.t('start'), kind: 'primary', onClick: function () { newGame(o); } }]
+    });
+  }
+
+  /* --------------------------------------------------------------- draw */
+
+  function label(h) {
+    if (!h.m) return C.t('miss');
+    if (h.label === 'BULL') return C.t('bull');
+    if (h.label === '25') return C.t('outerBull');
+    return h.label[0] + C.num(h.n);
+  }
+  // what a dart written as in the state ('T20', 'BULL', '25', 'MISS') scored
+  function scoreOf(s) {
+    if (s === 'MISS') return 0;
+    if (s === 'BULL') return 50;
+    if (s === '25') return 25;
+    return { S: 1, D: 2, T: 3 }[s[0]] * +s.slice(1);
+  }
+  function labelOf(s) { return s === 'MISS' ? C.t('miss') : label(E.mk(s === 'BULL' || s === '25' ? 25 : +s.slice(1), s === 'BULL' ? 2 : s === '25' ? 1 : { S: 1, D: 2, T: 3 }[s[0]])); }
+
+  function colors() {
+    var cs = getComputedStyle(document.documentElement);
+    var v = function (k, f) { return cs.getPropertyValue(k).trim() || f; };
+    return { c: [v('--dt-c0', '#2F6FDE'), v('--dt-c1', '#E8A317')] };
+  }
+
+  // The board fills the box; its playing area is 0.78 of the half-width, the
+  // rest is the black surround with the numbers.
+  function boardSize() {
+    // the slot the core sized for the board (#359); before, 520-560px wide at most and
+    // the window's height less a guess for the rows below
+    var maxW = boardBox.clientWidth || 360, maxH = boardBox.clientHeight || maxW;
+    var w = Math.floor(Math.min(maxW, maxH));
+    return { w: w, r: w / 2 * 0.78 };
+  }
+
+  var BOARD = { black: '#1C1B1A', cream: '#EFDDB8', red: '#C8302A', green: '#1F8A4C', wire: 'rgba(205,210,215,.55)', ring: '#262422' };
+  function paintBoard(g, W, o) {
+    var cx = W / 2, cy = W / 2, rb = W / 2 * 0.78, R = E.R;
+    g.save();
+    g.translate(cx, cy);
+    g.beginPath(); g.arc(0, 0, W / 2, 0, Math.PI * 2); g.fillStyle = BOARD.ring; g.fill();
+    var ring = function (r0, r1, colA, colB) {
+      for (var i = 0; i < 20; i++) {
+        var a0 = (i * 18 - 9 - 90) * Math.PI / 180, a1 = a0 + Math.PI / 10;
+        g.beginPath(); g.arc(0, 0, r1 * rb, a0, a1); g.arc(0, 0, r0 * rb, a1, a0, true); g.closePath();
+        g.fillStyle = i % 2 ? colB : colA; g.fill();
+      }
+    };
+    ring(R.dIn, R.dOut, BOARD.red, BOARD.green);
+    ring(R.tOut, R.dIn, BOARD.black, BOARD.cream);
+    ring(R.tIn, R.tOut, BOARD.red, BOARD.green);
+    ring(R.outer, R.tIn, BOARD.black, BOARD.cream);
+    g.beginPath(); g.arc(0, 0, R.outer * rb, 0, Math.PI * 2); g.fillStyle = BOARD.green; g.fill();
+    g.beginPath(); g.arc(0, 0, R.bull * rb, 0, Math.PI * 2); g.fillStyle = BOARD.red; g.fill();
+    // the wires
+    g.strokeStyle = BOARD.wire; g.lineWidth = Math.max(0.6, W / 500);
+    [R.bull, R.outer, R.tIn, R.tOut, R.dIn, R.dOut].forEach(function (r) { g.beginPath(); g.arc(0, 0, r * rb, 0, Math.PI * 2); g.stroke(); });
+    for (var i = 0; i < 20; i++) {
+      var a = (i * 18 - 9 - 90) * Math.PI / 180;
+      g.beginPath(); g.moveTo(Math.cos(a) * R.outer * rb, Math.sin(a) * R.outer * rb); g.lineTo(Math.cos(a) * rb, Math.sin(a) * rb); g.stroke();
+    }
+    // numbers
+    g.fillStyle = '#F4F1EA';
+    g.font = '700 ' + Math.round(W * 0.05) + 'px Vazirmatn, system-ui, sans-serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle'; g.direction = 'ltr';
+    for (i = 0; i < 20; i++) {
+      var b = (i * 18 - 90) * Math.PI / 180;
+      g.fillText(C.num(E.ORDER[i]), Math.cos(b) * rb * 1.14, Math.sin(b) * rb * 1.14);
+    }
+    // darts of this turn
+    var col = colors();
+    (o.marks || []).forEach(function (m) { paintDart(g, m.x * rb, m.y * rb, col.c[m.seat] || col.c[0], 1, 0, rb); });
+    // what each dart scored, on a tag beside it, so a bull reads as 50 (#404)
+    if (o.scores) {
+      var placed = [];
+      (o.marks || []).forEach(function (m) { if (m.score != null) paintScore(g, m.x * rb, m.y * rb, m.score, col.c[m.seat] || col.c[0], rb, placed); });
+    }
+    if (o.flight) {
+      var f = o.flight, t = Math.min(1, (performance.now() - f.t0) / f.dur);
+      if (C.ui.reduceMotion()) t = 1;
+      // from the hand below the board, up over the target and down into it, large
+      // and near at first, shrinking with distance
+      var p = E.arc(t, f.x * 0.35, 1.3, f.x, f.y, 0.75);
+      paintDart(g, p.x * rb, p.y * rb, col.c[o.seat] || col.c[0], 1 + 1.8 * Math.pow(1 - t, 1.4), p.dir * (1 - t) * 0.6, rb);
+    }
+    if (o.sight) paintSight(g, o.sight[0] * rb, o.sight[1] * rb, W);
+    if (o.bars) paintBars(g, o.bars, rb, W);
+    g.restore();
+  }
+
+  // darts close together (three in the bull) would stack their tags, so a tag
+  // moves down past the ones already placed
+  function paintScore(g, x, y, score, colour, rb, placed) {
+    var fs = Math.max(11, rb * 0.085), t = C.num(score);
+    g.save();
+    g.font = '800 ' + fs + 'px ' + (getComputedStyle(document.body).fontFamily || 'sans-serif');
+    var w = g.measureText(t).width + fs * 0.8, h = fs * 1.35;
+    // beside the point, away from the barrel that rises above it
+    var px = x + rb * 0.07, py = y + rb * 0.02;
+    if (px + w > rb * 1.25) px = x - rb * 0.07 - w;
+    for (var i = 0; i < placed.length; i++) {
+      var q = placed[i];
+      if (px < q.x + q.w && q.x < px + w && py < q.y + q.h && q.y < py + h) { py = q.y + q.h + 2; i = -1; }
+    }
+    placed.push({ x: px, y: py, w: w, h: h });
+    g.fillStyle = colour;
+    g.strokeStyle = 'rgba(0,0,0,.55)'; g.lineWidth = 1.5;
+    g.beginPath();
+    if (g.roundRect) g.roundRect(px, py, w, h, h / 2); else g.rect(px, py, w, h);
+    g.fill(); g.stroke();
+    g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(t, px + w / 2, py + h / 2 + fs * 0.05);
+    g.restore();
+  }
+
+  // A dart seen from the thrower's side: the point in the board, the barrel with
+  // its grip rings rising from it, the shaft, and four flights end-on as an X in
+  // the player's colour with a dark outline, so it reads on every bed.
+  function paintDart(g, x, y, colour, scale, tilt, rb) {
+    var D = E.DART, u = rb * scale, w = D.width * u, bl = D.barrel * u, sl = D.shaft * u, fin = D.fin * u;
+    g.save();
+    g.translate(x, y);
+    g.rotate(tilt || 0);
+    g.lineJoin = 'round'; g.lineCap = 'round';
+    g.fillStyle = 'rgba(0,0,0,.28)';
+    g.beginPath(); g.ellipse(w * 0.5, w * 0.35, w * 0.7, w * 0.4, 0, 0, Math.PI * 2); g.fill();
+    // shaft and flights first, so the barrel sits in front of them
+    var ty = -bl - sl;
+    g.strokeStyle = '#1C1B1A'; g.lineWidth = w * 0.55;
+    g.beginPath(); g.moveTo(0, -bl); g.lineTo(0, ty); g.stroke();
+    [-1, 1].forEach(function (side) {
+      g.beginPath();
+      g.moveTo(0, ty + fin * 0.15);
+      g.lineTo(side * fin * 0.95, ty - fin * 0.55);
+      g.quadraticCurveTo(side * fin * 1.05, ty - fin * 1.05, side * fin * 0.55, ty - fin * 0.95);
+      g.closePath();
+      g.fillStyle = colour; g.fill();
+      g.strokeStyle = '#1C1B1A'; g.lineWidth = Math.max(1.2, w * 0.22); g.stroke();
+    });
+    g.beginPath();
+    g.moveTo(0, ty + fin * 0.1); g.lineTo(0, ty - fin * 1.0);
+    g.strokeStyle = '#1C1B1A'; g.lineWidth = Math.max(1.5, w * 0.35); g.stroke();
+    // barrel: a dark outline, steel body and grip rings
+    g.fillStyle = '#1C1B1A';
+    g.beginPath(); g.ellipse(0, -bl / 2, w * 0.62, bl / 2 + w * 0.12, 0, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#C9CED4';
+    g.beginPath(); g.ellipse(0, -bl / 2, w * 0.45, bl / 2, 0, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = '#6B7077'; g.lineWidth = Math.max(0.8, w * 0.14);
+    for (var k = 1; k <= 3; k++) {
+      var ry = -bl * (0.25 + k * 0.14);
+      g.beginPath(); g.moveTo(-w * 0.4, ry); g.lineTo(w * 0.4, ry); g.stroke();
+    }
+    g.fillStyle = 'rgba(255,255,255,.75)';
+    g.beginPath(); g.ellipse(-w * 0.18, -bl * 0.55, w * 0.1, bl * 0.28, 0, 0, Math.PI * 2); g.fill();
+    g.restore();
+  }
+
+  function paintSight(g, x, y, W) {
+    var r = W * 0.035;
+    g.lineWidth = Math.max(2, W / 160);
+    g.strokeStyle = 'rgba(0,0,0,.6)';
+    g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.stroke();
+    g.lineWidth = Math.max(1.2, W / 260);
+    g.strokeStyle = '#FFFFFF';
+    g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.stroke();
+    g.beginPath(); g.moveTo(x - r * 1.5, y); g.lineTo(x - r * 0.5, y); g.moveTo(x + r * 0.5, y); g.lineTo(x + r * 1.5, y);
+    g.moveTo(x, y - r * 1.5); g.lineTo(x, y - r * 0.5); g.moveTo(x, y + r * 0.5); g.lineTo(x, y + r * 1.5); g.stroke();
+    g.fillStyle = '#FFFFFF'; g.beginPath(); g.arc(x, y, Math.max(1.5, W / 300), 0, Math.PI * 2); g.fill();
+  }
+
+  // The two aiming lines across the whole board, white over a dark edge so they
+  // read on every bed; once both run, a sight marks where they cross
+  function paintBars(g, b, rb, W) {
+    var e = W / 2, lw = Math.max(2, W / 170);
+    var line = function (x0, y0, x1, y1) {
+      g.lineWidth = lw * 2.4; g.strokeStyle = 'rgba(0,0,0,.55)';
+      g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
+      g.lineWidth = lw; g.strokeStyle = '#FFFFFF';
+      g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
+    };
+    // kept inside the round board: the canvas is square, and the first draft's
+    // lines ran on into its empty corners, over the page
+    g.save();
+    g.beginPath(); g.arc(0, 0, e, 0, Math.PI * 2); g.clip();
+    line(b.x * rb, -e, b.x * rb, e);
+    if (b.y != null) line(-e, b.y * rb, e, b.y * rb);
+    g.restore();
+    if (b.y != null) paintSight(g, b.x * rb, b.y * rb, W);
+  }
+
+  // The hand's wobble at time t (ms): two slow waves on each axis, never still
+  function wobble(t) {
+    var s = t / 1000;
+    return [
+      WOBBLE * (Math.sin(1.9 * s) + 0.6 * Math.sin(3.7 * s + 1.3)) / 1.6,
+      WOBBLE * (Math.cos(1.5 * s + 0.4) + 0.6 * Math.sin(2.9 * s + 2.1)) / 1.6
+    ];
+  }
+  function sightNow() {
+    var base = aiming ? aiming.at : kbAim;
+    if (!base) return null;
+    var w = C.ui.reduceMotion() ? [0, 0] : wobble(performance.now());
+    return [base[0] + w[0], base[1] + w[1]];
+  }
+
+  function barsOn() { return prefs.aim === 'bars' && canAim(); }
+  // The loop keeps running through a dialog in two-line mode: a dialog makes
+  // canAim() false, and a loop stopped there never restarted, so the line
+  // stood still while barNow() ran on with the clock (#374)
+  function barsRun() { return prefs.aim === 'bars' && G && !G.done && G.phase === 'aim' && !isBot(G.s.turn); }
+  function barNow() { return E.sweep(bars.ph + (performance.now() - bars.t0) / BAR_MS) * BAR_REACH; }
+  // Each line starts from a random point of its sweep, so the first tap can't
+  // be learned as a fixed count
+  function barStart(stage, x) { return { stage: stage, x: x, t0: performance.now(), ph: Math.random() * 2 }; }
+  function stopBar() {
+    if (!barsOn()) return;
+    if (!bars) { bars = barStart(0, 0); kick(); return; }
+    var v = barNow();
+    if (bars.stage === 0) { bars = barStart(1, v); C.feedback('tap'); drawStatus(); kick(); return; }
+    release(bars.x, v);
+  }
+
+  function draw() {
+    if (!G) return;
+    if (barsOn() && !bars) bars = barStart(0, 0);
+    var B = boardSize(), dpr = Math.min(2, window.devicePixelRatio || 1);
+    // both sides: a new canvas is 300×150, so a board exactly 300px wide kept a
+    // 150px-high backing and was drawn squashed (#359, seen in Ludo)
+    if (cv.width !== B.w * dpr || cv.height !== B.w * dpr) { cv.width = B.w * dpr; cv.height = B.w * dpr; }
+    cv.style.width = B.w + 'px'; cv.style.height = B.w + 'px';
+    var g = cv.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, B.w, B.w);
+    var aimBars = bars && barsOn() ? (bars.stage === 0 ? { x: barNow() } : { x: bars.x, y: barNow() }) : null;
+    paintBoard(g, B.w, { marks: marks, scores: true, flight: flight, seat: G.s.turn, sight: G.phase === 'aim' && !aimBars ? sightNow() : null, bars: aimBars });
+  }
+  function loop() {
+    raf = 0;
+    draw();
+    if (G && (flight || (G.phase === 'aim' && (aiming || kbAim)) || barsRun()) && !document.hidden) raf = requestAnimationFrame(loop);
+  }
+  function kick() { if (!raf) raf = requestAnimationFrame(loop); }
+
+  function cardPaint() {
+    var m = marks.slice();
+    return function (g, W, H) {
+      var side = Math.min(W, H);
+      g.translate((W - side) / 2, (H - side) / 2);
+      paintBoard(g, side, { marks: m });
+    };
+  }
+
+  function pname(seat) {
+    if (seat === 0) return C.state.profile.name || C.t('you');
+    // the level is already on the badge above; on the card it cut the name short
+    if (isBot(seat)) return C.t('bot');
+    return C.t('playerN', { n: C.num(seat + 1) });
+  }
+
+  function drawPlayers() {
+    playersRow.innerHTML = '';
+    for (var seat = 0; seat < G.s.rem.length; seat++) {
+      // The state hands the turn over as the third dart lands, so the visit that
+      // just ended is shown from G.s.last; before, the third dart and the bot's
+      // whole visit vanished at once (#404).
+      var on = G.s.turn === seat && !G.done, last = G.s.last, past = !on && last && last.seat === seat && !(G.s.darts.length && G.s.turn === seat);
+      var darts = on ? G.s.darts : (past ? last.darts : []);
+      var cells = [];
+      // a cell shows what the dart scored; what it hit is its label, on the board and in the status line
+      for (var k = 0; k < 3; k++) cells.push(darts[k] ? el('b', { class: 'dt-hit', title: labelOf(darts[k]), 'aria-label': labelOf(darts[k]), text: C.num(scoreOf(darts[k])) }) : el('b', { text: '·' }));
+      if (past) cells.push(el('span', { class: 'dt-player__total', text: last.bust ? C.t('bust') : '= ' + C.num(last.total) }));
+      var box = el('div', { class: 'dt-player' + (on ? ' dt-player--on' : ''), style: { '--pc': 'var(--dt-c' + seat + ')' } }, [
+        el('div', { class: 'dt-player__name' }, [el('i', { class: 'dt-player__dot' }), el('span', { text: pname(seat) })]),
+        el('div', { class: 'dt-player__rem', text: C.num(G.s.rem[seat]) }),
+        el('div', { class: 'dt-player__darts' + (past ? ' dt-player__darts--last' : '') }, cells)
+      ]);
+      if (isBot(seat) && on) box.classList.add('dt-thinking');
+      playersRow.appendChild(box);
+    }
+  }
+
+  function drawTop() {
+    top.innerHTML = '';
+    if (G.daily) {
+      top.appendChild(el('span', { class: 'ch-badge ch-badge--accent' },
+        [C.icon('calendar', 14), el('span', { text: C.t('dailyDarts') + ' — ' + C.num(G.daily) })]));
+      top.appendChild(el('span', { class: 'ch-badge', text: C.t('dailySolo') + ' · ' + C.num(G.s.thrown[0]) + '/' + C.num(DAILY_DARTS) }));
+      top.appendChild(aimToggle());
+      return;
+    }
+    var parts = [C.num(G.start), G.mode === 'bot' ? C.t('vsBot') + ' · ' + C.t(G.level) : C.t('people')];
+    top.appendChild(el('button', { class: 'ch-badge ch-tap', type: 'button', onclick: askNew, text: parts.join(' · ') }));
+    top.appendChild(aimToggle());
+  }
+  // Switches the aim control at once, mid-turn too; the choice is kept (#372)
+  function aimToggle() {
+    return el('button', { class: 'ch-badge ch-tap dt-aimmode', type: 'button',
+      onclick: function () {
+        prefs.aim = prefs.aim === 'bars' ? 'drag' : 'bars';
+        ctx.store.set('prefs', prefs);
+        bars = null; aiming = null; kbAim = null;
+        render(); kick();
+      } }, [el('span', { text: C.t('aimMode') + ': ' + C.t(prefs.aim === 'bars' ? 'aimBars' : 'aimDrag') })]);
+  }
+
+  var touchSeen = false;
+  function drawStatus() {
+    var who = G.s.turn === 0 ? C.t('yourTurn') : (isBot(G.s.turn) ? C.t('botThrows', { n: pname(G.s.turn) }) : C.t('turnOf', { n: pname(G.s.turn) }));
+    var how = prefs.aim === 'bars' ? (bars && bars.stage === 1 ? 'barY' : 'barX') : (touchSeen ? 'aimTouch' : 'aim');
+    statusMain.textContent = G.msg ? G.msg : (G.phase === 'aim' ? (G.mode === 'people' ? who + ' · ' : '') + C.t(how) : who);
+    var co = !G.done && !isBot(G.s.turn) ? E.checkout(G.s.rem[G.s.turn], 3 - G.s.darts.length) : null;
+    statusHint.textContent = co ? C.t('finish') + ': ' + co.map(labelOf).join(' · ') : (G.s.rem[G.s.turn] <= 170 && !G.done ? C.t('noFinish') : '');
+  }
+
+  function render() {
+    if (!G) return;
+    drawTop();
+    drawPlayers();
+    drawStatus();
+    draw();
+    // a new turn starts here, and only kick() starts the loop (#374)
+    if (barsRun()) kick();
+  }
+
+  /* -------------------------------------------------------------- input */
+
+  // On a touch screen the sight sits above the finger, so the finger never
+  // hides where the dart will go.
+  function toBoard(e) {
+    var r = cv.getBoundingClientRect(), B = boardSize();
+    var lift = e.pointerType === 'touch' ? Math.min(70, B.w * 0.16) : 0;
+    return [(e.clientX - r.left - B.w / 2) / B.r, (e.clientY - r.top - lift - B.w / 2) / B.r];
+  }
+  function canAim() { return G && !G.done && G.phase === 'aim' && !isBot(G.s.turn) && !document.querySelector('.ch-scrim'); }
+
+  cv.addEventListener('pointerdown', function (e) {
+    if (!canAim()) return;
+    e.preventDefault();
+    if (prefs.aim === 'bars') { G.msg = ''; stopBar(); return; }
+    if (e.pointerType === 'touch' && !touchSeen) { touchSeen = true; drawStatus(); }
+    kbAim = null;
+    aiming = { id: e.pointerId, at: toBoard(e) };
+    try { cv.setPointerCapture(e.pointerId); } catch (er) { /* old browsers */ }
+    kick();
+  });
+  cv.addEventListener('pointermove', function (e) {
+    if (!aiming || e.pointerId !== aiming.id) return;
+    aiming.at = toBoard(e);
+  });
+  function letGo(e) {
+    if (!aiming || e.pointerId !== aiming.id) return;
+    var s = sightNow();
+    aiming = null;
+    if (canAim() && s) release(s[0], s[1]);
+  }
+  cv.addEventListener('pointerup', letGo);
+  cv.addEventListener('pointercancel', function () { aiming = null; draw(); });
+
+  window.addEventListener('keydown', function (e) {
+    if (!canAim()) return;
+    var k = e.key, step = e.shiftKey ? 0.01 : 0.04;
+    if (prefs.aim === 'bars') {
+      if (k === ' ' || k === 'Enter') { e.preventDefault(); G.msg = ''; stopBar(); }
+      return;
+    }
+    var mv = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[k];
+    if (mv) {
+      e.preventDefault();
+      if (!kbAim) kbAim = E.aimPoint('T20');
+      kbAim = [Math.max(-1.2, Math.min(1.2, kbAim[0] + mv[0])), Math.max(-1.2, Math.min(1.2, kbAim[1] + mv[1]))];
+      kick();
+      return;
+    }
+    if (k === ' ' || k === 'Enter') {
+      e.preventDefault();
+      if (!kbAim) { kbAim = E.aimPoint('T20'); kick(); return; }
+      var s = sightNow();
+      if (s) release(s[0], s[1]);
+    }
+  });
+
+  // the board follows its slot, which changes with the window and the side column (#359)
+  if (window.ResizeObserver) new ResizeObserver(function () { if (G) draw(); }).observe(boardBox);
+  else window.addEventListener('resize', function () { if (G) draw(); });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && G) kick(); });
+  // A pause mid-throw lets that dart land when the game comes back
+  C.onPause(function () { stop(); aiming = null; bars = null; });
+  C.onResume(function () {
+    if (!G || G.done) return;
+    if (flight) { var f = flight; landed(f.x, f.y, f.h); return; }
+    startTurn();
+  });
+
+  /* --------------------------------------------------------------- help */
+
+  function kb(k, what) {
+    return el('div', { class: 'ch-item' }, [el('div', { class: 'ch-item__label', text: what }), el('span', { class: 'ch-badge', text: k })]);
+  }
+  function showHelp() {
+    C.ui.modal({
+      title: C.t('help'),
+      body: [
+        el('p', { class: 'ch-dim', text: C.t('rules') }),
+        el('p', { class: 'ch-dim', text: C.t('aimHelp') }),
+        el('h3', { style: { 'margin-top': 'var(--s-4)' }, text: C.t('keyboard') }),
+        el('div', { class: 'ch-list' }, [kb('← → ↑ ↓ / Shift', C.t('aimKey')), kb('Space / Enter', C.t('throwKey') + ' · ' + C.t('stopKey'))])
+      ],
+      actions: [
+        { label: C.t('tutorial'), onClick: function () { ctx.showTutorial(TUT); } },
+        { label: C.t('done'), kind: 'primary' }
+      ]
+    });
+  }
+
+  function art(kind) {
+    var s = '<svg viewBox="0 0 220 120" width="100%">';
+    var board = '<circle cx="110" cy="60" r="54" fill="#262422"/><circle cx="110" cy="60" r="44" fill="#1F8A4C"/><circle cx="110" cy="60" r="40" fill="#EFDDB8"/>' +
+      '<circle cx="110" cy="60" r="27" fill="#C8302A"/><circle cx="110" cy="60" r="23" fill="#1C1B1A"/><circle cx="110" cy="60" r="6" fill="#1F8A4C"/><circle cx="110" cy="60" r="2.6" fill="#C8302A"/>';
+    if (kind === 1) {
+      s += board + '<circle cx="110" cy="35" r="9" fill="none" stroke="#fff" stroke-width="2.5"/><path d="M110 22v7M110 41v7M97 35h7M116 35h7" stroke="#fff" stroke-width="2.5"/>' +
+        '<circle cx="128" cy="96" r="9" fill="var(--c-text-faint)" opacity=".5"/><path d="M128 90L112 40" stroke="var(--c-text-faint)" stroke-width="2" stroke-dasharray="4 4"/>';
+    } else if (kind === 2) {
+      s += board + '<path d="M110 60L94 9A54 54 0 0 1 126 9z" fill="rgba(255,255,255,.18)"/>' +
+        '<text x="180" y="40" font-size="16" font-weight="700" fill="var(--c-text)" direction="ltr">T20 = 60</text><text x="180" y="64" font-size="16" font-weight="700" fill="var(--c-text)" direction="ltr">D20 = 40</text>';
+    } else {
+      s += board + '<text x="30" y="66" font-size="28" font-weight="800" fill="var(--c-text)" direction="ltr">0</text>' +
+        '<path d="M110 60L94 9A54 54 0 0 1 126 9z" fill="none"/><circle cx="110" cy="12" r="5" fill="#2F6FDE" stroke="#fff" stroke-width="2"/>';
+    }
+    return s + '</svg>';
+  }
+  var TUT = [
+    { title: C.t('tutTitle1'), text: C.t('tutText1'), art: art(1) },
+    { title: C.t('tutTitle2'), text: C.t('tutText2'), art: art(2) },
+    { title: C.t('tutTitle3'), text: C.t('tutText3'), art: art(3) }
+  ];
+
+  /* -------------------------------------------------------------- start */
+
+  var saved = ctx.loadSave();
+  if (dailyDate) {
+    // The daily game has its own save slot, so a half-played day continues
+    if (validSave(saved) && saved.g.daily === dailyDate) restore(saved.g);
+    else newGame({ daily: dailyDate });
+    if (C.stats.dailyDone('darts', dailyDate)) {
+      var rec = C.stats.dailyOf(dailyDate).darts;
+      C.ui.toast({ icon: 'check', title: C.t('dailyDone'), sub: rec.label });
+    }
+    ctx.tutorialIfNew(TUT);
+  } else if (validSave(saved) && !saved.g.daily) {
+    if (saved.prefs) prefs = saved.prefs;
+    restore(saved.g);
+  } else {
+    newGame(fromPrefs());
+    ctx.tutorialIfNew(TUT);
+  }
+})();
+</script>
+</body>
+</html>

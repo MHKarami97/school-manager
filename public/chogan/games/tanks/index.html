@@ -1,0 +1,1287 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#FBF6EF">
+<title>تانک‌ها — چوگان</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../lib/chogan.css">
+<script src="../../lib/early.js"></script>
+<style>
+  /* stacked on a tall screen the slot may be as tall as 640 x 900 and the field gets
+     more sky above it, not empty bands around a square field (#714); beside the
+     side column it keeps the field's own 640 x 440 */
+  .tk-wrap > .ch-fit { --fit-ar: calc(640 / 900); }
+  @container game (min-aspect-ratio: 5 / 4) { .tk-wrap > .ch-fit { --fit-ar: calc(640 / 440); } }
+  .ch-nocq .ch-gamemain.ch-wide .tk-wrap > .ch-fit { --fit-ar: calc(640 / 440); }
+  .ch-fit > .tk-box { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
+  /* a battlefield is a physical thing: the left tank stays on the left in Persian too */
+  .tk-canvas { display: block; touch-action: none; border-radius: var(--r-lg); direction: ltr; }
+  .tk-top { display: flex; justify-content: center; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
+  .tk-players { container-type: inline-size; display: flex; justify-content: space-between; gap: var(--s-2); width: 100%; max-width: 640px; direction: ltr; }
+  .tk-player { flex: 1; display: flex; align-items: center; gap: var(--s-2); padding: 6px 10px; border-radius: var(--r-md); background: var(--c-surface-2); font-weight: 700; min-width: 0; }
+  .tk-player:last-child { flex-direction: row-reverse; }
+  .tk-player--on { box-shadow: inset 0 0 0 2px var(--game); }
+  .tk-player__dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .tk-player__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; text-align: start; font-size: var(--fs-sm); }
+  .tk-player:last-child .tk-player__name { text-align: end; }
+  .tk-player__score { font-weight: 800; font-variant-numeric: tabular-nums; }
+  .tk-player__shots { font-size: var(--fs-xs); color: var(--c-text-dim); font-variant-numeric: tabular-nums; }
+  /* in the side column of a turned phone the cards are narrow: the shot count moves under
+     the name, where the name had been squeezed to one letter */
+  @container (max-width: 340px) {
+    .tk-player { flex-wrap: wrap; row-gap: 0; }
+    .tk-player__shots { order: 9; flex-basis: 100%; text-align: start; }
+    .tk-player:last-child .tk-player__shots { text-align: end; }
+  }
+  /* two lines kept: "your turn — drag…" wraps on a phone, "the bot thinks" does not, and
+     the board under it grew and shrank every turn */
+  .tk-status { line-height: 1.35; min-height: 2.7em; font-weight: 700; color: var(--c-text-dim); text-align: center; font-size: var(--fs-sm); }
+  .tk-arms { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+  .tk-steps { display: flex; gap: 6px; }
+  .tk-arm { font: inherit; font-size: var(--fs-xs); font-weight: 700; min-height: 36px; padding: 0 10px; border-radius: 999px; border: 2px solid transparent;
+    background: var(--c-surface-2); color: var(--c-text); display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+  .tk-arm--on { border-color: var(--game); }
+  .tk-arm[disabled] { opacity: .4; cursor: default; }
+  .tk-arm b { font-variant-numeric: tabular-nums; color: var(--c-text-dim); }
+  .tk-pad { display: flex; justify-content: center; align-items: center; gap: var(--s-3); flex-wrap: wrap; direction: ltr; }
+  .tk-dial { display: flex; align-items: center; gap: 4px; }
+  .tk-dial__val { min-width: 4.2ch; text-align: center; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .tk-dial__lbl { font-size: var(--fs-xs); color: var(--c-text-dim); }
+  .tk-gear .ch-icon { pointer-events: none; }
+  /* the two-phone link state can be a long sentence (the permission path): let it wrap */
+  .tk-top .tk-link { white-space: normal; text-align: center; max-width: 100%; line-height: 1.4; padding: 4px 12px; border-radius: var(--r-md); }
+</style>
+</head>
+<body>
+<script src="../../version.js"></script>
+<script src="../../lib/chogan.js"></script>
+<script>
+/* ==== ENGINE START ==== */
+function TanksEngineFactory() {
+  'use strict';
+
+  // The field is 640 × 440 units, y down; the ground is a height for every unit of x,
+  // measured up from the bottom. Throws fly in fixed steps, as in Gorillas, so a shot
+  // lands in the same place on every device and the bot thinks with the same code.
+  var W = 640, H = 440, GRAV = 300, DT = 1 / 60, SPEED = 4.4, MAX_STEPS = 700;
+  var TW = 26, TH = 12, WIND = 30, SHOTS = 10, MOVES = 4, STEP = 24;
+  // the arsenal: blast radius, most damage at the centre, how many each player has
+  // (shells: whatever shots are left)
+  var ARMS = {
+    shell:  { r: 26, dmg: 35, n: Infinity },
+    heavy:  { r: 44, dmg: 50, n: 2 },
+    triple: { r: 18, dmg: 22, n: 2 },
+    roller: { r: 28, dmg: 38, n: 2 },
+    dirt:   { r: 34, dmg: 0, n: 1 }
+  };
+  var ORDER = ['shell', 'heavy', 'triple', 'roller', 'dirt'];
+
+  // Rolling hills: a few slow waves on a base, kept low at the two ends where the tanks
+  // start so neither begins in a pit or on a cliff
+  function terrain(rnd) {
+    var h = [], waves = [];
+    for (var k = 0; k < 4; k++) waves.push({ a: 18 + rnd() * 42 / (k + 1), f: (k + 1) * (0.6 + rnd() * 0.9) * Math.PI * 2 / W, p: rnd() * Math.PI * 2 });
+    var base = 120 + rnd() * 60, hill = rnd() * 90;
+    for (var x = 0; x <= W; x++) {
+      var y = base + hill * Math.sin(Math.PI * x / W);
+      waves.forEach(function (w) { y += w.a * Math.sin(w.f * x + w.p); });
+      h.push(Math.max(40, Math.min(H - 120, Math.round(y))));
+    }
+    return h;
+  }
+  function groundY(h, x) { var i = Math.max(0, Math.min(W, Math.round(x))); return H - h[i]; }
+  // a tank sits on the ground under its middle
+  function tankY(M, i) { return groundY(M.h, M.tanks[i].x); }
+
+  function match(rnd) {
+    var M = { h: terrain(rnd), tanks: [{ x: 70 + Math.round(rnd() * 70) }, { x: W - 70 - Math.round(rnd() * 70) }], score: [0, 0], shots: [SHOTS, SHOTS],
+      moves: [MOVES, MOVES], ammo: [{}, {}], turn: 0, wind: 0, n: 0, last: [{ angle: 45, power: 55 }, { angle: 45, power: 55 }] };
+    for (var s = 0; s < 2; s++) ORDER.forEach(function (a) { M.ammo[s][a] = ARMS[a].n === Infinity ? -1 : ARMS[a].n; });
+    M.wind = Math.round((rnd() * 2 - 1) * WIND);
+    return M;
+  }
+  function left(M, who, arm) { return arm === 'shell' ? M.shots[who] : Math.min(M.shots[who], M.ammo[who][arm]); }
+
+  function tankAt(M, x, y) {
+    for (var i = 0; i < 2; i++) {
+      var t = M.tanks[i], ty = tankY(M, i);
+      if (Math.abs(x - t.x) <= TW / 2 && y <= ty + 2 && y >= ty - TH - 4) return i;
+    }
+    return -1;
+  }
+
+  // One projectile from (x, y) with velocity (vx, vy), over terrain h. Ends on the ground,
+  // on a tank, or off the side or bottom; above the sky it comes back down.
+  function fly(M, h, x, y, vx, vy, who) {
+    var path = [[x, y]];
+    for (var n = 0; n < MAX_STEPS; n++) {
+      vx += M.wind * DT; vy += GRAV * DT;
+      x += vx * DT; y += vy * DT;
+      path.push([x, y]);
+      if (x < -40 || x > W + 40 || y > H) return { path: path, end: { kind: 'out', x: x, y: y } };
+      if (y < 0) continue;
+      var ti = tankAt(M, x, y);
+      if (ti >= 0 && (ti !== who || n > 10)) return { path: path, end: { kind: 'tank', who: ti, x: x, y: y } };
+      if (x >= 0 && x <= W && y >= H - h[Math.round(x)]) return { path: path, end: { kind: 'ground', x: x, y: y } };
+    }
+    return { path: path, end: { kind: 'out', x: x, y: y } };
+  }
+  // A roller runs downhill from where it lands until the ground levels out, it meets a
+  // tank, or it has run 220 units; then it goes off
+  function roll(M, h, x, y, dir) {
+    var path = [], d = dir || 1;
+    var down = function (xx) { var i = Math.round(xx); return h[Math.max(0, Math.min(W, i - 1))] - h[Math.max(0, Math.min(W, i + 1))]; };
+    // it starts the way the slope falls, or the way it was flying on flat ground
+    var sl = down(x); if (Math.abs(sl) > 0.5) d = sl > 0 ? 1 : -1;
+    for (var n = 0; n < 220; n++) {
+      var nx = x + d;
+      if (nx < 1 || nx > W - 1) break;
+      if (h[Math.round(nx)] > h[Math.round(x)] + 1) break;
+      x = nx; y = H - h[Math.round(x)];
+      path.push([x, y]);
+      if (tankAt(M, x, y - 3) >= 0) break;
+    }
+    return { path: path, x: x, y: y };
+  }
+
+  function hand(M, who) { var t = M.tanks[who], dir = who === 0 ? 1 : -1; return { x: t.x + dir * 6, y: tankY(M, who) - TH - 4 }; }
+
+  // Everything a shot does, worked out on a copy of the ground: the paths to draw and the
+  // blasts in order. Nothing in M changes.
+  function simulate(M, who, arm, angle, power) {
+    var h = M.h.slice(), dir = who === 0 ? 1 : -1, p = hand(M, who), v = power * SPEED, out = { paths: [], blasts: [] };
+    var angles = arm === 'triple' ? [angle - 5, angle, angle + 5] : [angle];
+    angles.forEach(function (ag) {
+      var a = ag * Math.PI / 180, f = fly(M, h, p.x, p.y, Math.cos(a) * v * dir, -Math.sin(a) * v, who);
+      out.paths.push(f.path);
+      var e = f.end;
+      if (e.kind === 'out') return;
+      if (arm === 'roller' && e.kind === 'ground') {
+        var rl = roll(M, h, e.x, e.y, Math.cos(a) * dir >= 0 ? 1 : -1);
+        out.paths[out.paths.length - 1] = f.path.concat(rl.path);
+        e = { kind: 'ground', x: rl.x, y: rl.y };
+      }
+      var b = { x: e.x, y: e.y, r: ARMS[arm].r, arm: arm, dmg: [0, 0] };
+      if (arm === 'dirt') build(h, b.x, b.y, b.r);
+      else { dig(h, b.x, b.y, b.r); b.dmg = hurt(M, b.x, b.y, b.r, ARMS[arm].dmg); }
+      out.blasts.push(b);
+    });
+    out.h = h;
+    return out;
+  }
+  // a crater: each column loses the part of it inside the circle, and what was above falls in
+  function dig(h, cx, cy, r) {
+    for (var x = Math.max(0, Math.floor(cx - r)); x <= Math.min(W, Math.ceil(cx + r)); x++) {
+      var dy = Math.sqrt(Math.max(0, r * r - (x - cx) * (x - cx))), top = H - h[x];
+      var cut = Math.max(0, Math.min(H, cy + dy) - Math.max(top, cy - dy));
+      h[x] = Math.max(0, h[x] - Math.round(cut));
+    }
+  }
+  // dirt: a round mound on the ground where it lands
+  function build(h, cx, cy, r) {
+    for (var x = Math.max(0, Math.floor(cx - r)); x <= Math.min(W, Math.ceil(cx + r)); x++) h[x] = Math.min(H - 60, h[x] + Math.round(Math.sqrt(Math.max(0, r * r - (x - cx) * (x - cx)))));
+  }
+  // damage falls off from the centre of the blast to its edge (plus half a tank)
+  function hurt(M, x, y, r, most) {
+    var d = [0, 0];
+    for (var i = 0; i < 2; i++) {
+      var t = M.tanks[i], dist = Math.hypot(x - t.x, y - (tankY(M, i) - TH / 2)), reach = r + TW / 2;
+      if (dist < reach) d[i] = Math.round(most * (1 - dist / reach));
+    }
+    return d;
+  }
+
+  // Applies a simulated shot: the ground, the points (damage to the other tank scores for
+  // the shooter; damage to yourself scores for the other), the arsenal, and the turn.
+  function fire(M, who, arm, angle, power, sim, rnd) {
+    if (M.shots[who] <= 0 || left(M, who, arm) <= 0) return null;
+    sim = sim || simulate(M, who, arm, angle, power);
+    M.h = sim.h;
+    var got = [0, 0];
+    sim.blasts.forEach(function (b) { got[1 - who] += b.dmg[1 - who]; M.score[who] += b.dmg[1 - who]; M.score[1 - who] += b.dmg[who]; });
+    M.shots[who]--;
+    if (arm !== 'shell') M.ammo[who][arm]--;
+    M.last[who] = { angle: angle, power: power };
+    M.n++;
+    M.turn = 1 - who;
+    M.wind = Math.round((rnd() * 2 - 1) * WIND);
+    return { sim: sim, dealt: got[1 - who] };
+  }
+  function over(M) { return M.shots[0] <= 0 && M.shots[1] <= 0; }
+  function winner(M) { return M.score[0] === M.score[1] ? -1 : (M.score[0] > M.score[1] ? 0 : 1); }
+
+  // A step left or right, if the player has moves left; it can't pass the other tank or
+  // climb a wall steeper than the tank itself is tall
+  function move(M, who, d) {
+    if (M.moves[who] <= 0) return false;
+    var t = M.tanks[who], nx = Math.max(20, Math.min(W - 20, t.x + d * STEP));
+    var other = M.tanks[1 - who].x;
+    if (Math.abs(nx - other) < TW + 6 || (t.x - other) * (nx - other) < 0) return false;
+    if (H - groundY(M.h, nx) - (H - groundY(M.h, t.x)) > 40) return false;
+    if (nx === t.x) return false;
+    t.x = nx;
+    M.moves[who]--;
+    return true;
+  }
+
+  /* The bot: a coarse then fine sweep of angle and power with the very shot it means to
+     fire, scored by the damage it would do (and how close it lands when it would do
+     none); then it misses by its level's spread. It picks the heavy shell and the
+     roller while it has them and the triple when it is close, keeping dirt for a
+     player sitting behind a hill. */
+  var SPREAD = { easy: { a: 6, p: 8 }, medium: { a: 3.2, p: 4 }, hard: { a: 1.8, p: 2.2 } };
+  function aim(M, who, arm) {
+    var other = M.tanks[1 - who], tx = other.x, ty = tankY(M, 1 - who) - TH / 2, best = null;
+    function look(a, p) {
+      var s = simulate(M, who, arm, a, p), v = 0, near = 1e9;
+      s.blasts.forEach(function (b) { v += b.dmg[1 - who] - 1.5 * b.dmg[who]; near = Math.min(near, Math.hypot(b.x - tx, b.y - ty)); });
+      var score = v * 100 - near;
+      if (!best || score > best.score) best = { angle: a, power: p, score: score, dmg: v };
+    }
+    var a, p;
+    // about 200 shots an arm: a turn's thinking stays well under the bot's pause on a phone
+    for (a = 15; a <= 81; a += 6) for (p = 22; p <= 100; p += 6) look(a, p);
+    var a0 = best.angle, p0 = best.power;
+    for (a = Math.max(5, a0 - 3); a <= Math.min(85, a0 + 3); a += 1) for (p = Math.max(5, p0 - 3); p <= Math.min(100, p0 + 3); p += 1) look(a, p);
+    return best;
+  }
+  function gauss(rnd) { var u = 1 - rnd(), v = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
+  function botPlan(M, who, level, rnd) {
+    var tries = ['heavy', 'roller', 'triple', 'shell'].filter(function (x) { return left(M, who, x) > 0; });
+    var best = null;
+    tries.forEach(function (arm) { var t = aim(M, who, arm); t.arm = arm; if (!best || t.dmg > best.dmg + 2) best = t; });
+    var sp = SPREAD[level] || SPREAD.medium;
+    return { arm: best.arm, angle: Math.max(5, Math.min(85, Math.round((best.angle + gauss(rnd) * sp.a) * 10) / 10)),
+      power: Math.max(5, Math.min(100, Math.round((best.power + gauss(rnd) * sp.p) * 10) / 10)) };
+  }
+
+  // ended: a two-phone sync may carry the finished match, which a save never does
+  function validMatch(M, ended) {
+    if (!M || !Array.isArray(M.h) || M.h.length !== W + 1 || !Array.isArray(M.tanks) || M.tanks.length !== 2) return false;
+    if (!Array.isArray(M.score) || !Array.isArray(M.shots) || !Array.isArray(M.moves) || !Array.isArray(M.ammo) || !(M.turn === 0 || M.turn === 1)) return false;
+    if ((!ended && over(M)) || M.shots.some(function (s) { return s < 0 || s > SHOTS; }) || Math.abs(M.wind) > WIND) return false;
+    return M.h.every(function (v) { return typeof v === 'number' && v >= 0 && v <= H; }) && M.tanks.every(function (t) { return t.x >= 0 && t.x <= W; });
+  }
+
+  /* Two phones (#754): each phone runs the same shots on the same field, so only a turn's
+     input travels. Everything a match holds is a whole number (heights, places, points,
+     wind), so a 32-bit FNV-1a over it is a cheap check that the two phones still agree. */
+  function digest(M) {
+    var x = 0x811c9dc5;
+    function add(v) { v = v | 0; for (var k = 0; k < 32; k += 8) { x ^= (v >>> k) & 255; x = Math.imul(x, 16777619) >>> 0; } }
+    M.h.forEach(add);
+    add(M.tanks[0].x); add(M.tanks[1].x);
+    M.score.forEach(add); M.shots.forEach(add); M.moves.forEach(add);
+    for (var s = 0; s < 2; s++) ORDER.forEach(function (a) { add(M.ammo[s][a]); });
+    add(M.turn); add(M.wind); add(M.n);
+    return ('0000000' + x.toString(16)).slice(-8);
+  }
+  // Which match stands when the two phones compare (on every connect, and after a
+  // mismatch): a later match, else the one with more shots fired; at the same shot a
+  // different field or digest means one phone went wrong, and the host's stands.
+  // 'take': adopt theirs; 'tell': they are behind, answer with ours; 'keep': nothing to do.
+  function syncPick(mine, theirs, guest) {
+    if ((theirs.g | 0) !== (mine.g | 0)) return (theirs.g | 0) > (mine.g | 0) ? 'take' : 'tell';
+    if ((theirs.n | 0) !== (mine.n | 0)) return (theirs.n | 0) > (mine.n | 0) ? 'take' : 'tell';
+    if (theirs.seed !== mine.seed || theirs.sum !== mine.sum) return guest ? 'take' : 'keep';
+    return 'keep';
+  }
+
+  return { W: W, H: H, TW: TW, TH: TH, WIND: WIND, SHOTS: SHOTS, MOVES: MOVES, ARMS: ARMS, ORDER: ORDER, SPREAD: SPREAD, terrain: terrain, groundY: groundY,
+    tankY: tankY, match: match, left: left, simulate: simulate, fire: fire, over: over, winner: winner, move: move, hand: hand, dig: dig, build: build, aim: aim, botPlan: botPlan, validMatch: validMatch,
+    digest: digest, syncPick: syncPick };
+}
+if (typeof module !== 'undefined' && module.exports) module.exports = TanksEngineFactory;
+/* ==== ENGINE END ==== */
+</script>
+<script>
+(function () {
+  'use strict';
+  var C = window.Chogan, el = C.el;
+  var E = TanksEngineFactory();
+  var LEVELS = ['easy', 'medium', 'hard'];
+
+  C.boot({});
+  var ctx = C.game({
+    id: 'tanks',
+    name: { fa: 'تانک‌ها', en: 'Tanks', zh: '坦克', de: 'Panzer', es: 'Tanques', pl: 'Czołgi', fr: 'Chars', ar: 'الدبابات', hi: 'टैंक' },
+    accent: '#4A5D23',
+    mood: 'menu',
+    scroll: true,
+    strings: {
+      fa: {
+        field: 'میدان و دو تانک', vsBot: 'مقابل ربات', people: 'دو نفره', bot: 'ربات', playerN: 'بازیکن {n}', newMatch: 'مسابقه‌ی تازه',
+        yourTurn: 'نوبت توست', turnOf: 'نوبت {n}', botThinks: '{n} نشانه می‌گیرد', shotsLeft: '{n} شلیک', movesLeft: 'حرکت: {n}',
+        aimDrag: 'از هر جای میدان بگیر و به عقب بکش؛ رها کن تا شلیک شود.', aimNums: 'زاویه و قدرت را تنظیم کن و «شلیک» را بزن.',
+        angle: 'زاویه', power: 'قدرت', fireIt: 'شلیک', calm: 'بی‌باد', control: 'نشانه‌گیری', ctlDrag: 'کشیدن', ctlNums: 'عدد',
+        moveL: 'یک قدم به چپ', moveR: 'یک قدم به راست', noMove: 'اینجا نمی‌شود رفت.',
+        shell: 'گلوله', heavy: 'سنگین', triple: 'سه‌تایی', roller: 'غلتان', dirt: 'خاک',
+        hitN: '{n} امتیاز!', missed: 'نخورد', selfHit: 'به خودت خورد!', mound: 'تپه‌ی خاک ساخته شد', draw: 'مساوی', playerWon: 'برد: {n}', dailyTk: 'تانک‌های روزانه',
+        points: 'امتیاز', best: 'بهترین شلیک',
+        kAngle: 'زاویه بیشتر یا کمتر', kPower: 'قدرت بیشتر یا کمتر', kFire: 'شلیک', kArm: 'موشک بعدی', kMove: 'حرکت تانک',
+        rules: 'دو تانک روی تپه‌ها به نوبت شلیک می‌کنند؛ هر کدام ده شلیک دارد. زاویه و قدرت را تو تعیین می‌کنی؛ جاذبه گلوله را پایین می‌کشد و باد، که هر نوبت عوض می‌شود، آن را به چپ یا راست می‌برد. هر انفجار زمین را می‌کند و خاک بالایش پایین می‌ریزد. امتیاز همان آسیبی است که به تانک حریف می‌زنی؛ آسیب به خودت امتیاز حریف می‌شود. موشک‌ها: گلوله‌ی معمولی، سنگین با انفجار بزرگ، سه‌تایی که بادبزنی پخش می‌شود، غلتان که در سراشیبی می‌غلتد و بعد منفجر می‌شود، و خاک که تپه‌ای برای پناه می‌سازد. در هر مسابقه چهار بار می‌توانی تانکت را یک قدم جابه‌جا کنی. بعد از بیست شلیک، امتیاز بیشتر برنده است. نشانه‌گیری را از چرخ‌دنده عوض کن: کشیدن یا عدد.',
+        tutTitle1: 'هدف', tutText1: 'به تانک حریف شلیک کن؛ هر آسیب امتیاز توست. بعد از ده شلیک هر نفر، امتیاز بیشتر می‌برد.',
+        tutTitle2: 'نشانه بگیر', tutText2: 'از هر جای میدان بگیر و به عقب بکش، مثل فلاخن؛ زاویه و قدرت کنار پیکان نوشته می‌شود. باد را پایین صفحه ببین.',
+        tutTitle3: 'موشک و حرکت', tutText3: 'موشک را از ردیف زیر میدان انتخاب کن. با دکمه‌های قدم، تا چهار بار تانکت را جابه‌جا کن.',
+        twoPhones: 'دو گوشی', hostGame: 'میزبان', joinGame: 'مهمان', rival: 'حریف', linkSearching: 'در جست‌وجوی گوشی دیگر…', linkConnected: 'وصل شد',
+        linkLost: 'اتصال قطع شد؛ دوباره دنبالش می‌گردد…', linkMismatch: 'نسخه‌ی دو گوشی یکی نیست؛ هر دو را به‌روز کن', linkError: 'اتصال راه نیفتاد؛ دوباره امتحان کن',
+        linkPermission: 'اجازه‌ی «دستگاه‌های نزدیک» داده نشده: تنظیمات ← برنامه‌ها ← چوگان پلاس ← اجازه‌ها', linkBluetooth: 'بلوتوث خاموش است؛ روشنش کن و دوباره امتحان کن',
+        linkPick: 'یک گوشی میزبان شود و دیگری مهمان. میزبان تانک چپ است و اول شلیک می‌کند.'
+      },
+      en: {
+        field: 'A field and two tanks', vsBot: 'Against the bot', people: 'Two players', bot: 'Bot', playerN: 'Player {n}', newMatch: 'New match',
+        yourTurn: 'Your turn', turnOf: '{n}\'s turn', botThinks: '{n} is aiming', shotsLeft: '{n} shots', movesLeft: 'Moves: {n}',
+        aimDrag: 'Grab anywhere on the field and pull back; let go to fire.', aimNums: 'Set the angle and power, then tap Fire.',
+        angle: 'Angle', power: 'Power', fireIt: 'Fire', calm: 'Calm', control: 'Aiming', ctlDrag: 'Drag', ctlNums: 'Numbers',
+        moveL: 'One step left', moveR: 'One step right', noMove: 'Can\'t go there.',
+        shell: 'Shell', heavy: 'Heavy', triple: 'Triple', roller: 'Roller', dirt: 'Dirt',
+        hitN: '{n} points!', missed: 'Missed', selfHit: 'Hit yourself!', mound: 'A mound of dirt', draw: 'A draw', playerWon: '{n} wins', dailyTk: 'Daily Tanks',
+        points: 'Points', best: 'Best shot',
+        kAngle: 'Raise or lower the angle', kPower: 'More or less power', kFire: 'Fire', kArm: 'Next weapon', kMove: 'Move the tank',
+        rules: 'Two tanks on the hills take turns firing; each has ten shots. You choose the angle and power; gravity pulls the shot down and the wind, which changes every turn, pushes it left or right. Every blast digs out the ground, and the earth above falls in. Your points are the damage you do to the other tank; damage to yourself scores for the other. Weapons: the plain shell, the heavy one with a big blast, the triple that fans out, the roller that runs downhill and then goes off, and dirt that builds a mound to hide behind. Four times a match you can move your tank a step. After twenty shots the higher score wins. Switch the aiming behind the gear: drag or numbers.',
+        tutTitle1: 'The goal', tutText1: 'Fire at the other tank; every bit of damage is your points. After ten shots each, the higher score wins.',
+        tutTitle2: 'Aim', tutText2: 'Grab anywhere on the field and pull back like a slingshot; the angle and power show by the arrow. Watch the wind at the bottom.',
+        tutTitle3: 'Weapons and moves', tutText3: 'Pick a weapon from the row under the field. The step buttons move your tank, four times a match.',
+        twoPhones: 'Two phones', hostGame: 'Host', joinGame: 'Join', rival: 'Rival', linkSearching: 'Looking for the other phone…', linkConnected: 'Connected',
+        linkLost: 'Connection lost; looking again…', linkMismatch: 'The two phones run different versions; update both', linkError: 'Could not connect; try again',
+        linkPermission: 'The nearby devices permission is off: Settings → Apps → Chogan Plus → Permissions', linkBluetooth: 'Bluetooth is off; turn it on and try again',
+        linkPick: 'One phone hosts, the other joins. The host is the left tank and fires first.'
+      },
+      pl: {
+        field: 'Pole bitwy i dwa czołgi', vsBot: 'Przeciwko botowi', people: 'Dwóch graczy', bot: 'Bot', playerN: 'Gracz {n}', newMatch: 'Nowy mecz',
+        yourTurn: 'Twoja kolej', turnOf: 'Ruch gracza {n}', botThinks: 'Gracz {n} celuje', shotsLeft: 'Strzały: {n}', movesLeft: 'Ruchy: {n}',
+        aimDrag: 'Chwyć w dowolnym miejscu na polu i pociągnij do tyłu; puść, aby oddać strzał.', aimNums: 'Ustaw kąt oraz siłę, a następnie dotknij Ogień.',
+        angle: 'Kąt', power: 'Siła', fireIt: 'Ogień', calm: 'Bez wiatru', control: 'Celowanie', ctlDrag: 'Przeciąganie', ctlNums: 'Liczby',
+        moveL: 'Krok w lewo', moveR: 'Krok w prawo', noMove: 'Nie możesz tam pojechać.',
+        shell: 'Pocisk', heavy: 'Ciężki', triple: 'Potrójny', roller: 'Toczny', dirt: 'Ziemny',
+        hitN: '+{n} punktów!', missed: 'Pudło', selfHit: 'Trafiłeś samego siebie!', mound: 'Nasyp ziemny', draw: 'Remis', playerWon: '{n} wygrywa', dailyTk: 'Codzienne Czołgi',
+        points: 'Punkty', best: 'Najlepszy strzał',
+        kAngle: 'Zwiększ lub zmniejsz kąt', kPower: 'Większa lub mniejsza siła', kFire: 'Ogień', kArm: 'Następna broń', kMove: 'Rusz czołgiem',
+        rules: 'Dwa czołgi stojące na wzgórzach na zmianę oddają strzały; każdy ma do dyspozycji dziesięć strzałów. Wybierasz kąt i siłę; grawitacja ściąga pocisk w dół, a wiatr, który zmienia się w każdej turze, spycha go w lewo lub w prawo. Każdy wybuch niszczy i drąży podłoże, powodując osypywanie się ziemi. Twoje punkty to obrażenia zadane drugiemu czołgowi; obrażenia zadane samemu sobie trafiają na konto przeciwnika. Bronie: zwykły pocisk, ciężki pocisk o dużym polu rażenia, potrójny rozpadający się wachlarzowo, toczny, który stacza się ze zbocza przed wybuchem, oraz ziemny, tworzący nasyp chroniący przed ostrzałem. W trakcie meczu możesz przesunąć swój czołg o krok maksymalnie cztery razy. Po dwudziestu strzałach wygrywa gracz z wyższym wynikiem. Tryb celowania zmienisz pod ikoną koła zębatego: za pomocą przeciągania lub wpisywania liczb.',
+        tutTitle1: 'Cel gry', tutText1: 'Strzelaj do drugiego czołgu; każde zadane obrażenie to punkty na Twoim koncie. Po dziesięciu strzałach każdego gracza wygrywa osoba z wyższym wynikiem.',
+        tutTitle2: 'Celowanie', tutText2: 'Chwyć w dowolnym miejscu na polu bitwy i pociągnij jak z procy; kąt oraz siła wyświetlą się przy strzałce. Obserwuj wskaźnik wiatru na dole ekranu.',
+        tutTitle3: 'Bronie i ruch', tutText3: 'Wybierz broń z paska pod polem bitwy. Przyciski kroków pozwalają na przesunięcie czołgu – maksymalnie cztery razy na mecz.',
+        twoPhones: 'Dwa telefony', hostGame: 'Gospodarz', joinGame: 'Dołącz', rival: 'Rywal', linkSearching: 'Szukam drugiego telefonu…', linkConnected: 'Połączono',
+        linkLost: 'Połączenie przerwane; szukam ponownie…', linkMismatch: 'Telefony mają różne wersje; zaktualizuj oba', linkError: 'Nie udało się połączyć; spróbuj ponownie',
+        linkPermission: 'Brak uprawnienia do urządzeń w pobliżu: Ustawienia → Aplikacje → Chogan Plus → Uprawnienia', linkBluetooth: 'Bluetooth jest wyłączony; włącz go i spróbuj ponownie',
+        linkPick: 'Jeden telefon jest gospodarzem, drugi dołącza. Gospodarz ma lewy czołg i strzela pierwszy.'
+      },
+      fr: {
+        field: 'Un terrain et deux chars', vsBot: 'Contre le robot', people: 'Deux joueurs', bot: 'Robot', playerN: 'Joueur {n}', newMatch: 'Nouveau match',
+        yourTurn: 'À toi de jouer', turnOf: 'Au tour de {n}', botThinks: '{n} vise', shotsLeft: '{n} tirs', movesLeft: 'Déplacements : {n}',
+        aimDrag: 'Attrape le terrain n’importe où et tire en arrière ; relâche pour faire feu.', aimNums: 'Règle l’angle et la puissance, puis touche Feu.',
+        angle: 'Angle', power: 'Puissance', fireIt: 'Feu', calm: 'Calme', control: 'Visée', ctlDrag: 'Glisser', ctlNums: 'Chiffres',
+        moveL: 'Un pas à gauche', moveR: 'Un pas à droite', noMove: 'Impossible d’aller là.',
+        shell: 'Obus', heavy: 'Lourd', triple: 'Triple', roller: 'Rouleur', dirt: 'Terre',
+        hitN: '{n} points !', missed: 'Raté', selfHit: 'Touché toi-même !', mound: 'Un tas de terre', draw: 'Égalité', playerWon: '{n} gagne', dailyTk: 'Chars du jour',
+        points: 'Points', best: 'Meilleur tir',
+        kAngle: 'Monter ou baisser l’angle', kPower: 'Plus ou moins de puissance', kFire: 'Feu', kArm: 'Arme suivante', kMove: 'Déplacer le char',
+        rules: 'Deux chars sur les collines tirent à tour de rôle ; chacun a dix tirs. Tu choisis l’angle et la puissance ; la gravité fait retomber l’obus et le vent, qui change à chaque tour, le pousse à gauche ou à droite. Chaque explosion creuse le sol, et la terre au-dessus s’effondre. Tes points sont les dégâts que tu fais à l’autre char ; les dégâts que tu te fais comptent pour l’autre. Armes : l’obus simple, le lourd à grosse explosion, le triple qui s’éparpille, le rouleur qui dévale la pente avant d’exploser, et la terre qui forme un tas derrière lequel se cacher. Quatre fois par match, tu peux déplacer ton char d’un pas. Après vingt tirs, le meilleur score gagne. Change de visée derrière l’engrenage : glisser ou chiffres.',
+        tutTitle1: 'Le but', tutText1: 'Tire sur l’autre char ; chaque dégât te rapporte des points. Après dix tirs chacun, le meilleur score gagne.',
+        tutTitle2: 'Vise', tutText2: 'Attrape le terrain n’importe où et tire en arrière comme un lance-pierre ; l’angle et la puissance s’affichent près de la flèche. Surveille le vent en bas.',
+        tutTitle3: 'Armes et déplacements', tutText3: 'Choisis une arme dans la rangée sous le terrain. Les boutons de pas déplacent ton char, quatre fois par match.',
+        twoPhones: 'Deux téléphones', hostGame: 'Héberger', joinGame: 'Rejoindre', rival: 'Adversaire', linkSearching: 'Recherche de l’autre téléphone…', linkConnected: 'Connecté',
+        linkLost: 'Connexion perdue ; nouvelle recherche…', linkMismatch: 'Les deux téléphones n’ont pas la même version ; mets-les à jour', linkError: 'Connexion impossible ; réessaie',
+        linkPermission: 'L’autorisation Appareils à proximité est désactivée : Paramètres → Applications → Chogan Plus → Autorisations', linkBluetooth: 'Le Bluetooth est désactivé ; active-le et réessaie',
+        linkPick: 'Un téléphone héberge, l’autre rejoint. L’hôte est le char de gauche et tire en premier.'
+      },
+      ar: {
+        field: 'ساحة ودبابتان', vsBot: 'ضد الروبوت', people: 'لاعبان', bot: 'الروبوت', playerN: 'اللاعب {n}', newMatch: 'مباراة جديدة',
+        yourTurn: 'دورك', turnOf: 'دور {n}', botThinks: '{n} يصوّب', shotsLeft: '{n} طلقات', movesLeft: 'التحركات: {n}',
+        aimDrag: 'أمسك أي مكان في الساحة واسحب للخلف، ثم اترك لتطلق.', aimNums: 'اضبط الزاوية والقوة، ثم انقر أطلق.',
+        angle: 'الزاوية', power: 'القوة', fireIt: 'أطلق', calm: 'هادئ', control: 'التصويب', ctlDrag: 'سحب', ctlNums: 'أرقام',
+        moveL: 'خطوة لليسار', moveR: 'خطوة لليمين', noMove: 'لا يمكن الذهاب إلى هناك.',
+        shell: 'قذيفة', heavy: 'ثقيلة', triple: 'ثلاثية', roller: 'دحروجة', dirt: 'تراب',
+        hitN: '{n} نقطة!', missed: 'أخطأت', selfHit: 'أصبت نفسك!', mound: 'كومة تراب', draw: 'تعادل', playerWon: 'فاز {n}', dailyTk: 'الدبابات اليومية',
+        points: 'النقاط', best: 'أفضل طلقة',
+        kAngle: 'ارفع الزاوية أو اخفضها', kPower: 'قوة أكثر أو أقل', kFire: 'أطلق', kArm: 'السلاح التالي', kMove: 'حرّك الدبابة',
+        rules: 'دبابتان على التلال تتناوبان على الإطلاق، ولكل منهما عشر طلقات. تختار الزاوية والقوة، والجاذبية تسحب القذيفة إلى الأسفل، والريح التي تتغير كل دور تدفعها يمينًا أو يسارًا. كل انفجار يحفر الأرض، والتراب الذي فوقه ينهار. نقاطك هي الضرر الذي تلحقه بالدبابة الأخرى، والضرر الذي تلحقه بنفسك يُحسب للخصم. الأسلحة: القذيفة العادية، والثقيلة ذات الانفجار الكبير، والثلاثية التي تنتشر، والدحروجة التي تتدحرج على المنحدر ثم تنفجر، والتراب الذي يبني كومة تختبئ خلفها. يمكنك تحريك دبابتك خطوة أربع مرات في المباراة. بعد عشرين طلقة يفوز صاحب النقاط الأعلى. غيّر طريقة التصويب من الترس: سحب أو أرقام.',
+        tutTitle1: 'الهدف', tutText1: 'أطلق على الدبابة الأخرى، وكل ضرر تلحقه نقاط لك. بعد عشر طلقات لكل منكما، يفوز صاحب النقاط الأعلى.',
+        tutTitle2: 'صوّب', tutText2: 'أمسك أي مكان في الساحة واسحب للخلف كالمقلاع، فتظهر الزاوية والقوة بجانب السهم. راقب الريح في الأسفل.',
+        tutTitle3: 'الأسلحة والتحرك', tutText3: 'اختر سلاحًا من الصف تحت الساحة. أزرار الخطوة تحرّك دبابتك، أربع مرات في المباراة.',
+        twoPhones: 'هاتفان', hostGame: 'استضف', joinGame: 'انضم', rival: 'الخصم', linkSearching: 'جارٍ البحث عن الهاتف الآخر…', linkConnected: 'متصل',
+        linkLost: 'انقطع الاتصال، جارٍ البحث مجددًا…', linkMismatch: 'يعمل الهاتفان بإصدارين مختلفين، حدّث كليهما', linkError: 'تعذّر الاتصال، حاول مجددًا',
+        linkPermission: 'إذن الأجهزة المجاورة متوقف: الإعدادات ← التطبيقات ← Chogan Plus ← الأذونات', linkBluetooth: 'البلوتوث متوقف، شغّله وحاول مجددًا',
+        linkPick: 'هاتف يستضيف والآخر ينضم. المستضيف هو الدبابة اليسرى ويطلق أولًا.'
+      },
+      hi: {
+        field: 'एक मैदान और दो टैंक', vsBot: 'बॉट से', people: 'दो खिलाड़ी', bot: 'बॉट', playerN: 'खिलाड़ी {n}', newMatch: 'नया मुक़ाबला',
+        yourTurn: 'आपकी बारी', turnOf: '{n} की बारी', botThinks: '{n} निशाना लगा रहा है', shotsLeft: '{n} शॉट', movesLeft: 'चालें: {n}',
+        aimDrag: 'मैदान पर कहीं भी पकड़ें और पीछे खींचें; दागने के लिए छोड़ें।', aimNums: 'कोण और ताक़त चुनें, फिर दागें छुएँ।',
+        angle: 'कोण', power: 'ताक़त', fireIt: 'दागें', calm: 'शांत', control: 'निशाना', ctlDrag: 'खींचना', ctlNums: 'अंक',
+        moveL: 'एक क़दम बाएँ', moveR: 'एक क़दम दाएँ', noMove: 'वहाँ नहीं जा सकते।',
+        shell: 'गोला', heavy: 'भारी', triple: 'तिहरा', roller: 'लुढ़कू', dirt: 'मिट्टी',
+        hitN: '{n} अंक!', missed: 'चूक गए', selfHit: 'ख़ुद को लगा!', mound: 'मिट्टी का टीला', draw: 'बराबरी', playerWon: '{n} जीत गए', dailyTk: 'रोज़ के टैंक',
+        points: 'अंक', best: 'सर्वश्रेष्ठ शॉट',
+        kAngle: 'कोण ऊपर या नीचे करें', kPower: 'ज़्यादा या कम ताक़त', kFire: 'दागें', kArm: 'अगला हथियार', kMove: 'टैंक खिसकाएँ',
+        rules: 'पहाड़ियों पर दो टैंक बारी-बारी से दागते हैं; हर एक के पास दस शॉट हैं। आप कोण और ताक़त चुनते हैं; गुरुत्व गोले को नीचे खींचता है और हवा, जो हर बारी बदलती है, उसे बाएँ या दाएँ धकेलती है। हर धमाका ज़मीन खोद देता है, और ऊपर की मिट्टी नीचे गिर जाती है। दूसरे टैंक को जितना नुक़सान आप पहुँचाएँ, वही आपके अंक हैं; ख़ुद को हुआ नुक़सान दूसरे के अंक बनता है। हथियार: साधारण गोला, बड़े धमाके वाला भारी गोला, पंखे की तरह फैलने वाला तिहरा, ढलान पर लुढ़ककर फटने वाला लुढ़कू, और मिट्टी जो छिपने के लिए टीला बनाती है। हर मुक़ाबले में चार बार आप अपना टैंक एक क़दम खिसका सकते हैं। बीस शॉट के बाद ज़्यादा स्कोर वाला जीतता है। निशाना लगाने का तरीक़ा गियर में बदलें: खींचना या अंक।',
+        tutTitle1: 'लक्ष्य', tutText1: 'दूसरे टैंक पर दागें; हर नुक़सान आपके अंक हैं। दोनों के दस-दस शॉट के बाद ज़्यादा स्कोर वाला जीतता है।',
+        tutTitle2: 'निशाना', tutText2: 'मैदान पर कहीं भी पकड़ें और गुलेल की तरह पीछे खींचें; कोण और ताक़त तीर के पास दिखते हैं। नीचे हवा पर नज़र रखें।',
+        tutTitle3: 'हथियार और चालें', tutText3: 'मैदान के नीचे की पंक्ति से हथियार चुनें। क़दम वाले बटन आपका टैंक खिसकाते हैं, हर मुक़ाबले में चार बार।',
+        twoPhones: 'दो फ़ोन', hostGame: 'मेज़बान', joinGame: 'जुड़ें', rival: 'विरोधी', linkSearching: 'दूसरा फ़ोन ढूँढ रहे हैं…', linkConnected: 'जुड़ गए',
+        linkLost: 'कनेक्शन टूट गया; फिर से ढूँढ रहे हैं…', linkMismatch: 'दोनों फ़ोन पर अलग संस्करण हैं; दोनों को अपडेट करें', linkError: 'जुड़ नहीं सके; फिर कोशिश करें',
+        linkPermission: 'आस-पास के डिवाइस की अनुमति बंद है: सेटिंग्स → ऐप्स → Chogan Plus → अनुमतियाँ', linkBluetooth: 'ब्लूटूथ बंद है; उसे चालू करें और फिर कोशिश करें',
+        linkPick: 'एक फ़ोन मेज़बान बने, दूसरा जुड़े। मेज़बान बाईं ओर का टैंक है और पहले दागता है।'
+      },
+      zh: {
+        field: '战场和两辆坦克', vsBot: '对战电脑', people: '双人', bot: '电脑', playerN: '玩家 {n}', newMatch: '新比赛',
+        yourTurn: '轮到你了', turnOf: '轮到{n}', botThinks: '{n}正在瞄准', shotsLeft: '{n} 发', movesLeft: '移动：{n}',
+        aimDrag: '在战场任意位置按住往后拉；松手开火。', aimNums: '调好角度和力度，然后点“开火”。',
+        angle: '角度', power: '力度', fireIt: '开火', calm: '无风', control: '瞄准方式', ctlDrag: '拖动', ctlNums: '数字',
+        moveL: '向左一步', moveR: '向右一步', noMove: '不能去那里。',
+        shell: '炮弹', heavy: '重弹', triple: '三连发', roller: '滚弹', dirt: '土堆',
+        hitN: '{n} 分！', missed: '没打中', selfHit: '打中了自己！', mound: '堆起了一个土丘', draw: '平局', playerWon: '{n}获胜', dailyTk: '每日坦克',
+        points: '得分', best: '最佳一击',
+        kAngle: '加大或减小角度', kPower: '加大或减小力度', kFire: '开火', kArm: '下一种武器', kMove: '移动坦克',
+        rules: '两辆坦克在山丘上轮流开火，每辆十发。角度和力度由你决定；重力把炮弹往下拉，每回合都会变化的风把它往左或往右吹。每次爆炸都会炸掉地面，上面的土会塌下来。你的得分就是你对对方坦克造成的伤害；伤到自己则算对方得分。武器：普通炮弹、爆炸范围大的重弹、扇形散开的三连发、沿下坡滚动后爆炸的滚弹，以及堆出掩护土丘的土堆。每场比赛你可以移动坦克四次，每次一步。二十发之后得分高者获胜。在齿轮里切换瞄准方式：拖动或数字。',
+        tutTitle1: '目标', tutText1: '向对方坦克开火；造成的伤害就是你的得分。每人十发之后，得分高者获胜。',
+        tutTitle2: '瞄准', tutText2: '在战场任意位置按住，像弹弓一样往后拉；箭头旁显示角度和力度。注意底部的风。',
+        tutTitle3: '武器和移动', tutText3: '在战场下方的一排里选择武器。用移动按钮移动坦克，每场四次。',
+        twoPhones: '两部手机', hostGame: '主机', joinGame: '加入', rival: '对手', linkSearching: '正在寻找另一部手机…', linkConnected: '已连接',
+        linkLost: '连接已断开，正在重新寻找…', linkMismatch: '两部手机版本不同，请都更新', linkError: '无法连接，请重试',
+        linkPermission: '未授予“附近设备”权限：设置 → 应用 → Chogan Plus → 权限', linkBluetooth: '蓝牙已关闭，请打开后重试',
+        linkPick: '一部手机做主机，另一部加入。主机是左边的坦克，先开火。'
+      },
+      de: {
+        field: 'Ein Feld und zwei Panzer', vsBot: 'Gegen den Bot', people: 'Zu zweit', bot: 'Bot', playerN: 'Spieler {n}', newMatch: 'Neues Spiel',
+        yourTurn: 'Du bist dran', turnOf: 'Am Zug: {n}', botThinks: '{n} zielt', shotsLeft: '{n} Schuss', movesLeft: 'Züge: {n}',
+        aimDrag: 'Greif irgendwo ins Feld und zieh zurück; lass los zum Feuern.', aimNums: 'Stell Winkel und Kraft ein und tippe auf Feuer.',
+        angle: 'Winkel', power: 'Kraft', fireIt: 'Feuer', calm: 'Windstill', control: 'Zielen', ctlDrag: 'Ziehen', ctlNums: 'Zahlen',
+        moveL: 'Ein Schritt nach links', moveR: 'Ein Schritt nach rechts', noMove: 'Da geht es nicht hin.',
+        shell: 'Granate', heavy: 'Schwer', triple: 'Dreifach', roller: 'Roller', dirt: 'Erde',
+        hitN: '{n} Punkte!', missed: 'Daneben', selfHit: 'Selbst getroffen!', mound: 'Ein Erdhügel', draw: 'Unentschieden', playerWon: 'Sieg: {n}', dailyTk: 'Panzer des Tages',
+        points: 'Punkte', best: 'Bester Schuss',
+        kAngle: 'Winkel größer oder kleiner', kPower: 'Mehr oder weniger Kraft', kFire: 'Feuer', kArm: 'Nächste Waffe', kMove: 'Panzer bewegen',
+        rules: 'Zwei Panzer auf den Hügeln schießen abwechselnd; jeder hat zehn Schuss. Du wählst Winkel und Kraft; die Schwerkraft zieht den Schuss nach unten, und der Wind, der jede Runde wechselt, schiebt ihn nach links oder rechts. Jede Explosion reißt den Boden auf, und die Erde darüber rutscht nach. Deine Punkte sind der Schaden am anderen Panzer; Schaden an dir selbst zählt für den anderen. Waffen: die normale Granate, die schwere mit großer Explosion, die dreifache, die sich auffächert, der Roller, der bergab rollt und dann losgeht, und Erde, die einen Hügel zum Schutz aufwirft. Viermal pro Spiel kannst du deinen Panzer einen Schritt bewegen. Nach zwanzig Schuss gewinnt die höhere Punktzahl. Das Zielen wechselst du hinter dem Zahnrad: Ziehen oder Zahlen.',
+        tutTitle1: 'Das Ziel', tutText1: 'Schieß auf den anderen Panzer; jeder Schaden sind deine Punkte. Nach zehn Schuss pro Spieler gewinnt die höhere Punktzahl.',
+        tutTitle2: 'Zielen', tutText2: 'Greif irgendwo ins Feld und zieh zurück wie eine Schleuder; Winkel und Kraft stehen am Pfeil. Achte unten auf den Wind.',
+        tutTitle3: 'Waffen und Züge', tutText3: 'Wähle eine Waffe in der Reihe unter dem Feld. Mit den Schritt-Tasten bewegst du deinen Panzer, viermal pro Spiel.',
+        twoPhones: 'Zwei Handys', hostGame: 'Gastgeber', joinGame: 'Beitreten', rival: 'Gegner', linkSearching: 'Suche das andere Handy…', linkConnected: 'Verbunden',
+        linkLost: 'Verbindung verloren; suche erneut…', linkMismatch: 'Die Handys haben verschiedene Versionen; aktualisiere beide', linkError: 'Keine Verbindung; versuche es erneut',
+        linkPermission: 'Die Berechtigung „Geräte in der Nähe“ fehlt: Einstellungen → Apps → Chogan Plus → Berechtigungen', linkBluetooth: 'Bluetooth ist aus; schalte es ein und versuche es erneut',
+        linkPick: 'Ein Handy ist Gastgeber, das andere tritt bei. Der Gastgeber hat den linken Panzer und schießt zuerst.'
+      },
+      es: {
+        field: 'Un campo y dos tanques', vsBot: 'Contra el bot', people: 'Dos jugadores', bot: 'Bot', playerN: 'Jugador {n}', newMatch: 'Nueva partida',
+        yourTurn: 'Te toca', turnOf: 'Le toca a {n}', botThinks: '{n} apunta', shotsLeft: '{n} disparos', movesLeft: 'Pasos: {n}',
+        aimDrag: 'Agarra cualquier punto del campo y tira hacia atrás; suelta para disparar.', aimNums: 'Ajusta el ángulo y la fuerza y toca Disparar.',
+        angle: 'Ángulo', power: 'Fuerza', fireIt: 'Disparar', calm: 'Sin viento', control: 'Apuntar', ctlDrag: 'Arrastrar', ctlNums: 'Números',
+        moveL: 'Un paso a la izquierda', moveR: 'Un paso a la derecha', noMove: 'No se puede ir ahí.',
+        shell: 'Obús', heavy: 'Pesado', triple: 'Triple', roller: 'Rodante', dirt: 'Tierra',
+        hitN: '¡{n} puntos!', missed: 'Fallo', selfHit: '¡Te diste a ti mismo!', mound: 'Un montículo de tierra', draw: 'Empate', playerWon: 'Gana {n}', dailyTk: 'Tanques del día',
+        points: 'Puntos', best: 'Mejor disparo',
+        kAngle: 'Subir o bajar el ángulo', kPower: 'Más o menos fuerza', kFire: 'Disparar', kArm: 'Siguiente arma', kMove: 'Mover el tanque',
+        rules: 'Dos tanques en las colinas disparan por turnos; cada uno tiene diez disparos. Tú eliges el ángulo y la fuerza; la gravedad tira del disparo hacia abajo y el viento, que cambia cada turno, lo empuja a izquierda o derecha. Cada explosión excava el suelo y la tierra de encima se derrumba. Tus puntos son el daño que haces al otro tanque; el daño a ti mismo cuenta para el otro. Armas: el obús normal, el pesado con una gran explosión, el triple que se abre en abanico, el rodante que baja la pendiente y luego estalla, y la tierra, que levanta un montículo para cubrirse. Cuatro veces por partida puedes mover tu tanque un paso. Tras veinte disparos gana la puntuación más alta. Cambia la forma de apuntar tras el engranaje: arrastrar o números.',
+        tutTitle1: 'El objetivo', tutText1: 'Dispara al otro tanque; cada daño son tus puntos. Tras diez disparos cada uno, gana la puntuación más alta.',
+        tutTitle2: 'Apunta', tutText2: 'Agarra cualquier punto del campo y tira hacia atrás como un tirachinas; el ángulo y la fuerza aparecen junto a la flecha. Mira el viento abajo.',
+        tutTitle3: 'Armas y pasos', tutText3: 'Elige un arma en la fila bajo el campo. Los botones de paso mueven tu tanque, cuatro veces por partida.',
+        twoPhones: 'Dos móviles', hostGame: 'Anfitrión', joinGame: 'Unirse', rival: 'Rival', linkSearching: 'Buscando el otro móvil…', linkConnected: 'Conectado',
+        linkLost: 'Conexión perdida; buscando de nuevo…', linkMismatch: 'Los móviles tienen versiones distintas; actualiza ambos', linkError: 'No se pudo conectar; vuelve a intentarlo',
+        linkPermission: 'Falta el permiso de dispositivos cercanos: Ajustes → Aplicaciones → Chogan Plus → Permisos', linkBluetooth: 'El Bluetooth está apagado; actívalo y vuelve a intentarlo',
+        linkPick: 'Un móvil es anfitrión y el otro se une. El anfitrión es el tanque de la izquierda y dispara primero.'
+      }
+    }
+  });
+
+  var params = new URLSearchParams(location.search);
+  var dailyDate = params.get('daily');
+  var prefs = ctx.store.get('prefs', null);
+  if (!prefs) prefs = { mode: 'bot', level: 'medium', control: 'drag' };
+  if (prefs.mode !== 'bot' && prefs.mode !== 'people') prefs.mode = 'bot';
+  if (LEVELS.indexOf(prefs.level) < 0) prefs.level = 'medium';
+  if (prefs.control !== 'nums') prefs.control = 'drag';
+
+  // G: the game. phase: 'aim' (a person aims), 'busy' (a shot flies or the bot thinks),
+  // 'done'. arm: the weapon picked for this turn.
+  var G = null, timer = null, raf = 0, flight = null, blasts = [], floaters = [], aiming = null, msg = '', arm = 'shell';
+
+  var cv = el('canvas', { class: 'tk-canvas', role: 'img', 'aria-label': C.t('field') });
+  var box = el('div', { class: 'tk-box' }, [cv]);
+  var top = el('div', { class: 'tk-top ch-above' });
+  var players = el('div', { class: 'tk-players ch-above' });
+  var status = el('div', { class: 'tk-status', role: 'status', 'aria-live': 'polite' });
+  var arms = el('div', { class: 'tk-arms' });
+  var pad = el('div', { class: 'tk-pad' });
+  var wrap = el('div', { class: 'tk-wrap ch-split' }, [el('div', { class: 'ch-fit' }, [box]), el('div', { class: 'ch-side' }, [top, players, status, arms, pad])]);
+
+  ctx.button({ icon: 'help', label: C.t('help'), onClick: showHelp });
+  ctx.button({ icon: 'refresh', label: C.t('newMatch'), onClick: askNew });
+  ctx.main.appendChild(wrap);
+  ctx.mount();
+
+  /* ------------------------------------------------------------ setup */
+
+  // Two phones (#754) draw the field and every wind from the host's seed, so both phones
+  // play the same match from the shots alone
+  function rngFor(tag) { return G.daily ? C.daily('tanks', G.daily + '|' + tag).rng : Math.random; }
+  // two phones (#754): both draw the field and the wind from the host's seed, never
+  // Math.random, or the same shot would land on two different fields
+  function seeded(tag) { return G.mode === 'net' ? C.daily('tanks', 'net|' + G.seed + '|' + tag).rng : rngFor(tag); }
+  function clone(M) { return JSON.parse(JSON.stringify(M)); }
+
+  function newGame(o) {
+    stop();
+    var daily = o.daily || null, was = G && G.mode === 'net' ? G : null;
+    if (was && o.mode !== 'net') { C.link.close(); wantLink = null; }
+    G = { mode: daily ? 'bot' : o.mode, level: daily ? 'medium' : o.level, daily: daily, startedAt: Date.now(), done: false, phase: 'aim', best: 0 };
+    if (G.mode === 'net') {
+      // a new match carries the link over; g counts matches, so the newer one wins a sync
+      G.side = was ? was.side : null; G.link = was ? was.link : 'idle'; G.linkWhy = was ? was.linkWhy : null; G.peerName = was ? was.peerName : '';
+      G.g = was ? (was.g | 0) + 1 : 0;
+      G.seed = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+      G.sent = null; G.steps = []; G.inbox = null;
+    }
+    G.M = E.match(seeded('field'));
+    if (G.mode === 'net') G.M0 = clone(G.M);
+    // The two-phone mode is not remembered: the next visit may be in an app without it
+    if (!daily && G.mode !== 'net') { prefs.mode = o.mode; prefs.level = o.level; ctx.store.set('prefs', prefs); }
+    flight = null; blasts = []; floaters = []; aiming = null; msg = ''; arm = 'shell';
+    render();
+    save();
+    if (G.mode === 'net' && G.link === 'connected') sendSync();
+    startTurn();
+  }
+  function current() { return { mode: G.mode, level: G.level }; }
+  function fromPrefs() { return { mode: prefs.mode, level: prefs.level }; }
+
+  function isBot(seat) { return G.mode === 'bot' && seat === 1; }
+  // in two phones the other seat is played on the other phone
+  function isRemote(seat) { return G.mode === 'net' && seat !== G.side; }
+  function stop() { if (timer) { clearTimeout(timer); timer = null; } }
+  function later(fn, ms) { stop(); timer = setTimeout(function () { timer = null; fn(); }, ms); }
+  function pname(seat) {
+    if (G.mode === 'net' && G.side == null) return C.t('playerN', { n: C.num(seat + 1) });
+    if (G.mode === 'net') return seat === G.side ? (C.state.profile.name || C.t('you')) : (G.peerName || C.t('rival'));
+    if (seat === 0) return G.mode === 'people' ? C.t('playerN', { n: C.num(1) }) : (C.state.profile.name || C.t('you'));
+    return isBot(seat) ? C.t('bot') : C.t('playerN', { n: C.num(2) });
+  }
+
+  /* -------------------------------------------- Two phones (Chogan Plus) */
+  // Only Chogan Plus has the Nearby plugin; elsewhere the option is never shown. The host
+  // is the left tank and fires first. A turn travels as its input only (steps, weapon,
+  // angle, power) with the shot number it was fired at and a digest of the match after it;
+  // the watching phone plays the same shot from the last match both agreed on (G.M0), and
+  // a digest that does not match asks for the host's match.
+  var LINK_TEXT = { searching: 'linkSearching', connected: 'linkConnected', lost: 'linkLost', mismatch: 'linkMismatch', error: 'linkError' };
+  // #744: a refused permission and Bluetooth switched off each say what to do; any other
+  // failure carries Nearby's status code, so a player's report can name it.
+  function linkText() {
+    if (G.side == null) return C.t('linkPick');
+    var why = G.link === 'error' && G.linkWhy || {};
+    if (why.reason === 'permission') return C.t('linkPermission');
+    if (why.reason === 'bluetooth') return C.t('linkBluetooth');
+    return C.t(LINK_TEXT[G.link] || 'linkPick') + (G.link === 'error' && why.code ? ' (' + why.code + ')' : '');
+  }
+  var wantLink = null;
+  function openLink(role) {
+    G.side = role === 'host' ? 0 : 1;
+    G.link = 'idle';
+    wantLink = role;
+    C.link.open({
+      role: role, game: 'tanks', version: C.version, name: C.state.profile.name || '',
+      onStatus: function (st, info) {
+        if (!G || G.mode !== 'net') return;
+        if (st === 'mismatch') wantLink = null;
+        G.link = st;
+        G.linkWhy = st === 'error' ? info : null;
+        if (st === 'connected') {
+          C.link.send({ t: 'name', name: C.state.profile.name || '' });
+          // #752: after an app switch either phone may have restarted or missed a turn;
+          // each says where its match is, with its own last shot, and the one behind catches up
+          sendSync();
+          // a restarted phone has none of my aim: say it again
+          aimSent = '';
+        }
+        render();
+      },
+      onMessage: onNet
+    });
+    // the side is only known now: a match begun before the choice had no seat of its own,
+    // so it waited for "the other phone" on both seats and the host could not aim, and the
+    // host kept no save until its first shot (a kill before it lost the match, #752)
+    save();
+    if (!flight) startTurn(); else render();
+  }
+  function sendSync() {
+    if (!G || G.mode !== 'net') return;
+    C.link.send({ t: 'sync', g: G.g | 0, seed: G.seed, n: G.M0.n, sum: E.digest(G.M0), M: G.M0, sent: G.sent });
+  }
+  function onNet(d) {
+    if (!G || G.mode !== 'net' || !d) return;
+    if (d.t === 'name') { G.peerName = String(d.name || '').slice(0, 16); renderPlayers(); }
+    else if (d.t === 'sync') onSync(d);
+    else if (d.t === 'turn') { if ((d.g | 0) === (G.g | 0)) { G.inbox = d; pump(); } }
+    else if (d.t === 'want') { if (G.side === 0) sendSync(); }
+    else if (d.t === 'aim') onAim(d);
+  }
+
+  // The other phone's aim, live (#861, the owner: "I want to see the other one aim too").
+  // It is only a picture: kept apart from the match (never in G.M, so never in a digest or
+  // a shot), tied to the shot number it was aimed for, and dropped once that shot is fired.
+  // The turn message alone says where a shot goes; a late or lost aim changes nothing.
+  var peerAim = null, aimSent = '', aimAt = -1e9, aimTimer = null, AIM_GAP = 66;
+  function onAim(d) {
+    var angle = +d.angle, power = +d.power;
+    if ((d.g | 0) !== (G.g | 0) || d.n !== G.M0.n || G.M0.turn === G.side || flight || G.done) return;
+    if (!(angle >= 0 && angle <= 90) || !(power >= 0 && power <= 100)) return;
+    peerAim = { g: G.g | 0, n: d.n, angle: angle, power: power };
+    draw();
+  }
+  function theirAim() {
+    var a = peerAim;
+    return a && G && G.mode === 'net' && !flight && !G.done && a.g === (G.g | 0) && a.n === G.M0.n && G.M.turn !== G.side ? a : null;
+  }
+  // sends my aim while I set it: at most one message every AIM_GAP ms, and the last
+  // position always goes out after a pause, so the other phone ends where I stopped
+  function aimOut() {
+    if (!G || G.mode !== 'net' || G.side == null || G.link !== 'connected' || flight || G.done || G.phase !== 'aim' || G.M.turn !== G.side) return;
+    var L = G.M.last[G.side], a = prefs.control === 'drag' && aiming && aiming.aim ? aiming.aim : L;
+    var m = { t: 'aim', g: G.g | 0, n: G.M0.n, angle: Math.round(a.angle * 10) / 10, power: Math.round(a.power * 10) / 10 };
+    var key = m.g + '|' + m.n + '|' + m.angle + '|' + m.power;
+    if (key === aimSent) return;
+    var now = performance.now();
+    if (now - aimAt < AIM_GAP) {
+      if (!aimTimer) aimTimer = setTimeout(function () { aimTimer = null; aimOut(); }, AIM_GAP - (now - aimAt));
+      return;
+    }
+    aimSent = key; aimAt = now;
+    C.link.send(m);
+  }
+  function onSync(d) {
+    // #861: a phone counts a shot only once it has landed (G.M0), so while one flies, or a
+    // turn waits its turn in the inbox, this phone looks a shot behind. A sync then (every
+    // reconnect sends one) was taken as "you are behind": the newer match was adopted, the
+    // flying shot vanished and the queued one was dropped, so that shot showed on one phone
+    // only. Such a sync waits until the shot has landed, and is read against the match after it.
+    if (flight || (G.inbox && !G.done)) { G.held = d; return; }
+    var pick = E.syncPick({ g: G.g, n: G.M0.n, seed: G.seed, sum: E.digest(G.M0) }, d, G.side === 1);
+    if (pick === 'take') adopt(d);
+    else if (pick === 'tell') sendSync();
+    // their last shot, which a link restart may have dropped on the way here
+    var s = d.sent;
+    if (s && (s.g | 0) === (G.g | 0) && s.n === G.M0.n && G.M0.turn !== G.side && !flight) { G.inbox = s; pump(); }
+  }
+  function adopt(d) {
+    if (!E.validMatch(d.M, true)) return;
+    stop();
+    G.M0 = clone(d.M); G.M = clone(d.M); G.seed = String(d.seed || ''); G.g = d.g | 0;
+    G.steps = []; G.inbox = null; G.held = null; flight = null; aiming = null; msg = '';
+    // a sent shot the adopted match already holds, or never will, is no longer ours to repeat
+    if (G.sent && (G.sent.g !== G.g || G.sent.n < G.M0.n)) G.sent = null;
+    G.done = false;
+    if (E.over(G.M)) { G.done = true; G.phase = 'done'; render(); later(finish, 300); return; }
+    save(); render(); startTurn();
+  }
+  // plays the other phone's queued turn once nothing else is moving
+  function pump() {
+    if (!G || flight || timer) return;
+    var d = G.inbox;
+    if (d && !G.done) {
+      G.inbox = null;
+      // this phone is behind: the other answers our match with its newer one
+      if (d.n > G.M0.n) sendSync();
+      else if (d.n === G.M0.n && G.M0.turn !== G.side) { applyTurn(d, G.M0.turn); if (flight) return; }
+    }
+    settle();
+  }
+  // a sync held back while a shot flew (#861), read once nothing is moving or queued
+  function settle() {
+    var d = G && G.held;
+    if (!d || flight || (G.inbox && !G.done)) return;
+    G.held = null;
+    onSync(d);
+  }
+  function applyTurn(d, seat) {
+    var M = clone(G.M0), steps = Array.isArray(d.m) ? d.m.slice(0, E.MOVES) : [];
+    steps.forEach(function (s) { E.move(M, seat, s > 0 ? 1 : -1); });
+    var angle = +d.angle, power = +d.power;
+    if (E.ORDER.indexOf(d.arm) < 0 || !(angle >= 0 && angle <= 90) || !(power >= 0 && power <= 100) || E.left(M, seat, d.arm) <= 0) return;
+    M.last[seat] = { angle: angle, power: power };
+    G.M = M; G.steps = steps;
+    shoot(seat, d.arm, angle, power, d.sum || null);
+  }
+
+  /* ------------------------------------------------------------- turns */
+
+  function startTurn() {
+    if (!G || G.done) return;
+    var seat = G.M.turn;
+    if (G.M.shots[seat] <= 0) { G.M.turn = 1 - seat; seat = G.M.turn; if (G.M0) G.M0.turn = seat; }
+    if (E.left(G.M, seat, arm) <= 0) arm = 'shell';
+    G.phase = isBot(seat) || isRemote(seat) ? 'busy' : 'aim';
+    render();
+    if (isBot(seat)) later(botFire, C.ui.reduceMotion() ? 300 : 900);
+    if (G.mode === 'net') pump();
+  }
+
+  function botFire() {
+    if (!G || G.done || !isBot(G.M.turn)) return;
+    var M = G.M, plan = E.botPlan(M, 1, G.level, seeded('bot' + M.n));
+    M.last[1] = { angle: plan.angle, power: plan.power };
+    shoot(1, plan.arm, plan.angle, plan.power);
+  }
+
+  // sum: the digest the other phone reported after this shot (a two-phone turn played here)
+  function shoot(who, a, angle, power, sum) {
+    var M = G.M;
+    if (E.left(M, who, a) <= 0) return;
+    G.phase = 'busy';
+    msg = ''; aiming = null; peerAim = null;
+    var sim = E.simulate(M, who, a, angle, power);
+    C.feedback('whoosh');
+    flight = { who: who, arm: a, sim: sim, t0: performance.now(), angle: angle, power: power, sum: sum || null };
+    if (G.mode === 'net' && who === G.side && !sum) {
+      // my own turn: send it at once, with the digest of the match it leads to, so the
+      // other phone animates the same shot while this one does
+      var after = clone(M);
+      E.fire(after, who, a, angle, power, sim, seeded('wind' + M.n));
+      G.sent = { t: 'turn', g: G.g, n: M.n, m: G.steps.slice(), arm: a, angle: angle, power: power, sum: E.digest(after) };
+      flight.sum = G.sent.sum;
+      save();
+      C.link.send(G.sent);
+    }
+    renderStatus(); renderPlayers(); renderArms(); renderPad();
+    // The shell's path is the information (why it missed), not decoration. A phone whose system
+    // asks for less motion (Android's animation scale 0 reads as that) lost every flight and
+    // showed only the result, so on a two-phone game the other player saw nothing (#956);
+    // it now gets a quick flight. Only the player's own Animations: Off skips it.
+    if (C.ui.motionOff()) { landed(); return; }
+    if (C.ui.reduceMotion()) flight.rate = 3;
+    kick();
+  }
+
+  function landed() {
+    var f = flight, M = G.M;
+    flight = null;
+    var r = E.fire(M, f.who, f.arm, f.angle, f.power, f.sim, seeded('wind' + M.n));
+    if (!r) { settle(); return; }
+    if (G.mode === 'net') {
+      // the two phones disagree after this shot: the host's match stands (#754)
+      // The host's sync goes out with the match after this shot: sent before it (as until
+      // #861), it was a shot behind the guest's, so the guest answered with its own wrong
+      // match, which the host kept as it was, and the guest stayed off
+      G.M0 = clone(M); G.steps = [];
+      if (f.sum && E.digest(M) !== f.sum) { if (G.side === 0) sendSync(); else C.link.send({ t: 'want' }); }
+    }
+    var now = performance.now();
+    f.sim.blasts.forEach(function (b, i) {
+      blasts.push({ x: b.x, y: b.y, r: b.r, t0: now + i * 80, dirt: b.arm === 'dirt' });
+      var d = b.dmg[1 - f.who], self = b.dmg[f.who];
+      if (d) floaters.push({ x: b.x, y: b.y - b.r, text: '+' + C.num(d), t0: now, who: f.who });
+      if (self) floaters.push({ x: M.tanks[f.who].x, y: E.tankY(M, f.who) - 30, text: '−' + C.num(self), t0: now, who: 1 - f.who, bad: true });
+    });
+    var self = f.sim.blasts.reduce(function (s, b) { return s + b.dmg[f.who]; }, 0);
+    if (f.arm === 'dirt') msg = C.t('mound');
+    else if (r.dealt) msg = C.t('hitN', { n: C.num(r.dealt) });
+    else if (self) msg = C.t('selfHit');
+    else msg = C.t('missed');
+    if (G.mode === 'net' ? f.who === G.side : (f.who === 0 || G.mode === 'people')) G.best = Math.max(G.best, r.dealt);
+    if (f.sim.blasts.length) C.feedback(r.dealt >= 30 ? 'boom' : 'thud'); else C.feedback('tap');
+    if (r.dealt) C.haptic('tap');
+    kick();
+    if (E.over(M)) {
+      G.done = true; G.phase = 'done';
+      render();
+      later(finish, C.ui.reduceMotion() ? 300 : 1800);
+      settle();
+      return;
+    }
+    save();
+    render();
+    later(startTurn, C.ui.reduceMotion() ? 200 : 900);
+    settle();
+  }
+
+  /* ------------------------------------------------------------ result */
+
+  function finish() {
+    stop();
+    var M = G.M, w = E.winner(M), net = G.mode === 'net';
+    var won = G.mode === 'people' ? null : (net ? (w < 0 ? null : w === G.side) : w === 0);
+    var coins = 6, points = 15;
+    if (G.mode === 'bot') {
+      var base = { easy: 6, medium: 12, hard: 20 }[G.level];
+      coins = won ? base : Math.max(2, Math.round(base * 0.3));
+      points = won ? base * 4 : Math.round(base * 1.2);
+      if (won) {
+        C.achievements.unlock('tnk-win');
+        if (G.level === 'hard') C.achievements.unlock('tnk-hard');
+      }
+    }
+    // two phones give no awards: a match there can be settled by a friend's help (#754)
+    if (G.best >= 40 && !net) C.achievements.unlock('tnk-big');
+    var label = C.num(M.score[0]) + '–' + C.num(M.score[1]);
+    if (G.daily) {
+      var first = C.stats.daily('tanks', G.daily, { label: label, win: won });
+      if (!first) { coins = Math.round(coins * 0.2); points = Math.round(points * 0.2); }
+    }
+    ctx.clearSave();
+    ctx.finish({
+      won: won,
+      title: w < 0 ? C.t('draw') : (G.mode === 'people' ? C.t('playerWon', { n: pname(w) }) : (won ? C.t('won') : C.t('lost'))),
+      timeMs: Date.now() - G.startedAt, coins: coins, points: points,
+      lines: [{ label: C.t('points'), value: label }, { label: C.t('best'), value: C.num(G.best) }],
+      shareText: 'چوگان · تانک‌ها' + (G.daily ? ('\nروزانه ' + G.daily) : '') + '\n' + label,
+      paint: cardPaint(),
+      // in two phones the other phone may already have started the next match, which this
+      // phone then took over: again only closes the result there
+      onAgain: G.daily ? null : function () { if (net && G.mode === 'net' && !G.done) return; newGame(current()); }
+    });
+  }
+
+  /* ------------------------------------------------------------- saves */
+
+  ctx.autosave(function () {
+    if (!G || G.done) return { inProgress: false };
+    // #752: a two-phone match is saved with its side, even before the first shot, so a
+    // phone the system killed reopens the same match and asks the other where it is
+    if (G.mode === 'net') {
+      if (G.side == null) return { inProgress: false };
+      return { g: { mode: 'net', level: G.level, side: G.side, g: G.g | 0, seed: G.seed, M: G.M0, sent: G.sent, peerName: G.peerName || '', best: G.best, elapsed: Date.now() - G.startedAt } };
+    }
+    if (!G.M.n) return { inProgress: false };
+    return { g: { mode: G.mode, level: G.level, daily: G.daily, M: G.M, best: G.best, elapsed: Date.now() - G.startedAt } };
+  });
+  function save() { ctx.save(); }
+  function validSave(sv) {
+    var g = sv && sv.g;
+    if (g && g.mode === 'net') return (g.side === 0 || g.side === 1) && typeof g.seed === 'string' && LEVELS.indexOf(g.level) >= 0 && E.validMatch(g.M);
+    return !!(g && (g.mode === 'bot' || g.mode === 'people') && LEVELS.indexOf(g.level) >= 0 && E.validMatch(g.M));
+  }
+  function restore(g) {
+    // without the link (a save carried to an app without it) the match goes on on one phone
+    var net = g.mode === 'net' && C.link.available();
+    G = { mode: g.mode === 'net' && !net ? 'people' : g.mode, level: g.level, daily: g.daily || null, M: g.M, best: g.best || 0, startedAt: Date.now() - (g.elapsed || 0), done: false, phase: 'aim' };
+    if (net) {
+      G.side = g.side; G.g = g.g | 0; G.seed = g.seed; G.M0 = clone(g.M); G.peerName = String(g.peerName || '').slice(0, 16);
+      G.sent = g.sent && g.sent.g === G.g && g.sent.n >= G.M0.n ? g.sent : null; G.steps = []; G.inbox = null; G.link = 'idle'; G.linkWhy = null;
+      openLink(G.side === 0 ? 'host' : 'guest');
+      // my shot was sent but the phone stopped before it landed: play it again here; the
+      // other phone has it already, or gets it with the next sync
+      if (G.sent && G.sent.n === G.M0.n && G.M0.turn === G.side) { render(); applyTurn(G.sent, G.side); return; }
+    }
+    render();
+    startTurn();
+  }
+
+  function askNew() {
+    if (!G || !G.daily) { settings(); return; }
+    var dd = G.daily;
+    if (G.done || !G.M.n) { newGame({ daily: dd }); return; }
+    C.ui.confirm({ title: C.t('newMatch'), body: C.t('resetWarn'), onOk: function () { newGame({ daily: dd }); } });
+  }
+  function settings() {
+    var o = G ? current() : fromPrefs(), body = el('div', { class: 'ch-col', style: { gap: 'var(--s-3)', 'align-items': 'center' } });
+    function rows() {
+      body.innerHTML = '';
+      var modes = [{ value: 'bot', label: C.t('vsBot') }, { value: 'people', label: C.t('people') }];
+      if (C.link.available() || o.mode === 'net') modes.push({ value: 'net', label: C.t('twoPhones') });
+      body.appendChild(C.ui.segmented(modes, o.mode, function (v) { o.mode = v; rows(); }));
+      if (o.mode === 'bot') body.appendChild(C.ui.segmented(LEVELS.map(function (l) { return { value: l, label: C.t(l) }; }), o.level, function (v) { o.level = v; }));
+      if (G && !G.done && G.M.n) body.appendChild(el('p', { class: 'ch-xs ch-dim', text: C.t('resetWarn') }));
+    }
+    rows();
+    C.ui.modal({
+      title: C.t('newMatch'), closeButton: true, body: [body],
+      actions: [{ label: C.t('cancel') }, { label: C.t('start'), kind: 'primary', onClick: function () { newGame(o); } }]
+    });
+  }
+  // The aim control lives behind the gear, as in Gorillas: drag like a slingshot or numbers
+  function showSettings() {
+    var seg = C.ui.segmented([{ value: 'drag', label: C.t('ctlDrag') }, { value: 'nums', label: C.t('ctlNums') }], prefs.control, function (v) {
+      prefs.control = v === 'nums' ? 'nums' : 'drag';
+      ctx.store.set('prefs', prefs);
+      aiming = null;
+      render();
+    });
+    C.ui.modal({
+      title: C.t('settings'),
+      body: [el('div', { class: 'ch-list' }, [el('div', { class: 'ch-item' }, [el('div', { class: 'ch-item__label', text: C.t('control') }), seg])])],
+      actions: [{ label: C.t('done'), kind: 'primary' }]
+    });
+  }
+
+  /* --------------------------------------------------------------- draw */
+
+  function css(name, fb) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fb; }
+  function dark() {
+    var t = document.documentElement.getAttribute('data-theme');
+    if (t === 'dark') return true;
+    if (t === 'light') return false;
+    return window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+  function palette() {
+    return dark()
+      ? { sky0: '#141A2E', sky1: '#33405F', earth0: '#4B6B3A', earth1: '#3A2E22', grass: '#6E9A4E', t: ['#5C8FE0', '#E0705C'], text: '#F4EEE4', halo: 'rgba(0,0,0,.7)', star: 'rgba(255,255,255,.5)' }
+      : { sky0: '#9FD3EE', sky1: '#F2F8EC', earth0: '#7FA458', earth1: '#8B6A44', grass: '#5E8C3A', t: ['#2F6FD0', '#C8473A'], text: '#1F1A17', halo: 'rgba(255,255,255,.85)', star: null };
+  }
+  function font(px) { return '800 ' + px + 'px ' + (getComputedStyle(document.body).fontFamily || 'sans-serif'); }
+
+  function drawTank(g, M, i, P, angleDeg) {
+    var t = M.tanks[i], y = E.tankY(M, i), dir = i === 0 ? 1 : -1, a = (angleDeg == null ? 45 : angleDeg) * Math.PI / 180;
+    g.strokeStyle = P.t[i]; g.lineWidth = 4; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(t.x, y - E.TH + 2); g.lineTo(t.x + Math.cos(a) * 16 * dir, y - E.TH + 2 - Math.sin(a) * 16); g.stroke();
+    g.fillStyle = P.t[i];
+    C.rrect(g, t.x - E.TW / 2, y - E.TH + 2, E.TW, E.TH - 4, 4); g.fill();
+    g.beginPath(); g.arc(t.x, y - E.TH + 2, 7, Math.PI, 0); g.fill();
+    g.fillStyle = 'rgba(0,0,0,.45)';
+    C.rrect(g, t.x - E.TW / 2 - 1, y - 4, E.TW + 2, 5, 2.5); g.fill();
+  }
+
+  function paint(g, w, h, now, card) {
+    var M = G.M, P = palette(), k = w / E.W, up = Math.max(0, h / k - E.H);
+    var sky = g.createLinearGradient(0, 0, 0, h);
+    sky.addColorStop(0, P.sky0); sky.addColorStop(1, P.sky1);
+    g.fillStyle = sky; g.fillRect(0, 0, w, h);
+    // a taller view is only more sky: the world, the ground and every shot keep their
+    // coordinates, so the physics and the bot are the same at every screen shape (#714)
+    g.save(); g.scale(k, k); g.translate(0, up);
+    if (P.star) { g.fillStyle = P.star; for (var s = 0; s < 30; s++) g.fillRect((s * 97) % E.W, (s * 53) % (160 + up) - up, 1.5, 1.5); }
+    // the ground: the terrain heights, with a band of grass on top
+    // the ground changes when a shot lands, not while it flies
+    var hh = M.h;
+    var earth = g.createLinearGradient(0, E.H - 360, 0, E.H);
+    earth.addColorStop(0, P.earth0); earth.addColorStop(1, P.earth1);
+    g.fillStyle = earth;
+    g.beginPath(); g.moveTo(0, E.H);
+    for (var x = 0; x <= E.W; x += 2) g.lineTo(x, E.H - hh[x]);
+    g.lineTo(E.W, E.H); g.closePath(); g.fill();
+    g.strokeStyle = P.grass; g.lineWidth = 3;
+    g.beginPath(); for (x = 0; x <= E.W; x += 2) { if (x === 0) g.moveTo(x, E.H - hh[x]); else g.lineTo(x, E.H - hh[x]); } g.stroke();
+    // the tanks, each turret at its last aim (the aim being set now, for the one aiming)
+    var aim = aimNow();
+    for (var i = 0; i < 2; i++) drawTank(g, M, i, P, aim && M.turn === i ? aim.angle : M.last[i].angle);
+    if (aim && !card) {
+      var hp = E.hand(M, M.turn), dir = M.turn === 0 ? 1 : -1, a = aim.angle * Math.PI / 180, len = 20 + aim.power * 0.8;
+      var tx = hp.x + Math.cos(a) * len * dir, ty = hp.y - Math.sin(a) * len;
+      g.strokeStyle = css('--game', '#4A5D23'); g.fillStyle = g.strokeStyle; g.lineWidth = 3; g.lineCap = 'round';
+      g.beginPath(); g.moveTo(hp.x, hp.y); g.lineTo(tx, ty); g.stroke();
+      g.beginPath(); g.arc(tx, ty, 4, 0, Math.PI * 2); g.fill();
+      var label = Math.round(aim.angle) + '° · ' + Math.round(aim.power);
+      g.font = font(14); g.textAlign = dir > 0 ? 'left' : 'right'; g.textBaseline = 'bottom';
+      g.lineWidth = 4; g.strokeStyle = P.halo; g.strokeText(label, tx + dir * 6, ty - 4);
+      g.fillStyle = P.text; g.fillText(label, tx + dir * 6, ty - 4);
+    }
+    // shots in flight, each with a short trail
+    if (flight && !card) {
+      var n = Math.floor((now - flight.t0) / 1000 * 60 * (flight.rate || 1)), done = true;
+      flight.sim.paths.forEach(function (path) {
+        var m = Math.min(path.length - 1, n);
+        if (m < path.length - 1) done = false;
+        g.strokeStyle = 'rgba(255,255,255,.5)'; g.lineWidth = 2;
+        g.beginPath(); for (var q = Math.max(0, m - 10); q <= m; q++) { if (q === Math.max(0, m - 10)) g.moveTo(path[q][0], path[q][1]); else g.lineTo(path[q][0], path[q][1]); } g.stroke();
+        g.fillStyle = '#2B2B2B'; g.beginPath(); g.arc(path[m][0], path[m][1], 3.5, 0, Math.PI * 2); g.fill();
+      });
+      flight.done = done;
+    }
+    // blasts: rings that grow and fade; dirt is a brown puff
+    blasts = blasts.filter(function (b) { return now - b.t0 < 700; });
+    blasts.forEach(function (b) {
+      var t = (now - b.t0) / 600; if (t < 0 || t > 1) return;
+      g.fillStyle = b.dirt ? 'rgba(139,106,68,' + (1 - t) + ')' : 'rgba(255,196,64,' + (1 - t) + ')';
+      g.beginPath(); g.arc(b.x, b.y, b.r * (0.4 + 0.8 * t), 0, Math.PI * 2); g.fill();
+      if (!b.dirt) { g.fillStyle = 'rgba(232,90,40,' + (1 - t) * 0.9 + ')'; g.beginPath(); g.arc(b.x, b.y, b.r * (0.2 + 0.5 * t), 0, Math.PI * 2); g.fill(); }
+    });
+    // points float up from where they were scored
+    floaters = floaters.filter(function (f) { return now - f.t0 < 1400; });
+    floaters.forEach(function (f) {
+      var t = (now - f.t0) / 1400;
+      g.globalAlpha = 1 - t; g.font = font(16); g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.lineWidth = 4; g.strokeStyle = P.halo; g.strokeText(f.text, f.x, f.y - 30 * t);
+      g.fillStyle = f.bad ? '#C8302A' : P.t[f.who]; g.fillText(f.text, f.x, f.y - 30 * t);
+      g.globalAlpha = 1;
+    });
+    // the wind at the bottom
+    var wv = M.wind;
+    g.fillStyle = 'rgba(255,255,255,.85)'; C.rrect(g, E.W / 2 - 70, E.H - 28, 140, 20, 10); g.fill();
+    g.fillStyle = '#1F1A17'; g.strokeStyle = '#1F1A17'; g.lineWidth = 3; g.font = font(11); g.textAlign = 'center'; g.textBaseline = 'middle';
+    if (!wv) g.fillText(C.t('calm'), E.W / 2, E.H - 18);
+    else {
+      var L = 8 + Math.abs(wv) / E.WIND * 50, sx = E.W / 2 - Math.sign(wv) * L / 2, ex = E.W / 2 + Math.sign(wv) * L / 2;
+      g.beginPath(); g.moveTo(sx, E.H - 18); g.lineTo(ex, E.H - 18); g.stroke();
+      g.beginPath(); g.moveTo(ex, E.H - 18); g.lineTo(ex - Math.sign(wv) * 7, E.H - 24); g.lineTo(ex - Math.sign(wv) * 7, E.H - 12); g.closePath(); g.fill();
+    }
+    g.restore();
+  }
+
+  var VIEW_H = 900;                     // the tallest view, in world units, matching --fit-ar
+  function size() {
+    var r = box.getBoundingClientRect(), w = Math.floor(Math.min(r.width, r.height * E.W / E.H));
+    w = Math.max(160, w || 0);
+    // whatever height the slot has beyond the field's own becomes sky, up to VIEW_H
+    var h = Math.min(Math.floor(r.height) || 0, Math.round(w * VIEW_H / E.W));
+    return { w: w, h: Math.max(Math.round(w * E.H / E.W), h) };
+  }
+  function draw() {
+    if (!G) return;
+    var S = size(), dpr = Math.min(2, window.devicePixelRatio || 1), now = performance.now();
+    // both sides: a new canvas is 300×150 (#359)
+    if (cv.width !== Math.round(S.w * dpr) || cv.height !== Math.round(S.h * dpr)) { cv.width = Math.round(S.w * dpr); cv.height = Math.round(S.h * dpr); }
+    cv.style.width = S.w + 'px'; cv.style.height = S.h + 'px';
+    var g = cv.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    paint(g, S.w, S.h, now);
+    if (G.mode === 'net') aimOut();
+    if (flight && flight.done) landed();
+  }
+  function loop() {
+    raf = 0;
+    draw();
+    var moving = flight || aiming || blasts.length || floaters.length;
+    if (moving && !document.hidden) raf = requestAnimationFrame(loop);
+  }
+  function kick() { if (!raf) raf = requestAnimationFrame(loop); }
+
+  function cardPaint() {
+    return function (g, W, H) {
+      var w = Math.min(W, H * E.W / E.H), h = w * E.H / E.W;
+      g.save(); g.translate((W - w) / 2, (H - h) / 2);
+      paint(g, w, h, performance.now(), true);
+      g.restore();
+    };
+  }
+
+  /* ----------------------------------------------------------------- ui */
+
+  function aimNow() {
+    // two phones: on the other's turn, their aim as it last came in (#861)
+    if (G && G.mode === 'net' && G.side != null && G.M.turn !== G.side) return theirAim();
+    if (!G || G.phase !== 'aim' || isBot(G.M.turn)) return null;
+    if (prefs.control === 'drag') return aiming && aiming.aim ? aiming.aim : null;
+    return G.M.last[G.M.turn];
+  }
+  function renderTop() {
+    top.innerHTML = '';
+    if (G.daily) top.appendChild(el('span', { class: 'ch-badge ch-badge--accent' }, [C.icon('calendar', 14), el('span', { text: C.t('dailyTk') + ' — ' + C.num(G.daily) })]));
+    else top.appendChild(el('button', { class: 'ch-badge ch-tap', type: 'button', onclick: askNew, text: G.mode === 'bot' ? C.t('vsBot') + ' · ' + C.t(G.level) : C.t(G.mode === 'net' ? 'twoPhones' : 'people') }));
+    // #861: as in Battleship, host and join are a choice made before the match; once the
+    // phones are linked (or were, and look for each other again mid-match) only the small
+    // link chip stays, where the picker and its long sentence had stayed all match long
+    if (G.mode === 'net' && pickRole()) {
+      top.appendChild(C.ui.segmented([
+        { value: 'host', label: C.t('hostGame') }, { value: 'guest', label: C.t('joinGame') }
+      ], G.side == null ? '' : (G.side === 0 ? 'host' : 'guest'), function (v) {
+        if (G.side === (v === 'host' ? 0 : 1) && G.link !== 'mismatch' && G.link !== 'error' && G.link !== 'idle') return;
+        newGame({ mode: 'net', level: G.level });
+        openLink(v);
+      }));
+    }
+    // the small chip sits beside the mode, as in Battleship; the long sentence before a
+    // role is picked goes last, so it wraps below the row instead of pushing the gear down
+    var chip = G.mode === 'net' ? el('span', { class: 'ch-badge tk-link', text: linkText() }) : null;
+    if (chip && !pickRole()) top.appendChild(chip);
+    var gear = el('button', { class: 'ch-iconbtn tk-gear', type: 'button', 'aria-label': C.t('settings'), title: C.t('settings') }, [C.icon('gear', 20)]);
+    gear.addEventListener('click', showSettings);
+    top.appendChild(gear);
+    if (chip && pickRole()) top.appendChild(chip);
+  }
+  function pickRole() { return G.side == null || (G.link !== 'connected' && G.link !== 'lost' && !G.M0.n); }
+  function renderPlayers() {
+    players.innerHTML = '';
+    var P = palette();
+    for (var s = 0; s < 2; s++) {
+      players.appendChild(el('div', { class: 'tk-player' + (G.M.turn === s && !G.done ? ' tk-player--on' : '') }, [
+        el('i', { class: 'tk-player__dot', style: { background: P.t[s] } }),
+        el('span', { class: 'tk-player__name', text: pname(s) }),
+        el('span', { class: 'tk-player__shots', text: C.t('shotsLeft', { n: C.num(G.M.shots[s]) }) }),
+        el('span', { class: 'tk-player__score', text: C.num(G.M.score[s]) })
+      ]));
+    }
+  }
+  function renderStatus() {
+    // before a role is picked neither tank is this phone's: "Rival is aiming" on both
+    // seats (#861) said a match was under way that had not begun
+    if (G.mode === 'net' && G.side == null) { status.textContent = ''; return; }
+    var seat = G.M.turn, who = isBot(seat) || isRemote(seat) ? C.t('botThinks', { n: pname(seat) }) : (G.mode === 'people' ? C.t('turnOf', { n: pname(seat) }) : C.t('yourTurn'));
+    var how = canShow() ? ' — ' + C.t(prefs.control === 'nums' ? 'aimNums' : 'aimDrag') : '';
+    status.textContent = flight ? '…' : (msg && (G.phase !== 'aim' || G.done) ? msg : who + how);
+  }
+  // the weapons with what is left of each, and the two step buttons with the moves left
+  // Outside the player's own aim (the bot's turn, a shot in flight, the end) the row is
+  // only hidden, never removed: removing it let the board grow and shrink every turn.
+  function renderArms() {
+    arms.innerHTML = '';
+    if (!G) return;
+    var seat = G.M.turn;
+    arms.style.visibility = canShow() ? '' : 'hidden';
+    E.ORDER.forEach(function (a) {
+      var n = E.left(G.M, seat, a), b = el('button', { class: 'tk-arm' + (a === arm ? ' tk-arm--on' : ''), type: 'button' },
+        [el('span', { text: C.t(a) }), a === 'shell' ? null : el('b', { text: C.num(n) })].filter(Boolean));
+      if (n <= 0) b.disabled = true;
+      b.addEventListener('click', function () { arm = a; renderArms(); });
+      arms.appendChild(b);
+    });
+    var mv = G.M.moves[seat];
+    var stepBtn = function (d, label, icon) {
+      var b = el('button', { class: 'tk-arm', type: 'button', 'aria-label': C.t(label), title: C.t(label), text: icon });
+      if (mv <= 0) b.disabled = true;
+      b.addEventListener('click', function () { stepTank(d); });
+      return b;
+    };
+    arms.appendChild(el('span', { class: 'tk-dial__lbl', text: C.t('movesLeft', { n: C.num(mv) }) }));
+    // The field is drawn left to right in every language, so in Persian the row's RTL
+    // order put ◀ (step left) on the right (#510); the pair keeps its own direction.
+    arms.appendChild(el('span', { class: 'tk-steps', dir: 'ltr' }, [stepBtn(-1, 'moveL', '◀'), stepBtn(1, 'moveR', '▶')]));
+  }
+  function stepTank(d) {
+    if (!canAim()) return;
+    if (!E.move(G.M, G.M.turn, d)) { C.feedback('bad'); msg = C.t('noMove'); renderStatus(); return; }
+    // two phones send the steps with the shot, and the other phone repeats them
+    if (G.mode === 'net') G.steps.push(d);
+    C.feedback('tap');
+    save(); render();
+  }
+  function dial(key, min, max) {
+    var val = el('span', { class: 'tk-dial__val' });
+    function show() { var v = G.M.last[G.M.turn][key]; val.textContent = C.num(Math.round(v)) + (key === 'angle' ? '°' : ''); }
+    function step(d) { var L = G.M.last[G.M.turn]; L[key] = Math.max(min, Math.min(max, Math.round(L[key]) + d)); show(); draw(); }
+    function btn(d, label) {
+      var b = el('button', { class: 'ch-iconbtn', type: 'button', 'aria-label': C.t(key) + ' ' + label, text: label });
+      var rep = null, t0 = null, end = function () { clearTimeout(t0); clearInterval(rep); t0 = rep = null; };
+      b.addEventListener('pointerdown', function (e) {
+        if (!canAim()) return;
+        e.preventDefault(); step(d);
+        t0 = setTimeout(function () { rep = setInterval(function () { step(d); }, 70); }, 380);
+      });
+      b.addEventListener('pointerup', end); b.addEventListener('pointerleave', end); b.addEventListener('pointercancel', end);
+      return b;
+    }
+    show();
+    return el('div', { class: 'tk-dial' }, [el('span', { class: 'tk-dial__lbl', text: C.t(key) }), btn(-1, '−'), val, btn(1, '+')]);
+  }
+  function renderPad() {
+    pad.innerHTML = '';
+    if (!G || prefs.control !== 'nums') return;
+    pad.style.visibility = canShow() ? '' : 'hidden';
+    pad.appendChild(dial('angle', 0, 90));
+    pad.appendChild(dial('power', 1, 100));
+    var go = el('button', { class: 'ch-btn ch-btn--primary', type: 'button', text: C.t('fireIt') });
+    go.addEventListener('click', function () { if (canAim()) { var L = G.M.last[G.M.turn]; shoot(G.M.turn, arm, L.angle, L.power); } });
+    pad.appendChild(go);
+  }
+  function render() {
+    if (!G) return;
+    renderTop(); renderPlayers(); renderStatus(); renderArms(); renderPad();
+    draw(); kick();
+  }
+
+  /* -------------------------------------------------------------- input */
+
+  // two phones: only on my own turn, and only while the other phone can hear the shot
+  function canShow() { return G && !G.done && G.phase === 'aim' && !isBot(G.M.turn) && (G.mode !== 'net' || (G.M.turn === G.side && G.link === 'connected')); }
+  function canAim() { return G && !G.done && G.phase === 'aim' && !isBot(G.M.turn) && (G.mode !== 'net' || (G.M.turn === G.side && G.link === 'connected')) && !document.querySelector('.ch-scrim'); }
+  // A slingshot, as in Gorillas: the pull sets the shot, the other way; a full pull is
+  // 40% of the field's width
+  function pullAim(dx, dy) {
+    var dir = G.M.turn === 0 ? 1 : -1, tx = -dx * dir, ty = dy, len = Math.hypot(dx, dy), full = size().w * 0.4;
+    var angle = Math.atan2(ty, tx) * 180 / Math.PI;
+    if (tx < 0) angle = ty >= 0 ? 90 : 0;
+    return { angle: Math.round(Math.max(0, Math.min(90, angle))), power: Math.max(0, Math.min(100, Math.round(len / full * 100))) };
+  }
+  cv.addEventListener('pointerdown', function (e) {
+    if (!canAim() || prefs.control !== 'drag') return;
+    e.preventDefault();
+    aiming = { id: e.pointerId, x: e.clientX, y: e.clientY, aim: null };
+    try { cv.setPointerCapture(e.pointerId); } catch (er) { /* old browsers */ }
+    kick();
+  });
+  cv.addEventListener('pointermove', function (e) { if (aiming && e.pointerId === aiming.id) aiming.aim = pullAim(e.clientX - aiming.x, e.clientY - aiming.y); });
+  cv.addEventListener('pointerup', function (e) {
+    if (!aiming || e.pointerId !== aiming.id) return;
+    var a = aiming.aim;
+    aiming = null;
+    // a short pull is taken back, not fired
+    if (!a || a.power < 6 || !canAim()) { draw(); return; }
+    G.M.last[G.M.turn] = a;
+    shoot(G.M.turn, arm, a.angle, a.power);
+  });
+  cv.addEventListener('pointercancel', function () { aiming = null; draw(); });
+
+  // Keys: ↑ ↓ angle, ← → power (towards the other tank is more), Tab the next weapon,
+  // , and . move the tank, Space or Enter fires
+  window.addEventListener('keydown', function (e) {
+    if (!canAim()) return;
+    var tg = e.target, tag = tg && tg.tagName;
+    if (tag === 'BUTTON' && (e.key === ' ' || e.key === 'Enter')) return;
+    var L = G.M.last[G.M.turn], step = e.shiftKey ? 5 : 1, dir = G.M.turn === 0 ? 1 : -1, k = e.key;
+    if (k === 'ArrowUp' || k === 'ArrowDown') L.angle = Math.max(0, Math.min(90, Math.round(L.angle) + (k === 'ArrowUp' ? step : -step)));
+    else if (k === 'ArrowLeft' || k === 'ArrowRight') L.power = Math.max(1, Math.min(100, Math.round(L.power) + (k === 'ArrowRight' ? step : -step) * dir));
+    else if (k === 'Tab') { e.preventDefault(); var i = E.ORDER.indexOf(arm); for (var t = 1; t <= E.ORDER.length; t++) { var nx = E.ORDER[(i + t) % E.ORDER.length]; if (E.left(G.M, G.M.turn, nx) > 0) { arm = nx; break; } } renderArms(); return; }
+    else if (k === ',' || k === '.') { e.preventDefault(); stepTank(k === ',' ? -1 : 1); return; }
+    else if (k === ' ' || k === 'Enter') { e.preventDefault(); shoot(G.M.turn, arm, L.angle, L.power); return; }
+    else return;
+    e.preventDefault();
+    if (prefs.control === 'drag') aiming = { id: -1, aim: { angle: L.angle, power: L.power } };
+    renderPad(); draw();
+  });
+
+  if (window.ResizeObserver) new ResizeObserver(function () { if (G) draw(); }).observe(box);
+  else window.addEventListener('resize', function () { if (G) draw(); });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && G) kick(); });
+  if (window.matchMedia) { try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () { draw(); }); } catch (er) { /* old WebViews */ } }
+  // A pause mid-flight lets that shot fly again when the game comes back
+  C.onPause(function () { stop(); aiming = null; });
+  window.addEventListener('pagehide', function () { if (G && G.mode === 'net') C.link.close(); });
+  C.onResume(function () {
+    // if the page was hidden long enough for the link to be closed, coming back reopens it
+    if (G && G.mode === 'net' && wantLink && C.link.status === 'idle') openLink(wantLink);
+    if (!G || G.done) return;
+    // #861: a shot that came in while this phone looked away flies again from its start, so
+    // it is seen here too instead of landing unseen
+    if (flight) { flight.t0 = performance.now(); flight.done = false; kick(); return; }
+    startTurn();
+  });
+
+  /* --------------------------------------------------------------- help */
+
+  function kb(k, what) { return el('div', { class: 'ch-item' }, [el('div', { class: 'ch-item__label', text: what }), el('span', { class: 'ch-badge', text: k })]); }
+  function showHelp() {
+    C.ui.modal({
+      title: C.t('help'),
+      body: [
+        el('p', { class: 'ch-dim', text: C.t('rules') }),
+        el('h3', { style: { 'margin-top': 'var(--s-4)' }, text: C.t('keyboard') }),
+        el('div', { class: 'ch-list' }, [kb('↑ ↓ / Shift', C.t('kAngle')), kb('← → / Shift', C.t('kPower')), kb('Tab', C.t('kArm')), kb(', .', C.t('kMove')), kb('Space / Enter', C.t('kFire'))])
+      ],
+      actions: [{ label: C.t('tutorial'), onClick: function () { ctx.showTutorial(TUT); } }, { label: C.t('done'), kind: 'primary' }]
+    });
+  }
+  function tArt(kind) {
+    var tank = function (x, y, c, d) { return '<g transform="translate(' + x + ' ' + y + ')"><path d="M0 -10 l' + (12 * d) + ' -9" stroke="' + c + '" stroke-width="3.5" stroke-linecap="round"/><rect x="-12" y="-10" width="24" height="8" rx="3" fill="' + c + '"/><path d="M-7 -10a7 7 0 0 1 14 0z" fill="' + c + '"/></g>'; };
+    var s = '<svg viewBox="0 0 220 110" width="100%" direction="ltr"><rect width="220" height="110" rx="10" fill="#9FD3EE"/>' +
+      '<path d="M0 110 L0 80 Q 40 60 70 74 T 140 66 T 220 82 L220 110 Z" fill="#7FA458"/>' + tank(36, 70, '#2F6FD0', 1) + tank(186, 78, '#C8473A', -1);
+    if (kind === 1) s += '<path d="M48 52 Q 112 -4 180 64" fill="none" stroke="#2B2B2B" stroke-width="2" stroke-dasharray="4 4"/><circle cx="186" cy="70" r="14" fill="rgba(255,196,64,.7)"/>';
+    if (kind === 2) s += '<path d="M48 54 L76 30" stroke="#4A5D23" stroke-width="3.5" stroke-linecap="round"/><text x="80" y="32" font-size="12" font-weight="800" fill="#1F1A17">45° · 60</text>';
+    if (kind === 3) s += '<rect x="56" y="8" width="108" height="20" rx="10" fill="#fff"/><text x="110" y="22" font-size="11" font-weight="700" text-anchor="middle" fill="#1F1A17">◀  ●  ●  ●  ▶</text>';
+    return s + '</svg>';
+  }
+  var TUT = [
+    { title: C.t('tutTitle1'), text: C.t('tutText1'), art: tArt(1) },
+    { title: C.t('tutTitle2'), text: C.t('tutText2'), art: tArt(2) },
+    { title: C.t('tutTitle3'), text: C.t('tutText3'), art: tArt(3) }
+  ];
+
+  /* -------------------------------------------------------------- start */
+
+  var saved = ctx.loadSave();
+  if (dailyDate) {
+    // the daily match has its own save slot, so a half-played day goes on
+    if (validSave(saved) && saved.g.daily === dailyDate) restore(saved.g);
+    else newGame({ daily: dailyDate });
+    if (C.stats.dailyDone('tanks', dailyDate)) {
+      var rec = C.stats.dailyOf(dailyDate).tanks;
+      C.ui.toast({ icon: 'check', title: C.t('dailyDone'), sub: rec && rec.label });
+    }
+  } else if (validSave(saved) && !saved.g.daily) {
+    restore(saved.g);
+  } else {
+    newGame(fromPrefs());
+  }
+  ctx.tutorialIfNew(TUT);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { if (G) draw(); });
+})();
+</script>
+</body>
+</html>

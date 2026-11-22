@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#FBF6EF">
+<title>جفت‌ها — چوگان</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../lib/chogan.css">
+<script src="../../lib/early.js"></script>
+<style>
+  /* Card faces are pale ivory in both themes, so every symbol keeps its colour in light
+     and dark; dark mode only deepens the backs and the shadow */
+  :root { --pr-face: #FBF6EC; --pr-edge: #E2D6C2; --pr-back: #7C3AED; --pr-back-2: #9F6CF2; --pr-shadow: rgba(40, 20, 60, .22); }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --pr-face: #EFE6D6; --pr-edge: #C9BBA3; --pr-back: #5B2BB0; --pr-back-2: #7C4FD0; --pr-shadow: rgba(0, 0, 0, .45); }
+  }
+  :root[data-theme="dark"] { --pr-face: #EFE6D6; --pr-edge: #C9BBA3; --pr-back: #5B2BB0; --pr-back-2: #7C4FD0; --pr-shadow: rgba(0, 0, 0, .45); }
+
+  .pr-top { display: flex; justify-content: center; align-items: center; gap: var(--s-2); flex-wrap: wrap; min-height: 28px; }
+  .pr-status { min-height: 1.6em; font-weight: 700; color: var(--c-text-dim); text-align: center; font-size: var(--fs-sm); }
+  /* a table of cards is a physical thing: it is not mirrored in Persian */
+  .pr-board {
+    direction: ltr; display: grid; gap: var(--pr-gap, 8px);
+    grid-template-columns: repeat(var(--cols, 4), 1fr); grid-template-rows: repeat(var(--rows, 4), 1fr);
+    touch-action: manipulation; user-select: none; -webkit-user-select: none;
+  }
+  .pr-card { position: relative; padding: 0; border: 0; background: none; cursor: pointer; perspective: 600px; min-width: 0; min-height: 0; }
+  .pr-in { position: absolute; top: 0; right: 0; bottom: 0; left: 0; transform-style: preserve-3d; transition: transform 320ms var(--ease); }
+  .pr-card--up .pr-in, .pr-card--found .pr-in { transform: rotateY(180deg); }
+  .pr-still .pr-in { transition: none; }
+  .pr-face, .pr-back { position: absolute; top: 0; right: 0; bottom: 0; left: 0; border-radius: 12%; backface-visibility: hidden; -webkit-backface-visibility: hidden; box-shadow: 0 2px 5px var(--pr-shadow); }
+  .pr-back {
+    background:
+      radial-gradient(circle at 50% 50%, var(--pr-back-2) 0 14%, transparent 15%),
+      repeating-linear-gradient(45deg, rgba(255, 255, 255, .12) 0 6%, transparent 6% 12%),
+      repeating-linear-gradient(-45deg, rgba(255, 255, 255, .12) 0 6%, transparent 6% 12%),
+      var(--pr-back);
+    border: 3px solid rgba(255, 255, 255, .55); box-sizing: border-box;
+  }
+  .pr-face { background: var(--pr-face); border: 2px solid var(--pr-edge); box-sizing: border-box; transform: rotateY(180deg); display: grid; place-items: center; }
+  .pr-face svg { width: 74%; height: 74%; }
+  .pr-card--found .pr-face { box-shadow: 0 0 0 3px var(--game), 0 2px 5px var(--pr-shadow); }
+  /* a found pair pops once (#407) */
+  .pr-card--pop .pr-in { animation: pr-pop 360ms var(--ease); }
+  @keyframes pr-pop { 0% { transform: rotateY(180deg) scale(1); } 45% { transform: rotateY(180deg) scale(1.12); } 100% { transform: rotateY(180deg) scale(1); } }
+  .pr-card--cur { outline: 3px solid var(--c-accent); outline-offset: 3px; border-radius: 12%; }
+  /* the keyboard cursor above is the only ring: the browser's focus ring stayed on the
+     card last clicked while the cursor moved on, and two cards were ringed (#490) */
+  .pr-card:focus, .pr-card:focus-visible { outline: none; }
+  .pr-sizes .ch-seg { flex-wrap: nowrap; }
+</style>
+</head>
+<body>
+<script src="../../version.js"></script>
+<script src="../../lib/chogan.js"></script>
+<script>
+/* ==== ENGINE START ==== */
+function PairsEngineFactory() {
+  'use strict';
+
+  // Board sizes by number of cards: [columns, rows]
+  var SIZES = { 16: [4, 4], 24: [4, 6], 36: [6, 6] };
+  var ORDER = [16, 24, 36], DAILY_SIZE = 24, SYMBOLS = 18;
+
+  function shuffle(a, rnd) {
+    for (var j = a.length - 1; j > 0; j--) { var k = Math.floor(rnd() * (j + 1)), t = a[j]; a[j] = a[k]; a[k] = t; }
+    return a;
+  }
+
+  // S: cards — the symbol on each place, every symbol exactly twice; found — places
+  // already paired; open — places face up and not yet paired (none, one, or the two of
+  // a miss until the next tap); seen — places that have ever been face up; moves — pairs tried.
+  function make(n, rnd) {
+    if (!SIZES[n]) n = 16;
+    var pick = shuffle(Array.from({ length: SYMBOLS }, function (_, i) { return i; }), rnd).slice(0, n / 2);
+    var cards = shuffle(pick.concat(pick), rnd);
+    return { n: n, cols: SIZES[n][0], rows: SIZES[n][1], cards: cards, found: cards.map(function () { return false; }),
+      open: [], seen: cards.map(function () { return false; }), moves: 0, misses: 0, done: false };
+  }
+
+  // A miss stays face up until the next tap, so the player can look at both cards
+  function settle(S) { if (S.open.length === 2) S.open = []; }
+
+  // Turn over the card at i. Returns 'first', 'match', 'miss', 'won' or null (no change).
+  // A miss counts as a "slip" when one of the two cards had been seen before and its
+  // partner was already known too: the player could have paired it.
+  function flip(S, i) {
+    if (S.done || i < 0 || i >= S.cards.length || S.found[i] || S.open.indexOf(i) >= 0) return null;
+    settle(S);
+    var knewPair = false;
+    if (S.open.length === 1) {
+      var a = S.open[0];
+      // was the partner of the first card already known when the second was chosen?
+      for (var j = 0; j < S.cards.length; j++) if (j !== a && S.seen[j] && !S.found[j] && S.cards[j] === S.cards[a]) knewPair = true;
+    }
+    S.open.push(i);
+    S.seen[i] = true;
+    if (S.open.length === 1) return 'first';
+    S.moves++;
+    var x = S.open[0], y = S.open[1];
+    if (S.cards[x] === S.cards[y]) {
+      S.found[x] = S.found[y] = true;
+      S.open = [];
+      if (S.found.every(Boolean)) { S.done = true; return 'won'; }
+      return 'match';
+    }
+    if (knewPair) S.misses++;
+    return 'miss';
+  }
+
+  function pairsLeft(S) { var n = 0; for (var i = 0; i < S.found.length; i++) if (!S.found[i]) n++; return n / 2; }
+
+  // The yardstick for a sharp game: a perfect memory needs about 1.6 moves a pair on
+  // average (it sees every card once and pairs each as soon as it knows both), so
+  // 1.5 a pair takes a good memory and a little luck.
+  function perfect(n) { return Math.ceil(n / 2 * 1.5); }
+
+  function restore(v) {
+    if (!v || !SIZES[v.n] || !Array.isArray(v.cards) || v.cards.length !== v.n || !Array.isArray(v.found) || v.found.length !== v.n) return null;
+    var count = {};
+    for (var i = 0; i < v.n; i++) {
+      var c = v.cards[i];
+      if (typeof c !== 'number' || c < 0 || c >= SYMBOLS || c % 1) return null;
+      count[c] = (count[c] || 0) + 1;
+    }
+    for (var k in count) if (count[k] !== 2) return null;
+    // a pair is found as a whole or not at all
+    for (var f = 0; f < v.n; f++) {
+      var mate = v.cards.indexOf(v.cards[f]) === f ? v.cards.lastIndexOf(v.cards[f]) : v.cards.indexOf(v.cards[f]);
+      if (!!v.found[f] !== !!v.found[mate]) return null;
+    }
+    var S = { n: v.n, cols: SIZES[v.n][0], rows: SIZES[v.n][1], cards: v.cards.slice(), found: v.found.map(Boolean),
+      open: [], seen: Array.isArray(v.seen) && v.seen.length === v.n ? v.seen.map(Boolean) : v.found.map(Boolean),
+      moves: v.moves >= 0 ? v.moves | 0 : 0, misses: v.misses >= 0 ? v.misses | 0 : 0, done: false };
+    S.done = S.found.every(Boolean);
+    return S;
+  }
+
+  return { SIZES: SIZES, ORDER: ORDER, DAILY_SIZE: DAILY_SIZE, SYMBOLS: SYMBOLS, make: make, flip: flip, settle: settle,
+    pairsLeft: pairsLeft, perfect: perfect, restore: restore };
+}
+if (typeof module !== 'undefined' && module.exports) module.exports = PairsEngineFactory;
+/* ==== ENGINE END ==== */
+</script>
+<script>
+(function () {
+  'use strict';
+  var C = window.Chogan, el = C.el;
+  var E = PairsEngineFactory();
+
+  C.boot({});
+  var ctx = C.game({
+    id: 'pairs',
+    name: { fa: 'جفت‌ها', en: 'Pairs', zh: '翻牌配对', de: 'Paare', es: 'Parejas', pl: 'Pary', fr: 'Paires', ar: 'الأزواج', hi: 'जोड़ियाँ' },
+    accent: '#7C3AED',
+    mood: 'sudoku',
+    strings: {
+      fa: {
+        moves: 'حرکت', movesN: '{n} حرکت', fewestN: 'بهترین: {n} حرکت', size: 'اندازه', newDeal: 'چیدمان تازه', pairsLeftN: '{n} جفت مانده',
+        allPairs: 'همه جفت شدند!', dailyPr: 'جفت‌های روزانه', board: 'میز کارت‌ها', cardDown: 'کارت پشت‌ورو', cardUp: 'کارت رو: {s}', cardFound: 'جفت‌شده: {s}',
+        keysMove: 'رفتن بین کارت‌ها', keysFlip: 'برگرداندن کارت', slips: 'جفت‌های از دست‌رفته',
+        rules: 'همه‌ی کارت‌ها پشت‌ورو هستند و هر نقش دو بار آمده. هر بار دو کارت را برگردان: اگر یکی بودند، رو می‌مانند؛ اگر نه، با ضربه‌ی بعدی دوباره پشت‌ورو می‌شوند. جای کارت‌ها را به خاطر بسپار و همه را با کمترین حرکت جفت کن. هر دو کارتی که برمی‌گردانی یک حرکت است. ساعتی در کار نیست. چالش روزانه یک میز ۴×۶ یکسان برای همه است.',
+        tutTitle1: 'دو تا دو تا', tutText1: 'هر بار دو کارت را برگردان. اگر نقششان یکی بود، جفت شدند و رو می‌مانند.',
+        tutTitle2: 'به خاطر بسپار', tutText2: 'اگر یکی نبودند، دوباره پشت‌ورو می‌شوند. جایشان را یادت بماند تا با حرکت کمتری ببری.',
+        s0: 'دایره‌ی قرمز', s1: 'مربع آبی', s2: 'مثلث سبز', s3: 'لوزی طلایی', s4: 'ستاره‌ی بنفش', s5: 'قلب صورتی', s6: 'شش‌ضلعی فیروزه‌ای', s7: 'به‌علاوه‌ی قهوه‌ای', s8: 'هلال سرمه‌ای',
+        s9: 'خورشید نارنجی', s10: 'قطره‌ی آبی', s11: 'برگ سبز', s12: 'گل سرخابی', s13: 'آذرخش سیاه', s14: 'حلقه‌ی سبزآبی', s15: 'پیکان خاکستری', s16: 'خانه‌ی آجری', s17: 'ماهی بنفش'
+      },
+      en: {
+        moves: 'Moves', movesN: '{n} moves', fewestN: 'Best: {n} moves', size: 'Size', newDeal: 'New deal', pairsLeftN: '{n} pairs left',
+        allPairs: 'All paired!', dailyPr: 'Daily Pairs', board: 'Card table', cardDown: 'Face-down card', cardUp: 'Face up: {s}', cardFound: 'Paired: {s}',
+        keysMove: 'Move between the cards', keysFlip: 'Turn a card over', slips: 'Pairs missed',
+        rules: 'Every card lies face down, and each picture appears twice. Turn over two cards at a time: if they match, they stay up; if not, they turn back at your next tap. Remember where the cards are and pair them all in as few moves as you can. Every two cards you turn over is one move. There is no clock. The daily challenge is one 4×6 table, the same for everyone.',
+        tutTitle1: 'Two at a time', tutText1: 'Turn over two cards. If the pictures match, they are a pair and stay face up.',
+        tutTitle2: 'Remember', tutText2: 'If they don\'t match, they turn back. Remember where they were to win in fewer moves.',
+        s0: 'red circle', s1: 'blue square', s2: 'green triangle', s3: 'gold diamond', s4: 'purple star', s5: 'pink heart', s6: 'teal hexagon', s7: 'brown plus', s8: 'navy moon',
+        s9: 'orange sun', s10: 'blue drop', s11: 'green leaf', s12: 'magenta flower', s13: 'black bolt', s14: 'teal ring', s15: 'grey arrow', s16: 'brick house', s17: 'violet fish'
+      },
+      pl: {
+        moves: 'Ruchy', movesN: '{n} ruchów', fewestN: 'Najlepszy: {n} ruchów', size: 'Rozmiar', newDeal: 'Nowe rozdanie', pairsLeftN: 'Pozostałe pary: {n}',
+        allPairs: 'Wszystkie sparowane!', dailyPr: 'Codzienne Pary', board: 'Stół karciany', cardDown: 'Zakryta karta', cardUp: 'Odkryta: {s}', cardFound: 'Sparowana: {s}',
+        keysMove: 'Przemieść między kartami', keysFlip: 'Odwróć kartę', slips: 'Pominięte pary',
+        rules: 'Wszystkie karty leżą zakryte, a każdy obrazek pojawia się dwukrotnie. Odwracaj po dwie karty na raz: jeśli pasują do siebie, pozostają odkryte; jeśli nie, odwrócą się z powrotem przy Twoim następnym dotknięciu. Zapamiętuj położenie kart i sparuj je wszystkie w jak najmniejszej liczbie ruchów. Każde odwrócenie dwóch kart to jeden ruch. Gra nie jest na czas. Codzienne wyzwanie to jedna plansza 4×6, taka sama dla wszystkich.',
+        tutTitle1: 'Dwie na raz', tutText1: 'Odwróć dwie karty. Jeśli obrazki pasują do siebie, tworzą parę i pozostają odkryte.',
+        tutTitle2: 'Zapamiętaj', tutText2: 'Jeśli do siebie nie pasują, odwrócą się z powrotem. Zapamiętaj, gdzie leżały, aby wygrać w mniejszej liczbie ruchów.',
+        s0: 'czerwone koło', s1: 'niebieski kwadrat', s2: 'zielony trójkąt', s3: 'złoty romb', s4: 'fioletowa gwiazda', s5: 'różowe serce', s6: 'morski sześciokąt', s7: 'brązowy plus', s8: 'granatowy księżyc',
+        s9: 'pomarańczowe słońce', s10: 'niebieska kropla', s11: 'zielony liść', s12: 'magentowy kwiat', s13: 'czarny piorun', s14: 'morski pierścień', s15: 'szara strzałka', s16: 'ceglany dom', s17: 'fiołkowa ryba'
+      },
+      fr: {
+        moves: 'Coups', movesN: '{n} coups', fewestN: 'Record : {n} coups', size: 'Taille', newDeal: 'Nouvelle donne', pairsLeftN: 'Encore {n} paires',
+        allPairs: 'Tout est apparié !', dailyPr: 'Paires du jour', board: 'Table de cartes', cardDown: 'Carte face cachée', cardUp: 'Face visible : {s}', cardFound: 'Appariée : {s}',
+        keysMove: 'Aller d’une carte à l’autre', keysFlip: 'Retourner une carte', slips: 'Paires ratées',
+        rules: 'Toutes les cartes sont face cachée, et chaque image apparaît deux fois. Retourne deux cartes à la fois : si elles vont ensemble, elles restent visibles ; sinon, elles se retournent à ta touche suivante. Retiens où sont les cartes et forme toutes les paires en un minimum de coups. Chaque paire de cartes retournées compte pour un coup. Il n’y a pas de chrono. Le défi du jour est une table de 4×6, la même pour tous.',
+        tutTitle1: 'Deux à la fois', tutText1: 'Retourne deux cartes. Si les images sont identiques, elles forment une paire et restent visibles.',
+        tutTitle2: 'Mémorise', tutText2: 'Si elles sont différentes, elles se retournent. Retiens où elles étaient pour gagner en moins de coups.',
+        s0: 'rond rouge', s1: 'carré bleu', s2: 'triangle vert', s3: 'losange doré', s4: 'étoile violette', s5: 'cœur rose', s6: 'hexagone turquoise', s7: 'plus marron', s8: 'lune bleu marine',
+        s9: 'soleil orange', s10: 'goutte bleue', s11: 'feuille verte', s12: 'fleur magenta', s13: 'éclair noir', s14: 'anneau turquoise', s15: 'flèche grise', s16: 'maison brique', s17: 'poisson violet'
+      },
+      ar: {
+        moves: 'الحركات', movesN: '{n} حركات', fewestN: 'الأفضل: {n} حركات', size: 'الحجم', newDeal: 'توزيع جديد', pairsLeftN: 'بقي {n} أزواج',
+        allPairs: 'اكتملت الأزواج!', dailyPr: 'أزواج اليوم', board: 'طاولة الأوراق', cardDown: 'ورقة مقلوبة', cardUp: 'مكشوفة: {s}', cardFound: 'مطابقة: {s}',
+        keysMove: 'تنقل بين الأوراق', keysFlip: 'اقلب ورقة', slips: 'أزواج فاتتك',
+        rules: 'كل الأوراق مقلوبة على وجهها، وكل صورة تظهر مرتين. اقلب ورقتين في كل مرة: إن تطابقتا بقيتا مكشوفتين، وإلا انقلبتا عند نقرتك التالية. تذكّر أماكن الأوراق وطابقها كلها بأقل عدد ممكن من الحركات. كل ورقتين تقلبهما حركة واحدة. لا توجد ساعة. تحدي اليوم طاولة واحدة 4×6، هي نفسها للجميع.',
+        tutTitle1: 'ورقتان كل مرة', tutText1: 'اقلب ورقتين. إن تطابقت الصورتان فهما زوج وتبقيان مكشوفتين.',
+        tutTitle2: 'تذكّر', tutText2: 'إن لم تتطابقا انقلبتا من جديد. تذكّر مكانهما لتفوز بحركات أقل.',
+        s0: 'دائرة حمراء', s1: 'مربع أزرق', s2: 'مثلث أخضر', s3: 'معين ذهبي', s4: 'نجمة بنفسجية', s5: 'قلب وردي', s6: 'مسدس فيروزي', s7: 'علامة زائد بنية', s8: 'هلال كحلي',
+        s9: 'شمس برتقالية', s10: 'قطرة زرقاء', s11: 'ورقة شجر خضراء', s12: 'زهرة أرجوانية', s13: 'برق أسود', s14: 'حلقة فيروزية', s15: 'سهم رمادي', s16: 'بيت قرميدي', s17: 'سمكة بنفسجية'
+      },
+      hi: {
+        moves: 'चालें', movesN: '{n} चालें', fewestN: 'सर्वश्रेष्ठ: {n} चालें', size: 'आकार', newDeal: 'नया खेल', pairsLeftN: '{n} जोड़ियाँ बाक़ी',
+        allPairs: 'सब जोड़ियाँ बन गईं!', dailyPr: 'रोज़ की जोड़ियाँ', board: 'कार्डों की मेज़', cardDown: 'उल्टा कार्ड', cardUp: 'सीधा: {s}', cardFound: 'जोड़ी बनी: {s}',
+        keysMove: 'कार्डों के बीच जाएँ', keysFlip: 'कार्ड पलटें', slips: 'छूटी जोड़ियाँ',
+        rules: 'सारे कार्ड उल्टे रखे हैं, और हर चित्र दो बार आता है। एक बार में दो कार्ड पलटें: मेल खाएँ तो वे सीधे रहते हैं; न खाएँ तो अगली बार छूने पर फिर उल्टे हो जाते हैं। याद रखें कि कौन-सा कार्ड कहाँ है, और कम से कम चालों में सबकी जोड़ियाँ बनाएँ। हर दो पलटे कार्ड एक चाल हैं। कोई घड़ी नहीं है। रोज़ की चुनौती एक 4×6 मेज़ है, सबके लिए एक जैसी।',
+        tutTitle1: 'दो-दो करके', tutText1: 'दो कार्ड पलटें। चित्र मेल खाएँ तो जोड़ी बनती है और वे सीधे रहते हैं।',
+        tutTitle2: 'याद रखें', tutText2: 'मेल न खाएँ तो वे फिर उल्टे हो जाते हैं। उनकी जगह याद रखें ताकि कम चालों में जीतें।',
+        s0: 'लाल गोला', s1: 'नीला वर्ग', s2: 'हरा त्रिकोण', s3: 'सुनहरा हीरा', s4: 'बैंगनी तारा', s5: 'गुलाबी दिल', s6: 'फ़िरोज़ी षट्भुज', s7: 'भूरा धन चिह्न', s8: 'गहरा नीला चाँद',
+        s9: 'नारंगी सूरज', s10: 'नीली बूँद', s11: 'हरी पत्ती', s12: 'मैजेंटा फूल', s13: 'काली बिजली', s14: 'फ़िरोज़ी छल्ला', s15: 'सलेटी तीर', s16: 'ईंटों का घर', s17: 'जामुनी मछली'
+      },
+      zh: {
+        moves: '步数', movesN: '{n} 步', fewestN: '最佳：{n} 步', size: '尺寸', newDeal: '新一局', pairsLeftN: '还剩 {n} 对',
+        allPairs: '全部配对！', dailyPr: '每日翻牌配对', board: '牌桌', cardDown: '背面朝上的牌', cardUp: '已翻开：{s}', cardFound: '已配对：{s}',
+        keysMove: '在牌之间移动', keysFlip: '翻开一张牌', slips: '错过的配对',
+        rules: '所有牌都背面朝上，每个图案出现两次。每次翻开两张牌：相同就留着；不同的话，下一次点击时会翻回去。记住每张牌的位置，用尽量少的步数把它们全部配对。每翻开两张牌算一步。没有计时。每日挑战是同一个 4×6 牌桌，所有人都一样。',
+        tutTitle1: '两张一组', tutText1: '每次翻开两张牌。图案相同就配对成功，并保持翻开。',
+        tutTitle2: '记住位置', tutText2: '不同的话它们会翻回去。记住位置，就能用更少的步数获胜。',
+        s0: '红圆', s1: '蓝方块', s2: '绿三角', s3: '金菱形', s4: '紫星', s5: '粉心', s6: '青六边形', s7: '棕十字', s8: '深蓝月亮',
+        s9: '橙太阳', s10: '蓝水滴', s11: '绿叶', s12: '品红花', s13: '黑闪电', s14: '青圆环', s15: '灰箭头', s16: '砖红房子', s17: '紫鱼'
+      },
+      de: {
+        moves: 'Züge', movesN: '{n} Züge', fewestN: 'Bestwert: {n} Züge', size: 'Größe', newDeal: 'Neu legen', pairsLeftN: 'noch {n} Paare',
+        allPairs: 'Alle gefunden!', dailyPr: 'Paare des Tages', board: 'Kartentisch', cardDown: 'Verdeckte Karte', cardUp: 'Aufgedeckt: {s}', cardFound: 'Gefunden: {s}',
+        keysMove: 'Zwischen den Karten wechseln', keysFlip: 'Karte umdrehen', slips: 'Verpasste Paare',
+        rules: 'Alle Karten liegen verdeckt, und jedes Bild gibt es zweimal. Dreh jeweils zwei Karten um: Passen sie, bleiben sie offen; sonst drehen sie sich beim nächsten Tippen wieder um. Merk dir, wo die Karten liegen, und finde alle Paare mit möglichst wenigen Zügen. Je zwei umgedrehte Karten sind ein Zug. Es läuft keine Uhr. Die Tagesaufgabe ist ein 4×6-Tisch, für alle gleich.',
+        tutTitle1: 'Immer zwei', tutText1: 'Dreh zwei Karten um. Passen die Bilder, sind sie ein Paar und bleiben offen.',
+        tutTitle2: 'Merken', tutText2: 'Passen sie nicht, drehen sie sich zurück. Merk dir die Plätze, dann gewinnst du mit weniger Zügen.',
+        s0: 'roter Kreis', s1: 'blaues Quadrat', s2: 'grünes Dreieck', s3: 'goldene Raute', s4: 'violetter Stern', s5: 'rosa Herz', s6: 'türkises Sechseck', s7: 'braunes Plus', s8: 'dunkelblauer Mond',
+        s9: 'orange Sonne', s10: 'blauer Tropfen', s11: 'grünes Blatt', s12: 'magenta Blume', s13: 'schwarzer Blitz', s14: 'türkiser Ring', s15: 'grauer Pfeil', s16: 'rotes Haus', s17: 'violetter Fisch'
+      },
+      es: {
+        moves: 'Movimientos', movesN: '{n} movimientos', fewestN: 'Mejor: {n} movimientos', size: 'Tamaño', newDeal: 'Nuevo reparto', pairsLeftN: 'quedan {n} parejas',
+        allPairs: '¡Todas emparejadas!', dailyPr: 'Parejas diarias', board: 'Mesa de cartas', cardDown: 'Carta boca abajo', cardUp: 'Boca arriba: {s}', cardFound: 'Emparejada: {s}',
+        keysMove: 'Moverse entre las cartas', keysFlip: 'Girar una carta', slips: 'Parejas perdidas',
+        rules: 'Todas las cartas están boca abajo y cada dibujo aparece dos veces. Gira dos cartas cada vez: si coinciden, se quedan arriba; si no, se vuelven a girar con tu siguiente toque. Recuerda dónde están y empareja todas en el menor número de movimientos. Cada dos cartas que giras es un movimiento. No hay reloj. El reto diario es una mesa de 4×6, la misma para todos.',
+        tutTitle1: 'De dos en dos', tutText1: 'Gira dos cartas. Si los dibujos coinciden, son pareja y se quedan boca arriba.',
+        tutTitle2: 'Recuerda', tutText2: 'Si no coinciden, se vuelven a girar. Recuerda dónde estaban para ganar con menos movimientos.',
+        s0: 'círculo rojo', s1: 'cuadrado azul', s2: 'triángulo verde', s3: 'rombo dorado', s4: 'estrella morada', s5: 'corazón rosa', s6: 'hexágono turquesa', s7: 'cruz marrón', s8: 'luna azul marino',
+        s9: 'sol naranja', s10: 'gota azul', s11: 'hoja verde', s12: 'flor magenta', s13: 'rayo negro', s14: 'anillo turquesa', s15: 'flecha gris', s16: 'casa de ladrillo', s17: 'pez violeta'
+      }
+    }
+  });
+
+  /* Eighteen pictures, each a different shape and a different colour, so a player who
+     can't tell two colours apart still has the shape, and a child who can't read needs
+     neither. Drawn in a 100×100 box. */
+  var ART = [
+    ['#D9362B', '<circle cx="50" cy="50" r="34"/>'],
+    ['#2563C9', '<rect x="18" y="18" width="64" height="64" rx="6"/>'],
+    ['#22924F', '<path d="M50 14 88 82H12z"/>'],
+    ['#A57600', '<path d="M50 10 86 50 50 90 14 50z"/>'],
+    ['#8E3FBF', '<path d="M50 9l11.8 24 26.4 3.8-19.1 18.6 4.5 26.3L50 69.3 26.4 81.7l4.5-26.3L11.8 36.8 38.2 33z"/>'],
+    ['#D6336C', '<path d="M50 86C24 66 12 52 12 36a19 19 0 0 1 38-6 19 19 0 0 1 38 6c0 16-12 30-38 50z"/>'],
+    ['#0A7C86', '<path d="M30 15h40l20 35-20 35H30L10 50z"/>'],
+    ['#7A5230', '<path d="M38 12h24v26h26v24H62v26H38V62H12V38h26z"/>'],
+    ['#2C3E8F', '<path d="M62 12a38 38 0 1 0 26 52A30 30 0 1 1 62 12z"/>'],
+    ['#C25E08', '<circle cx="50" cy="50" r="20"/><path d="M50 6v14M50 80v14M6 50h14M80 50h14M19 19l10 10M71 71l10 10M19 81l10-10M71 29l10-10" stroke="#C25E08" stroke-width="7" stroke-linecap="round"/>'],
+    ['#1A6FC0', '<path d="M50 8C66 32 78 46 78 62a28 28 0 0 1-56 0C22 46 34 32 50 8z"/>'],
+    ['#5B8C22', '<path d="M16 84C16 40 44 14 86 14c0 42-26 70-70 70z"/><path d="M18 82 64 36" stroke="#FBF6EC" stroke-width="5" stroke-linecap="round"/>'],
+    ['#B5179E', '<circle cx="50" cy="28" r="16"/><circle cx="72" cy="45" r="16"/><circle cx="63" cy="71" r="16"/><circle cx="37" cy="71" r="16"/><circle cx="28" cy="45" r="16"/><circle cx="50" cy="52" r="11" fill="#F2C200"/>'],
+    ['#2E2A26', '<path d="M58 6 20 56h26l-8 38 42-54H54z"/>'],
+    ['#0B8F7E', '<circle cx="50" cy="50" r="34" fill="none" stroke="#0B8F7E" stroke-width="16"/>'],
+    ['#55626F', '<path d="M50 8 86 46H64v44H36V46H14z"/>'],
+    ['#A64B2A', '<path d="M50 10 90 46H80v42H58V64H42v24H20V46H10z"/>'],
+    ['#6D3FD8', '<path d="M8 50c14-20 34-28 54-22l26-16v76L62 72C42 78 22 70 8 50z"/><circle cx="30" cy="46" r="5" fill="#FBF6EC"/>']
+  ];
+  function art(sym) {
+    var a = ART[sym];
+    return '<svg viewBox="0 0 100 100" aria-hidden="true"><g fill="' + a[0] + '">' + a[1] + '</g></svg>';
+  }
+
+  var params = new URLSearchParams(location.search);
+  var dailyDate = params.get('daily');
+  var MISS_MS = 900, WIN_MS = 700;
+
+  var prefs = ctx.store.get('prefs', null);
+  if (!prefs || !E.SIZES[prefs.size]) prefs = { size: 16 };
+
+  var S = null, nodes = [], busy = false, cur = -1, missTimer = null;
+  var startedAt = Date.now(), pausedAt = 0;
+
+  var top = el('div', { class: 'pr-top ch-above' });
+  var board = el('div', { class: 'pr-board', role: 'group', 'aria-label': C.t('board') });
+  var fit = el('div', { class: 'ch-fit' }, [board]);
+  var status = el('div', { class: 'pr-status', 'aria-live': 'polite' });
+  var wrap = el('div', { class: 'pr-wrap ch-split' }, [fit, el('div', { class: 'ch-side' }, [top, status])]);
+
+  ctx.stat('moves', C.t('moves'));
+  ctx.button({ icon: 'help', label: C.t('help'), onClick: showHelp });
+  var newBtn = ctx.button({ icon: 'refresh', label: C.t('newDeal'), onClick: askNew });
+  if (dailyDate) newBtn.classList.add('ch-hidden');
+  ctx.main.appendChild(wrap);
+  ctx.mount();
+
+  /* --------------------------------------------------------- drawing */
+
+  function sizeLabel(n) { var s = E.SIZES[n]; return C.num(s[0]) + '×' + C.num(s[1]); }
+
+  function renderTop() {
+    top.innerHTML = '';
+    if (dailyDate) { top.appendChild(el('span', { class: 'ch-badge ch-badge--accent' }, [C.icon('calendar', 14), el('span', { text: C.t('dailyPr') + ' — ' + C.num(dailyDate) })])); return; }
+    var seg = C.ui.segmented(E.ORDER.map(function (n) { return { value: n, label: sizeLabel(n) }; }), S.n, function (v) {
+      if (v === S.n) return;
+      var go = function () { prefs.size = v; ctx.store.set('prefs', prefs); newGame(v); };
+      // a table already worked on is not thrown away without asking
+      if (S.moves > 0 && !S.done) {
+        C.ui.confirm({ title: C.t('newDeal'), body: C.t('resetWarn'), onOk: go, onCancel: renderTop });
+        renderTop();
+        return;
+      }
+      go();
+    });
+    top.appendChild(el('div', { class: 'pr-sizes' }, [seg]));
+  }
+
+  // One button per card, kept for the whole game, so a flip is a class change the browser animates
+  function build() {
+    board.innerHTML = '';
+    nodes = [];
+    board.style.setProperty('--cols', S.cols);
+    board.style.setProperty('--rows', S.rows);
+    fit.style.setProperty('--fit-ar', S.cols / S.rows);
+    board.style.aspectRatio = S.cols + ' / ' + S.rows;
+    board.classList.add('pr-still');
+    for (var i = 0; i < S.n; i++) {
+      var b = el('button', { class: 'pr-card', type: 'button', tabindex: '-1' }, [
+        el('div', { class: 'pr-in' }, [el('div', { class: 'pr-back' }), el('div', { class: 'pr-face', html: art(S.cards[i]) })])
+      ]);
+      b._i = i;
+      nodes.push(b);
+      board.appendChild(b);
+    }
+    render();
+    requestAnimationFrame(function () { requestAnimationFrame(function () { board.classList.remove('pr-still'); }); });
+  }
+
+  function render() {
+    for (var i = 0; i < nodes.length; i++) {
+      var b = nodes[i], up = S.open.indexOf(i) >= 0, f = S.found[i];
+      b.classList.toggle('pr-card--up', up);
+      b.classList.toggle('pr-card--found', f);
+      b.classList.toggle('pr-card--cur', i === cur);
+      var name = C.t('s' + S.cards[i]);
+      b.setAttribute('aria-label', f ? C.t('cardFound', { s: name }) : up ? C.t('cardUp', { s: name }) : C.t('cardDown'));
+    }
+    var gap = Math.max(4, Math.round(board.clientWidth / S.cols * 0.08));
+    board.style.setProperty('--pr-gap', gap + 'px');
+    ctx.setStat('moves', C.num(S.moves));
+    var best = !dailyDate && C.stats.getBest('pairs', 'moves' + S.n);
+    status.textContent = S.done ? C.t('allPairs') : C.t('pairsLeftN', { n: C.num(E.pairsLeft(S)) }) + (best ? ' · ' + C.t('fewestN', { n: C.num(best) }) : '');
+  }
+
+  /* ------------------------------------------------------------ moves */
+
+  function tap(i) {
+    if (!S || S.done || busy) return;
+    clearTimeout(missTimer);
+    var r = E.flip(S, i);
+    if (!r) { C.feedback('bad'); return; }
+    C.audio.sfx('flip');
+    if (r === 'match' || r === 'won') {
+      var pair = nodes.filter(function (b) { return S.cards[b._i] === S.cards[i]; });
+      // the pop waits for the second card to finish turning
+      setTimeout(function () {
+        C.audio.sfx('pop');
+        C.haptic('tap');
+        pair.forEach(function (b) { b.classList.remove('pr-card--pop'); void b.offsetWidth; b.classList.add('pr-card--pop'); C.ui.burst(b); });
+      }, C.ui.reduceMotion() ? 0 : 300);
+      ctx.setStat('moves', C.num(S.moves), true);
+    } else if (r === 'miss') {
+      ctx.setStat('moves', C.num(S.moves), true);
+      // the two stay up long enough to be seen, or until the next tap
+      missTimer = setTimeout(function () { E.settle(S); render(); }, MISS_MS);
+    }
+    render();
+    if (r === 'won') { won(); return; }
+    save();
+  }
+
+  function won() {
+    busy = true;
+    cur = -1;
+    save();
+    render();
+    C.feedback('good');
+    setTimeout(finish, C.ui.reduceMotion() ? 0 : WIN_MS);
+  }
+
+  function finish() {
+    var elapsed = (pausedAt || Date.now()) - startedAt, n = S.n;
+    var base = n === 16 ? 6 : n === 24 ? 10 : 16;
+    var coins = base, points = base * 4, note = null;
+    var sharp = S.moves <= E.perfect(n);
+    C.achievements.unlock('pr-win');
+    if (n === 36) C.achievements.unlock('pr-big');
+    if (sharp) C.achievements.unlock('pr-sharp');
+    if (sharp) coins += 3;
+    if (S.daily) {
+      coins += 8; points += 25;
+      if (!C.stats.daily('pairs', S.daily, { label: C.t('movesN', { n: C.num(S.moves) }), moves: S.moves, ms: elapsed })) {
+        coins = Math.round(coins * 0.2); points = Math.round(points * 0.2);
+      }
+    } else if (C.stats.best('pairs', 'moves' + n, S.moves, true)) {
+      note = C.t('fewestN', { n: C.num(S.moves) });
+    }
+    var shot = { cols: S.cols, rows: S.rows, cards: S.cards.slice() };
+    ctx.clearSave();
+    ctx.finish({
+      won: true, title: C.t('allPairs'), note: note, timeMs: elapsed, coins: coins, points: points,
+      lines: [
+        S.daily ? { label: C.t('daily'), value: C.num(S.daily) } : { label: C.t('size'), value: sizeLabel(n) },
+        { label: C.t('moves'), value: C.num(S.moves) },
+        { label: C.t('slips'), value: C.num(S.misses) },
+        { label: C.t('time'), value: C.time(elapsed) }
+      ],
+      shareText: 'چوگان · جفت‌ها' + (S.daily ? ('\nروزانه ' + S.daily) : ('\n' + sizeLabel(n))) + '\n' + C.t('movesN', { n: C.num(S.moves) }),
+      paint: cardPaint(shot),
+      againLabel: S.daily ? null : C.t('newDeal'),
+      onAgain: S.daily ? null : function () { newGame(n); }
+    });
+  }
+
+  /* ------------------------------------------------------- share card */
+
+  function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#999'; }
+  // The card shows the whole table face up, every pair found
+  function cardPaint(shot) {
+    var imgs = ART.map(function (a) {
+      var im = new Image();
+      im.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><g fill="' + a[0] + '">' + a[1] + '</g></svg>');
+      return im;
+    });
+    return function (g, w, h) {
+      var cell = Math.min(w / shot.cols, h / shot.rows), ox = (w - cell * shot.cols) / 2, oy = (h - cell * shot.rows) / 2, gap = cell * 0.08, sz = cell - gap;
+      for (var i = 0; i < shot.cards.length; i++) {
+        var x = ox + (i % shot.cols) * cell + gap / 2, y = oy + Math.floor(i / shot.cols) * cell + gap / 2;
+        g.fillStyle = cssVar('--pr-face');
+        C.rrect(g, x, y, sz, sz, sz * 0.12);
+        g.fill();
+        var im = imgs[shot.cards[i]];
+        if (im.complete && im.naturalWidth) g.drawImage(im, x + sz * 0.13, y + sz * 0.13, sz * 0.74, sz * 0.74);
+      }
+    };
+  }
+
+  /* ---------------------------------------------------------- saving */
+
+  ctx.autosave(function () {
+    if (!S || S.done || busy || S.moves === 0) return { inProgress: false };
+    return { s: { n: S.n, cards: S.cards, found: S.found, seen: S.seen, moves: S.moves, misses: S.misses }, daily: S.daily || null, elapsed: (pausedAt || Date.now()) - startedAt };
+  });
+  function save() { ctx.save(); }
+
+  function newGame(n, daily) {
+    clearTimeout(missTimer);
+    S = E.make(n, daily ? C.daily('pairs', daily).rng : Math.random);
+    S.daily = daily || null;
+    startedAt = Date.now();
+    pausedAt = 0;
+    busy = false; cur = -1;
+    renderTop();
+    build();
+    save();
+  }
+
+  function askNew() {
+    if (!S || busy || S.daily) return;
+    if (S.done || S.moves === 0) { newGame(S.n); return; }
+    C.ui.confirm({ title: C.t('newDeal'), body: C.t('resetWarn'), onOk: function () { newGame(S.n); } });
+  }
+
+  /* ------------------------------------------------------------ help */
+
+  function showHelp() {
+    C.ui.modal({
+      title: C.t('help'),
+      body: [
+        el('p', { class: 'ch-dim', text: C.t('rules') }),
+        el('h3', { style: { 'margin-top': 'var(--s-4)' }, text: C.t('keyboard') }),
+        el('div', { class: 'ch-list' }, [
+          kb('← ↑ → ↓', C.t('keysMove')),
+          kb('Enter / Space', C.t('keysFlip')),
+          kb('R', C.t('newDeal'))
+        ])
+      ],
+      actions: [
+        { label: C.t('tutorial'), onClick: function () { ctx.showTutorial(TUT); } },
+        { label: C.t('done'), kind: 'primary' }
+      ]
+    });
+  }
+  function kb(k, what) {
+    return el('div', { class: 'ch-item' }, [el('div', { class: 'ch-item__label', text: what }), el('span', { class: 'ch-badge', text: k })]);
+  }
+
+  // Tutorial art: four small cards, drawn with the board's own colours and pictures
+  function tCard(x, sym) {
+    if (sym < 0) return '<rect x="' + x + '" y="20" width="36" height="36" rx="5" fill="var(--pr-back)" stroke="#fff" stroke-opacity=".55" stroke-width="2"/>';
+    var a = ART[sym];
+    return '<rect x="' + x + '" y="20" width="36" height="36" rx="5" fill="var(--pr-face)" stroke="var(--pr-edge)" stroke-width="1.5"/>' +
+      '<g transform="translate(' + (x + 5) + ' 25) scale(.26)" fill="' + a[0] + '">' + a[1] + '</g>';
+  }
+  var TUT = [
+    { title: C.t('tutTitle1'), text: C.t('tutText1'), art: '<svg viewBox="0 0 200 76" width="100%" direction="ltr">' + tCard(16, 5) + tCard(60, -1) + tCard(104, 5) + tCard(148, -1) + '</svg>' },
+    { title: C.t('tutTitle2'), text: C.t('tutText2'), art: '<svg viewBox="0 0 200 76" width="100%" direction="ltr">' + tCard(16, 2) + tCard(60, -1) + tCard(104, 9) + tCard(148, -1) + '</svg>' }
+  ];
+
+  /* ------------------------------------------------------------ input */
+
+  // a click doesn't move the browser's focus onto a card; the arrow keys go on from the
+  // card last clicked instead of starting again at the first
+  var lastTapped = -1;
+  board.addEventListener('mousedown', function (e) { if (e.target.closest && e.target.closest('.pr-card')) e.preventDefault(); });
+  board.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('.pr-card') : null;
+    if (!b) return;
+    cur = -1;
+    lastTapped = b._i;
+    tap(b._i);
+  });
+  board.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+  window.addEventListener('keydown', function (e) {
+    if (!S || S.done || busy) return;
+    if (document.querySelector('.ch-scrim')) return;
+    var tg = e.target, tag = tg && tg.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (tg && tg.isContentEditable)) return;
+    if (tag === 'BUTTON' && (e.key === ' ' || e.key === 'Enter') && !tg.classList.contains('pr-card')) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    var k = e.key;
+    if (C.keyIs(e, 'r')) { askNew(); e.preventDefault(); return; }
+    // the table is not mirrored, so the arrows are geometric in every language
+    var d = { ArrowUp: -S.cols, ArrowDown: S.cols, ArrowLeft: -1, ArrowRight: 1 }[k];
+    if (d !== undefined) {
+      if (cur < 0) cur = lastTapped >= 0 ? lastTapped : 0;
+      else {
+        var c = cur % S.cols, nx = cur + d;
+        if ((k === 'ArrowLeft' && c === 0) || (k === 'ArrowRight' && c === S.cols - 1) || nx < 0 || nx >= S.n) nx = cur;
+        cur = nx;
+      }
+      render();
+      e.preventDefault();
+      return;
+    }
+    if ((k === 'Enter' || k === ' ') && cur >= 0) { tap(cur); e.preventDefault(); }
+  });
+
+  // time in the background is not time spent on the table
+  C.onPause(function () { if (!pausedAt) pausedAt = Date.now(); });
+  C.onResume(function () {
+    if (pausedAt) startedAt += Date.now() - pausedAt;
+    pausedAt = 0;
+  });
+  if (window.ResizeObserver) new ResizeObserver(function () { if (S) render(); }).observe(board);
+
+  /* ------------------------------------------------------------ start */
+
+  var saved = ctx.loadSave();
+  // a save that fails its checks is dropped and a fresh table is dealt
+  var resume = saved && saved.s && (saved.daily || null) === (dailyDate || null) ? E.restore(saved.s) : null;
+  if (resume && !resume.done) {
+    S = resume;
+    S.daily = saved.daily || null;
+    startedAt = Date.now() - (saved.elapsed || 0);
+    renderTop();
+    build();
+  } else if (dailyDate) {
+    newGame(E.DAILY_SIZE, dailyDate);
+    if (C.stats.dailyDone('pairs', dailyDate)) {
+      var rec = C.stats.dailyOf(dailyDate).pairs;
+      C.ui.toast({ icon: 'check', title: C.t('dailyDone'), sub: rec && rec.label });
+    }
+  } else {
+    newGame(prefs.size);
+  }
+  ctx.tutorialIfNew(TUT);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1678 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#FBF6EF">
+<title>دفاع از برج — چوگان</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../lib/chogan.css">
+<script src="../../lib/early.js"></script>
+<style>
+  /* رنگ زمین و مسیر جدا از توکن‌های عمومی، چون باید در هر دو تم تضاد کافی داشته باشند */
+  :root { --td-grass: #F3EADC; --td-grass2: #EDE2D0; --td-path: #D8B87E; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --td-grass: #262019; --td-grass2: #2E271E; --td-path: #5C4726; }
+  }
+  :root[data-theme="dark"] { --td-grass: #262019; --td-grass2: #2E271E; --td-path: #5C4726; }
+  .td-wrap { gap: var(--s-2); }
+  .td-top { display: flex; gap: var(--s-2); flex-wrap: wrap; justify-content: center; }
+  /* the map's slot: all the room the rows leave, and on a wide screen the rows stand
+     beside it, so a laptop no longer shows the tall map in 60% of its height (#359) */
+  .td-canvasbox { --fit-ar: calc(10 / 15); display: flex; align-items: center; justify-content: center; }
+  canvas { border-radius: var(--r-md); box-shadow: var(--sh-2); touch-action: manipulation; display: block; }
+  .td-bottom { width: 100%; max-width: 520px; display: flex; align-items: center; gap: var(--s-2); }
+  .td-auto--on { background: var(--game); color: #fff; }
+  /* Label on its own line and the enemy chips wrapping under it (#249): beside the Auto,
+     speed and wave buttons a single scrolling row broke the label onto three lines and
+     cut the last chip off on a phone. */
+  .td-preview {
+    flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 2px;
+    background: var(--c-surface); border-radius: var(--r-md); padding: 5px 10px; box-shadow: var(--sh-1);
+    min-height: 48px;
+  }
+  .td-pvhead { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .td-pvs { display: flex; flex-wrap: wrap; align-items: center; gap: 1px 8px; }
+  .td-pv { display: flex; align-items: center; gap: 3px; font-size: var(--fs-xs); font-weight: 700; }
+  .td-pv i { width: 13px; height: 13px; border-radius: 50%; display: block; }
+  /* نوار دائمی برج‌ها. جای پنجره‌ی فروشگاه را گرفته: برج را انتخاب می‌کنی و
+     بعد روی خانه می‌زنی، بدون هیچ پنجره‌ای وسط راه. */
+  .td-dock {
+    width: 100%; max-width: 520px;
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
+  }
+  .td-buy {
+    border: 2px solid transparent; background: var(--c-surface); border-radius: var(--r-md);
+    cursor: pointer; box-shadow: var(--sh-1);
+    padding: 7px 4px 6px; font: inherit;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    min-height: 68px; transition: transform var(--t-fast) var(--ease),
+      border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+    touch-action: manipulation;
+  }
+  .td-buy:active { transform: scale(.94); }
+  .td-buy[disabled] { opacity: .55; box-shadow: none; }
+  .td-buy[aria-pressed="true"] {
+    border-color: var(--tc); background: var(--c-surface-2); box-shadow: var(--sh-2);
+  }
+  .td-buy b { font-size: var(--fs-xs); color: var(--c-text); }
+  .td-buy small { color: var(--c-gold); font-weight: 800; font-size: 11px; }
+  .td-buy[disabled] small { color: var(--c-bad); }
+  .td-mark { width: 28px; height: 28px; display: block; }
+  /* «پول کافی نداری» زیر نوار برج‌ها، نه به‌شکل اعلان بالای صفحه که عدد طلا را می‌پوشاند (#139) */
+  .td-note { min-height: 1.4em; color: var(--c-bad); font-weight: 700; font-size: var(--fs-sm); text-align: center; }
+  .ch-gamebar__stat.td-flash b { animation: td-flash 900ms var(--ease); }
+  @keyframes td-flash { 0%, 100% { color: inherit; transform: none; } 25%, 60% { color: var(--c-bad); transform: scale(1.18); } }
+  .td-stars { display: flex; gap: 2px; }
+  .td-mapbtn { display: inline-flex; align-items: center; gap: 6px; }
+  /* Own inline padding (#251): with the core's --s-1 the label sat against the selected row's border */
+  .td-mapitem { width: 100%; border: 0; background: none; font: inherit; color: inherit; text-align: start; cursor: pointer; border-radius: var(--r-md); padding-inline: var(--s-3); }
+  .td-thumb { width: 30px; height: 45px; flex: 0 0 auto; border-radius: 6px; background: var(--td-grass); box-shadow: inset 0 0 0 1px var(--c-line); display: block; }
+  .td-mapitem--on { background: var(--c-surface-2); box-shadow: inset 0 0 0 2px var(--game); }
+</style>
+</head>
+<body>
+<script src="../../version.js"></script>
+<script src="../../lib/chogan.js"></script>
+<script>
+/* ==== ENGINE START ==== */
+function TdEngineFactory() {
+  'use strict';
+
+  var GW = 10, GH = 15;   // ستون و سطر
+
+  /* تولید مسیر: از سطر صفر شروع می‌شود و همیشه رو به پایین می‌رود.
+     چون هیچ‌وقت به سطر بالاتر برنمی‌گردد، مسیر خودش را قطع نمی‌کند و
+     همیشه معتبر است. هر بذر یک نقشه‌ی متفاوت ولی همیشه قابل بازی می‌دهد. */
+  function genPath(rnd, opts) {
+    opts = opts || {};
+    var minTurns = opts.minTurns || 4;
+    var w = opts.w || GW, h = opts.h || GH;
+    // Run lengths shape a map (#221): long sideways runs make a winding path with
+    // more time to shoot, long downward runs a short and hard one. The defaults
+    // are the original [1,2] and [2,5], so the first three maps stay the same.
+    var down = opts.down || [1, 2], span = opts.span || [2, 5], minLen = opts.minLen || h + 6;
+    for (var attempt = 0; attempt < 40; attempt++) {
+      var path = [];
+      var c = 1 + Math.floor(rnd() * (w - 2));
+      var r = 0;
+      var turns = 0;
+      var lastDir = 0;
+      path.push({ r: r, c: c });
+      var guard = 0;
+      while (r < h - 1 && guard++ < 500) {
+        // چند خانه پایین
+        var dn = down[0] + Math.floor(rnd() * (down[1] - down[0] + 1));
+        for (var d = 0; d < dn && r < h - 1; d++) {
+          r++;
+          path.push({ r: r, c: c });
+        }
+        if (r >= h - 1) break;
+        // یک حرکت افقی. جهت را عوض می‌کنیم تا مسیر مثل مار کل عرض تخته را
+        // بگیرد، نه اینکه یک طرف نقشه خالی بماند.
+        var sp = span[0] + Math.floor(rnd() * (span[1] - span[0] + 1));
+        var dir = lastDir === 0 ? (rnd() < 0.5 ? -1 : 1) : -lastDir;
+        if (c + dir * sp < 0 || c + dir * sp > w - 1) {
+          if (c - dir * sp >= 0 && c - dir * sp <= w - 1) dir = -dir;
+        }
+        var moved = 0;
+        for (var s = 0; s < sp; s++) {
+          var nc = c + dir;
+          if (nc < 0 || nc > w - 1) break;
+          c = nc;
+          path.push({ r: r, c: c });
+          moved++;
+        }
+        if (moved > 0) { turns++; lastDir = dir; }
+      }
+      while (r < h - 1) { r++; path.push({ r: r, c: c }); }
+      if (turns >= minTurns && path.length >= minLen) return path;
+    }
+    // در بدترین حالت یک مسیر مستقیم که همیشه معتبر است
+    var straight = [];
+    var cc = Math.floor(w / 2);
+    for (var rr = 0; rr < h; rr++) straight.push({ r: rr, c: cc });
+    return straight;
+  }
+
+  function validatePath(path, w, h) {
+    w = w || GW; h = h || GH;
+    if (!path.length) return 'خالی';
+    if (path[0].r !== 0) return 'از بالا شروع نمی‌شود';
+    if (path[path.length - 1].r !== h - 1) return 'به پایین نمی‌رسد';
+    var seen = {};
+    for (var i = 0; i < path.length; i++) {
+      var p = path[i];
+      if (p.r < 0 || p.c < 0 || p.r >= h || p.c >= w) return 'بیرون از تخته در گام ' + i;
+      var k = p.r + ',' + p.c;
+      if (seen[k]) return 'خانه‌ی تکراری در گام ' + i;
+      seen[k] = 1;
+      if (i > 0) {
+        var q = path[i - 1];
+        var dist = Math.abs(p.r - q.r) + Math.abs(p.c - q.c);
+        if (dist !== 1) return 'پرش در گام ' + i;
+      }
+    }
+    return null;
+  }
+
+  /* ترکیب موج‌ها. موج بیست آخرین موج حالت داستانی است.
+     بعد از آن حالت بی‌پایان با فرمول رشد ادامه پیدا می‌کند. */
+  var TYPES = {
+    grunt:  { hp: 22,  speed: 1.00, armor: 0,    bounty: 6,  r: 0.30, color: '#7BAE7F' },
+    runner: { hp: 15,  speed: 1.85, armor: 0,    bounty: 7,  r: 0.25, color: '#6BB6C4' },
+    armor:  { hp: 55,  speed: 0.72, armor: 0.35, bounty: 12, r: 0.34, color: '#9AA3AB' },
+    swarm:  { hp: 9,   speed: 1.30, armor: 0,    bounty: 3,  r: 0.20, color: '#E4A853' },
+    boss:   { hp: 520, speed: 0.55, armor: 0.30, bounty: 90, r: 0.46, color: '#A57BD1' }
+  };
+
+  function waveComposition(wave, rnd) {
+    var out = [];
+    var k = wave;
+    function add(type, count, gap, delay) {
+      out.push({ type: type, count: count, gap: gap, delay: delay || 0 });
+    }
+    if (wave % 10 === 0) {
+      add('boss', 1 + Math.floor(wave / 20), 1.4, 0);
+      add('grunt', 6 + k, 0.5, 2.5);
+      return out;
+    }
+    add('grunt', 5 + Math.floor(k * 1.15), 0.62, 0);
+    if (wave >= 3) add('runner', 2 + Math.floor(k * 0.5), 0.42, 1.6);
+    if (wave >= 5) add('armor', 1 + Math.floor(k * 0.42), 0.9, 3.0);
+    if (wave >= 7 && (rnd ? rnd() : Math.random()) < 0.65) add('swarm', 8 + k * 2, 0.16, 5.0);
+    return out;
+  }
+
+  // ضریب سلامت و پاداش هر موج
+  function waveScale(wave) {
+    return {
+      hp: Math.pow(1.185, wave - 1),
+      // موج‌های بالاتر فقط پرجان‌تر نیستند؛ کمی تندتر و زره‌دارتر هم می‌شوند
+      // تا صرفاً زیاد کردن آسیب خام جواب ندهد و ترکیب برج‌ها مهم بماند.
+      speed: 1 + Math.min(0.4, (wave - 1) * 0.016),
+      armor: Math.min(0.34, Math.floor((wave - 1) / 5) * 0.085),
+      bounty: 1 + (wave - 1) * 0.03
+    };
+  }
+
+  function waveBudget(wave) {
+    var comp = waveComposition(wave, function () { return 0.5; });
+    var hp = 0, n = 0;
+    var sc = waveScale(wave);
+    for (var i = 0; i < comp.length; i++) {
+      var t = TYPES[comp[i].type];
+      hp += t.hp * sc.hp * comp[i].count;
+      n += comp[i].count;
+    }
+    return { hp: Math.round(hp), count: n };
+  }
+
+  var TOWERS = {
+    archer: { cost: 60,  range: 2.6, dps: 15, rate: 0.55, splash: 0,   slow: 0,   chain: 0, color: '#E07A5F' },
+    cannon: { cost: 115, range: 2.3, dps: 34, rate: 1.5,  splash: 1.0, slow: 0,   chain: 0, color: '#C8783C' },
+    frost:  { cost: 95,  range: 2.2, dps: 8,  rate: 0.9,  splash: 0.9, slow: 0.45, chain: 0, color: '#6BB6C4' },
+    tesla:  { cost: 155, range: 2.5, dps: 26, rate: 0.85, splash: 0,   slow: 0,   chain: 3, color: '#A57BD1' }
+  };
+
+  // Two more upgrade levels (#245): a tester ended wave 18 with 4233 gold and nothing
+  // worth buying. Levels 4 and 5 cost more and keep the range growth small, so a
+  // mix of towers still matters against armour.
+  var MAX_LEVEL = 4;
+  function towerStats(kind, level) {
+    var b = TOWERS[kind];
+    var m = [1, 1.65, 2.6, 3.7, 5.0][level] || 1;
+    var rm = [1, 1.12, 1.26, 1.33, 1.4][level] || 1;
+    return {
+      range: b.range * rm,
+      dps: b.dps * m,
+      rate: b.rate / (1 + level * 0.14),
+      splash: b.splash * (1 + level * 0.14),
+      slow: Math.min(0.68, b.slow * (1 + level * 0.2)),
+      chain: b.chain ? b.chain + level : 0,
+      color: b.color
+    };
+  }
+  function upgradeCost(kind, level) {
+    return Math.round(TOWERS[kind].cost * ([0.9, 1.7, 2.8, 4.2][level] || 4.2));
+  }
+
+
+  /* ---------------------------------------------------------------------
+     شبیه‌سازی خالص نبرد. هیچ ربطی به رسم و ورودی ندارد، پس هم بازی از آن
+     استفاده می‌کند هم تست خودکار تعادل. وضعیت داده‌ی ساده است تا ذخیره‌ی
+     خودکار وسط موج فقط یک JSON.stringify باشد.
+     --------------------------------------------------------------------- */
+
+  function pathGeometry(path) {
+    var pts = path.map(function (p) { return { x: p.c + 0.5, y: p.r + 0.5 }; });
+    var cum = [0];
+    for (var i = 1; i < pts.length; i++) {
+      var dx = pts[i].x - pts[i - 1].x, dy = pts[i].y - pts[i - 1].y;
+      cum.push(cum[i - 1] + Math.sqrt(dx * dx + dy * dy));
+    }
+    return { pts: pts, cum: cum, len: cum[cum.length - 1] };
+  }
+
+  function posAt(geo, t) {
+    if (t <= 0) return { x: geo.pts[0].x, y: geo.pts[0].y };
+    if (t >= geo.len) return { x: geo.pts[geo.pts.length - 1].x, y: geo.pts[geo.pts.length - 1].y };
+    var lo = 0, hi = geo.cum.length - 1;
+    while (lo < hi - 1) {
+      var mid = (lo + hi) >> 1;
+      if (geo.cum[mid] <= t) lo = mid; else hi = mid;
+    }
+    var seg = geo.cum[hi] - geo.cum[lo];
+    var k = seg > 0 ? (t - geo.cum[lo]) / seg : 0;
+    return {
+      x: geo.pts[lo].x + (geo.pts[hi].x - geo.pts[lo].x) * k,
+      y: geo.pts[lo].y + (geo.pts[hi].y - geo.pts[lo].y) * k
+    };
+  }
+
+  function createGame(opts) {
+    var path = opts.path;
+    var blocked = {};
+    for (var i = 0; i < path.length; i++) blocked[path[i].r + ',' + path[i].c] = 1;
+    return {
+      path: path, blocked: blocked,
+      geo: pathGeometry(path),
+      towers: [], enemies: [], effects: [],
+      money: opts.money || 200,
+      lives: opts.lives || 20,
+      maxLives: opts.lives || 20,
+      wave: 0, waveActive: false, queue: [],
+      time: 0, nextId: 1,
+      kills: 0, leaked: 0, spent: 0,
+      endless: false, over: false, won: false,
+      lastWave: opts.lastWave || 20
+    };
+  }
+
+  function canBuild(S, r, c) {
+    if (r < 0 || c < 0 || r >= GH || c >= GW) return false;
+    if (S.blocked[r + ',' + c]) return false;
+    for (var i = 0; i < S.towers.length; i++) if (S.towers[i].r === r && S.towers[i].c === c) return false;
+    return true;
+  }
+  function towerAt(S, r, c) {
+    for (var i = 0; i < S.towers.length; i++) if (S.towers[i].r === r && S.towers[i].c === c) return S.towers[i];
+    return null;
+  }
+  function build(S, r, c, kind) {
+    if (!canBuild(S, r, c)) return null;
+    var cost = TOWERS[kind].cost;
+    if (S.money < cost) return null;
+    S.money -= cost;
+    S.spent += cost;
+    var t = { id: S.nextId++, kind: kind, level: 0, r: r, c: c, cd: 0, kills: 0 };
+    S.towers.push(t);
+    return t;
+  }
+  function upgrade(S, t) {
+    if (t.level >= MAX_LEVEL) return false;
+    var cost = upgradeCost(t.kind, t.level);
+    if (S.money < cost) return false;
+    S.money -= cost;
+    S.spent += cost;
+    t.level++;
+    return true;
+  }
+  function sellValue(S, t) {
+    var paid = TOWERS[t.kind].cost;
+    for (var l = 0; l < t.level; l++) paid += upgradeCost(t.kind, l);
+    return Math.round(paid * 0.6);
+  }
+  function sell(S, t) {
+    var v = sellValue(S, t);
+    S.money += v;
+    S.towers = S.towers.filter(function (x) { return x !== t; });
+    return v;
+  }
+
+  function startWave(S, rnd) {
+    if (S.waveActive || S.over) return false;
+    S.wave++;
+    S.waveActive = true;
+    var comp = waveComposition(S.wave, rnd);
+    var sc = waveScale(S.wave);
+    S.queue = [];
+    for (var i = 0; i < comp.length; i++) {
+      S.queue.push({
+        type: comp[i].type, left: comp[i].count,
+        gap: comp[i].gap, next: S.time + comp[i].delay, scale: sc
+      });
+    }
+    return true;
+  }
+
+  function spawn(S, type, sc) {
+    var t = TYPES[type];
+    S.enemies.push({
+      id: S.nextId++, type: type,
+      t: 0, hp: t.hp * sc.hp, max: t.hp * sc.hp,
+      sp: sc.speed || 1, ar: sc.armor || 0,
+      slow: 0, slowT: 0
+    });
+  }
+
+  function damage(S, e, amount, armorPierce) {
+    var t = TYPES[e.type];
+    var armor = armorPierce ? 0 : Math.min(0.75, t.armor + (e.ar || 0));
+    e.hp -= amount * (1 - armor);
+    if (e.hp <= 0) {
+      var gain = Math.round(t.bounty * (1 + (S.wave - 1) * 0.03));
+      S.money += gain;
+      S.kills++;
+      // for the page only (#407): where it fell and what it paid, so the
+      // player sees the coins come from somewhere; never saved
+      var dp = posAt(S.geo, e.t);
+      S.effects.push({ kind: 'kill', x: dp.x, y: dp.y, r: t.r, color: t.color, gain: gain });
+      return true;
+    }
+    return false;
+  }
+
+  function step(S, dt, rnd) {
+    if (S.over) return;
+    rnd = rnd || Math.random;
+    S.time += dt;
+
+    // تولید دشمن
+    for (var q = 0; q < S.queue.length; q++) {
+      var Q = S.queue[q];
+      while (Q.left > 0 && S.time >= Q.next) {
+        spawn(S, Q.type, Q.scale);
+        Q.left--;
+        Q.next += Q.gap;
+      }
+    }
+    S.queue = S.queue.filter(function (x) { return x.left > 0; });
+
+    // حرکت
+    for (var i = S.enemies.length - 1; i >= 0; i--) {
+      var e = S.enemies[i];
+      var base = TYPES[e.type].speed;
+      if (e.slowT > 0) { e.slowT -= dt; } else { e.slow = 0; }
+      e.t += base * (e.sp || 1) * (1 - e.slow) * dt * 1.9;
+      if (e.t >= S.geo.len) {
+        S.enemies.splice(i, 1);
+        S.lives--;
+        S.leaked++;
+        if (S.lives <= 0) { S.lives = 0; S.over = true; S.won = false; return; }
+      }
+    }
+
+    // شلیک
+    S.effects.length = 0;
+    for (var k = 0; k < S.towers.length; k++) {
+      var tw = S.towers[k];
+      tw.cd -= dt;
+      if (tw.cd > 0) continue;
+      var st = towerStats(tw.kind, tw.level);
+      var tx = tw.c + 0.5, ty = tw.r + 0.5;
+      var target = null, bestT = -1;
+      for (var j = 0; j < S.enemies.length; j++) {
+        var en = S.enemies[j];
+        var p = posAt(S.geo, en.t);
+        var dx = p.x - tx, dy = p.y - ty;
+        if (dx * dx + dy * dy > st.range * st.range) continue;
+        if (en.t > bestT) { bestT = en.t; target = en; }
+      }
+      if (!target) continue;
+      tw.cd = st.rate;
+      var dmg = st.dps * st.rate;
+      var tp = posAt(S.geo, target.t);
+      S.effects.push({ kind: tw.kind, x1: tx, y1: ty, x2: tp.x, y2: tp.y, color: st.color });
+
+      if (st.splash > 0) {
+        for (var s = S.enemies.length - 1; s >= 0; s--) {
+          var e2 = S.enemies[s];
+          var p2 = posAt(S.geo, e2.t);
+          var ddx = p2.x - tp.x, ddy = p2.y - tp.y;
+          if (ddx * ddx + ddy * ddy > st.splash * st.splash) continue;
+          if (st.slow > 0) { e2.slow = Math.max(e2.slow, st.slow); e2.slowT = 1.6; }
+          if (damage(S, e2, e2 === target ? dmg : dmg * 0.6)) { S.enemies.splice(s, 1); tw.kills++; }
+        }
+      } else if (st.chain > 0) {
+        var hit = [target];
+        for (var h = 0; h < S.enemies.length && hit.length < st.chain; h++) {
+          var e3 = S.enemies[h];
+          if (e3 === target) continue;
+          var p3 = posAt(S.geo, e3.t);
+          var hx = p3.x - tp.x, hy = p3.y - tp.y;
+          if (hx * hx + hy * hy <= 2.6) hit.push(e3);
+        }
+        for (var m = 0; m < hit.length; m++) {
+          var hp = posAt(S.geo, hit[m].t);
+          if (m > 0) S.effects.push({ kind: 'tesla', x1: tp.x, y1: tp.y, x2: hp.x, y2: hp.y, color: st.color });
+          if (damage(S, hit[m], dmg * (m === 0 ? 1 : 0.72), true)) {
+            var ix = S.enemies.indexOf(hit[m]);
+            if (ix >= 0) S.enemies.splice(ix, 1);
+            tw.kills++;
+          }
+        }
+      } else {
+        if (damage(S, target, dmg)) {
+          var ix2 = S.enemies.indexOf(target);
+          if (ix2 >= 0) S.enemies.splice(ix2, 1);
+          tw.kills++;
+        }
+      }
+    }
+
+    // پایان موج
+    if (S.waveActive && !S.queue.length && !S.enemies.length) {
+      S.waveActive = false;
+      S.money += 20 + S.wave * 8;
+      if (S.wave >= S.lastWave && !S.endless) { S.over = true; S.won = true; }
+    }
+  }
+
+  // بازی از همان اولین برج «در جریان» است، نه از موج یک. پیش از این، ذخیره
+  // فقط با wave > 0 نگه داشته می‌شد و برج‌های چیده‌شده‌ی پیش از موج اول با
+  // بیرون رفتن از صفحه پاک می‌شدند (#66).
+  // آنچه پیش‌نمایش پیش از خرید باید نشان بدهد. در موتور است تا بدون مرورگر
+  // تست شود و برد نمایش‌داده‌شده دقیقاً برد برجِ تازه‌ساخته باشد، نه عددی که
+  // در کد رسم کپی شده (#65).
+  function buildPreview(S, r, c, kind) {
+    var def = TOWERS[kind];
+    if (!S || !def) return null;
+    var st = towerStats(kind, 0);
+    return {
+      kind: kind, range: st.range, cost: def.cost, color: def.color,
+      fits: canBuild(S, r, c) && S.money >= def.cost
+    };
+  }
+
+  function inProgress(S) {
+    if (!S || S.over) return false;
+    return S.wave > 0 || (!!S.towers && S.towers.length > 0);
+  }
+
+  function stars(S) {
+    if (!S.won) return 0;
+    var kept = S.lives / S.maxLives;
+    if (kept >= 0.9) return 3;
+    if (kept >= 0.5) return 2;
+    return 1;
+  }
+
+  var api = {
+    GW: GW, GH: GH, TYPES: TYPES, TOWERS: TOWERS, MAX_LEVEL: MAX_LEVEL,
+    genPath: genPath, validatePath: validatePath,
+    waveComposition: waveComposition, waveScale: waveScale, waveBudget: waveBudget,
+    towerStats: towerStats, upgradeCost: upgradeCost,
+    pathGeometry: pathGeometry, posAt: posAt, createGame: createGame,
+    canBuild: canBuild, towerAt: towerAt, build: build, upgrade: upgrade,
+    sell: sell, sellValue: sellValue, startWave: startWave, step: step, stars: stars,
+    inProgress: inProgress, buildPreview: buildPreview
+  };
+  if (typeof self !== 'undefined') self.TdEngine = api;
+  return api;
+}
+if (typeof module !== 'undefined' && module.exports) module.exports = TdEngineFactory;
+/* ==== ENGINE END ==== */
+</script>
+<script>
+(function () {
+  'use strict';
+  var C = window.Chogan, el = C.el;
+  var E = TdEngineFactory();
+
+  var MAPS = [
+    { id: 'm1', seed: 101, fa: 'دره', en: 'Valley', zh: '山谷', de: 'Tal', es: 'Valle', pl: 'Dolina', fr: 'Vallée', ar: 'الوادي', hi: 'घाटी' },
+    { id: 'm2', seed: 202, fa: 'گذرگاه', en: 'Pass', zh: '山口', de: 'Pass', es: 'Paso', pl: 'Przełęcz', fr: 'Col', ar: 'الممر', hi: 'दर्रा' },
+    { id: 'm3', seed: 303, fa: 'مرداب', en: 'Marsh', zh: '沼泽', de: 'Sumpf', es: 'Pantano', pl: 'Bagno', fr: 'Marais', ar: 'المستنقع', hi: 'दलदल' },
+    // Three more shapes (#221): a snake with long sideways runs, a short steep path
+    // that gives towers little time, and wide sweeps from edge to edge
+    { id: 'm4', seed: 404, opts: { down: [2, 2], span: [6, 8], minTurns: 6 }, fa: 'مارپیچ', en: 'Serpent', zh: '蛇径', de: 'Schlange', es: 'Serpiente', pl: 'Wąż', fr: 'Serpent', ar: 'الأفعى', hi: 'साँप' },
+    { id: 'm5', seed: 505, opts: { down: [2, 3], span: [2, 3], minTurns: 4, minLen: 26 }, fa: 'سراشیب', en: 'Slope', zh: '陡坡', de: 'Steilhang', es: 'Pendiente', pl: 'Zbocze', fr: 'Pente', ar: 'المنحدر', hi: 'ढलान' },
+    { id: 'm6', seed: 606, opts: { down: [2, 3], span: [7, 9], minTurns: 4, minLen: 40 }, fa: 'تنگه', en: 'Canyon', zh: '峡谷', de: 'Schlucht', es: 'Cañón', pl: 'Kanion', fr: 'Canyon', ar: 'الأخدود', hi: 'खड्ड' }
+  ];
+  var KINDS = ['archer', 'cannon', 'frost', 'tesla'];
+
+  C.boot({});
+  var ctx = C.game({
+    id: 'tower-defence',
+    name: { fa: 'دفاع از برج', en: 'Tower Defence', zh: '塔防', de: 'Turm\u00adverteidigung', es: 'Defensa de torres', pl: 'Tower Defence', fr: 'Défense de tours', ar: 'دفاع الأبراج', hi: 'टावर डिफ़ेंस' },
+    accent: '#E07A5F',
+    mood: 'tower-defence',
+    strings: {
+      fa: {
+        wave: 'موج', lives: 'جان', money: 'سکه‌ی نقشه',
+        startWave: 'شروع موج', nextWave: 'موج بعدی', speed: 'سرعت', auto: 'خودکار', nextIn: 'موج بعد: {n}',
+        archer: 'کمان', cannon: 'توپ', frost: 'یخ', tesla: 'برق',
+        archerD: 'شلیک تند به یک هدف', cannonD: 'انفجار ناحیه‌ای', frostD: 'کند کردن دشمن‌ها', teslaD: 'زنجیره‌ی برق به چند هدف',
+        upgrade: 'ارتقا', sell: 'فروش', level: 'سطح', range: 'برد', dps: 'آسیب',
+        endless: 'حالت بی‌پایان', endlessGo: 'ادامه بده', mapDone: 'نقشه تمام شد',
+        pickMap: 'نقشه', dailyMap: 'نقشه‌ی روزانه', leaked: 'رد شده', kills: 'کشته',
+        noMoney: 'پول کافی نداری', gameOver: 'قلعه سقوط کرد', needGold: 'پول کافی نداری: {have} از {need}',
+        buildHere: 'اینجا برج بساز', cantBuild: 'روی مسیر نمی‌شود ساخت',
+        pickTower: 'اول از نوار پایین یک برج انتخاب کن',
+        tutTitle1: 'مسیر را ببند', tutText1: 'دشمن‌ها از بالا می‌آیند و به پایین می‌روند. کنار مسیر برج بگذار تا بزنندشان.',
+        tutTitle2: 'چهار برج', tutText2: 'کمان تند می‌زند، توپ ناحیه‌ای، یخ کند می‌کند و برق زنجیره‌ای می‌زند. ترکیبشان مهم است.',
+        tutTitle3: 'بیست موج', tutText3: 'بیست موج را دوام بیاور. هرچه جان بیشتری بماند ستاره‌ی بیشتری می‌گیری.'
+      },
+      en: {
+        wave: 'Wave', lives: 'Lives', money: 'Gold',
+        startWave: 'Start wave', nextWave: 'Next wave', speed: 'Speed', auto: 'Auto', nextIn: 'Next wave: {n}',
+        archer: 'Archer', cannon: 'Cannon', frost: 'Frost', tesla: 'Tesla',
+        archerD: 'Fast single target', cannonD: 'Splash damage', frostD: 'Slows enemies', teslaD: 'Chains between targets',
+        upgrade: 'Upgrade', sell: 'Sell', level: 'Level', range: 'Range', dps: 'Damage',
+        endless: 'Endless mode', endlessGo: 'Keep going', mapDone: 'Map complete',
+        pickMap: 'Map', dailyMap: 'Daily map', leaked: 'Leaked', kills: 'Kills',
+        noMoney: 'Not enough gold', gameOver: 'The keep has fallen', needGold: 'Not enough gold: {have} of {need}',
+        buildHere: 'Build here', cantBuild: 'You cannot build on the path',
+        pickTower: 'Pick a tower from the bar below first',
+        tutTitle1: 'Block the path', tutText1: 'Enemies walk from top to bottom. Place towers beside the path to stop them.',
+        tutTitle2: 'Four towers', tutText2: 'Archer is fast, cannon splashes, frost slows and tesla chains. Mixing them matters.',
+        tutTitle3: 'Twenty waves', tutText3: 'Survive twenty waves. The more lives you keep, the more stars you earn.'
+      },
+      pl: {
+        wave: 'Fala', lives: 'Życia', money: 'Złoto',
+        startWave: 'Uruchom falę', nextWave: 'Następna fala', speed: 'Prędkość', auto: 'Auto', nextIn: 'Następna fala: {n}',
+        archer: 'Łucznik', cannon: 'Armata', frost: 'Mróz', tesla: 'Tesla',
+        archerD: 'Szybki atak w jeden cel', cannonD: 'Obrażenia obszarowe', frostD: 'Spowalnia wrogów', teslaD: 'Razi łańcuchowo wiele celów',
+        upgrade: 'Ulepsz', sell: 'Sprzedaj', level: 'Poziom', range: 'Zasięg', dps: 'Obrażenia',
+        endless: 'Tryb nieskończony', endlessGo: 'Graj dalej', mapDone: 'Mapa ukończona',
+        pickMap: 'Mapa', dailyMap: 'Codzienna mapa', leaked: 'Przepuszczono', kills: 'Zabójstwa',
+        noMoney: 'Za mało złota', gameOver: 'Twierdza upadła', needGold: 'Za mało złota: {have} z {need}',
+        buildHere: 'Buduj tutaj', cantBuild: 'Nie możesz budować na ścieżce',
+        pickTower: 'Najpierw wybierz wieżę z dolnego paska',
+        tutTitle1: 'Zablokuj ścieżkę', tutText1: 'Wrogowie idą z góry na dół. Stawiaj wieże wzdłuż ścieżki, aby ich powstrzymać.',
+        tutTitle2: 'Cztery wieże', tutText2: 'Łucznik jest szybki, armata zadaje obrażenia obszarowe, mróz spowalnia, a tesla razi łańcuchowo. Łączenie ich typów ma kluczowe znaczenie.',
+        tutTitle3: 'Dwadzieścia fal', tutText3: 'Przetrwaj dwadzieścia fal. Im więcej żyć zachowasz, tym więcej gwiazdek zdobędziesz.'
+      },
+      fr: {
+        wave: 'Vague', lives: 'Vies', money: 'Or',
+        startWave: 'Lancer la vague', nextWave: 'Vague suivante', speed: 'Vitesse', auto: 'Auto', nextIn: 'Prochaine vague : {n}',
+        archer: 'Archer', cannon: 'Canon', frost: 'Givre', tesla: 'Tesla',
+        archerD: 'Rapide, une seule cible', cannonD: 'Dégâts de zone', frostD: 'Ralentit les ennemis', teslaD: 'Rebondit entre les cibles',
+        upgrade: 'Améliorer', sell: 'Vendre', level: 'Niveau', range: 'Portée', dps: 'Dégâts',
+        endless: 'Mode sans fin', endlessGo: 'Continuer', mapDone: 'Carte terminée',
+        pickMap: 'Carte', dailyMap: 'Carte du jour', leaked: 'Passés', kills: 'Éliminés',
+        noMoney: 'Pas assez d’or', gameOver: 'Le donjon est tombé', needGold: 'Pas assez d’or : {have} sur {need}',
+        buildHere: 'Construire ici', cantBuild: 'Impossible de construire sur le chemin',
+        pickTower: 'Choisis d’abord une tour dans la barre du bas',
+        tutTitle1: 'Barre le chemin', tutText1: 'Les ennemis marchent de haut en bas. Place des tours au bord du chemin pour les arrêter.',
+        tutTitle2: 'Quatre tours', tutText2: 'L’archer est rapide, le canon éclabousse, le givre ralentit et le tesla rebondit. Mélange-les bien.',
+        tutTitle3: 'Vingt vagues', tutText3: 'Survis à vingt vagues. Plus tu gardes de vies, plus tu gagnes d’étoiles.'
+      },
+      ar: {
+        wave: 'الموجة', lives: 'الأرواح', money: 'الذهب',
+        startWave: 'ابدأ الموجة', nextWave: 'الموجة التالية', speed: 'السرعة', auto: 'تلقائي', nextIn: 'الموجة التالية: {n}',
+        archer: 'رامي', cannon: 'مدفع', frost: 'صقيع', tesla: 'تسلا',
+        archerD: 'سريع، هدف واحد', cannonD: 'ضرر واسع', frostD: 'يبطئ الأعداء', teslaD: 'يقفز بين الأهداف',
+        upgrade: 'طوّر', sell: 'بِع', level: 'المستوى', range: 'المدى', dps: 'الضرر',
+        endless: 'وضع بلا نهاية', endlessGo: 'تابع', mapDone: 'اكتملت الخريطة',
+        pickMap: 'الخريطة', dailyMap: 'خريطة اليوم', leaked: 'تسلّلوا', kills: 'القتلى',
+        noMoney: 'الذهب لا يكفي', gameOver: 'سقطت القلعة', needGold: 'الذهب لا يكفي: {have} من {need}',
+        buildHere: 'ابنِ هنا', cantBuild: 'لا يمكنك البناء على الطريق',
+        pickTower: 'اختر برجًا من الشريط السفلي أولًا',
+        tutTitle1: 'اقطع الطريق', tutText1: 'يمشي الأعداء من الأعلى إلى الأسفل. ضع أبراجًا بجانب الطريق لإيقافهم.',
+        tutTitle2: 'أربعة أبراج', tutText2: 'الرامي سريع، والمدفع يصيب ما حوله، والصقيع يبطئ، والتسلا يقفز بين الأهداف. نوّع بينها.',
+        tutTitle3: 'عشرون موجة', tutText3: 'اصمد عشرين موجة. كلما حافظت على أرواح أكثر نلت نجومًا أكثر.'
+      },
+      hi: {
+        wave: 'लहर', lives: 'जानें', money: 'सोना',
+        startWave: 'लहर शुरू', nextWave: 'अगली लहर', speed: 'गति', auto: 'ऑटो', nextIn: 'अगली लहर: {n}',
+        archer: 'तीरंदाज़', cannon: 'तोप', frost: 'बर्फ़', tesla: 'टेस्ला',
+        archerD: 'तेज़, एक निशाना', cannonD: 'आसपास तक नुक़सान', frostD: 'दुश्मनों को धीमा करे', teslaD: 'कई निशानों में बिजली',
+        upgrade: 'अपग्रेड', sell: 'बेचें', level: 'स्तर', range: 'दूरी', dps: 'नुक़सान',
+        endless: 'अंतहीन मोड', endlessGo: 'जारी रखें', mapDone: 'नक्शा पूरा',
+        pickMap: 'नक्शा', dailyMap: 'रोज़ का नक्शा', leaked: 'निकल गए', kills: 'मारे गए',
+        noMoney: 'सोना काफ़ी नहीं', gameOver: 'क़िला गिर गया', needGold: 'सोना काफ़ी नहीं: {need} में से {have}',
+        buildHere: 'यहाँ बनाएँ', cantBuild: 'रास्ते पर नहीं बना सकते',
+        pickTower: 'पहले नीचे की पट्टी से एक टावर चुनें',
+        tutTitle1: 'रास्ता रोकें', tutText1: 'दुश्मन ऊपर से नीचे चलते हैं। उन्हें रोकने के लिए रास्ते के किनारे टावर लगाएँ।',
+        tutTitle2: 'चार टावर', tutText2: 'तीरंदाज़ तेज़ है, तोप आसपास तक मारती है, बर्फ़ धीमा करती है और टेस्ला कई पर बिजली गिराता है। इन्हें मिलाकर लगाना ज़रूरी है।',
+        tutTitle3: 'बीस लहरें', tutText3: 'बीस लहरें झेलें। जितनी ज़्यादा जानें बचेंगी, उतने ज़्यादा सितारे मिलेंगे।'
+      },
+      zh: {
+        wave: '波次', lives: '生命', money: '地图金币',
+        startWave: '开始波次', nextWave: '下一波', speed: '速度', auto: '自动', nextIn: '{n} 秒后下一波',
+        archer: '弓箭', cannon: '火炮', frost: '冰霜', tesla: '电塔',
+        archerD: '单体快速射击', cannonD: '范围溅射伤害', frostD: '减速敌人', teslaD: '在多个目标间连锁',
+        upgrade: '升级', sell: '出售', level: '等级', range: '射程', dps: '伤害',
+        endless: '无尽模式', endlessGo: '继续挑战', mapDone: '地图通关',
+        pickMap: '地图', dailyMap: '每日地图', leaked: '漏过', kills: '击杀',
+        noMoney: '金币不足', gameOver: '要塞失守', needGold: '金币不足：{have} / {need}',
+        buildHere: '在此建塔', cantBuild: '不能建在路径上',
+        pickTower: '先从下方栏中选一座塔',
+        tutTitle1: '挡住去路', tutText1: '敌人从上往下走。在路径旁边建塔来拦住它们。',
+        tutTitle2: '四种塔', tutText2: '弓箭射速快，火炮打范围，冰霜减速，电塔连锁。搭配很重要。',
+        tutTitle3: '二十波', tutText3: '撑过二十波。剩下的生命越多，得到的星星越多。'
+      },
+      de: {
+        wave: 'Welle', lives: 'Leben', money: 'Gold',
+        startWave: 'Welle starten', nextWave: 'Nächste Welle', speed: 'Tempo', auto: 'Auto', nextIn: 'Nächste Welle: {n}',
+        archer: 'Bogen', cannon: 'Kanone', frost: 'Frost', tesla: 'Tesla',
+        archerD: 'Schnell, ein Ziel', cannonD: 'Flächenschaden', frostD: 'Bremst Gegner', teslaD: 'Springt zwischen Zielen',
+        upgrade: 'Ausbauen', sell: 'Verkaufen', level: 'Level', range: 'Reichweite', dps: 'Schaden',
+        endless: 'Endlosmodus', endlessGo: 'Weiterspielen', mapDone: 'Karte geschafft',
+        pickMap: 'Karte', dailyMap: 'Tageskarte', leaked: 'Durchgelassen', kills: 'Besiegt',
+        noMoney: 'Nicht genug Gold', gameOver: 'Die Burg ist gefallen', needGold: 'Nicht genug Gold: {have} von {need}',
+        buildHere: 'Hier bauen', cantBuild: 'Auf dem Weg kannst du nicht bauen',
+        pickTower: 'Wähl zuerst unten einen Turm aus',
+        tutTitle1: 'Versperr den Weg', tutText1: 'Gegner laufen von oben nach unten. Stell Türme neben den Weg, um sie aufzuhalten.',
+        tutTitle2: 'Vier Türme', tutText2: 'Bogen ist schnell, Kanone trifft eine Fläche, Frost bremst und Tesla springt weiter. Die Mischung macht’s.',
+        tutTitle3: 'Zwanzig Wellen', tutText3: 'Überstehe zwanzig Wellen. Je mehr Leben du behältst, desto mehr Sterne bekommst du.'
+      },
+      es: {
+        wave: 'Oleada', lives: 'Vidas', money: 'Oro',
+        startWave: 'Iniciar oleada', nextWave: 'Siguiente oleada', speed: 'Velocidad', auto: 'Auto', nextIn: 'Siguiente oleada: {n}',
+        archer: 'Arquero', cannon: 'Cañón', frost: 'Hielo', tesla: 'Tesla',
+        archerD: 'Rápido, un objetivo', cannonD: 'Daño en área', frostD: 'Frena enemigos', teslaD: 'Salta entre objetivos',
+        upgrade: 'Mejorar', sell: 'Vender', level: 'Nivel', range: 'Alcance', dps: 'Daño',
+        endless: 'Modo infinito', endlessGo: 'Seguir jugando', mapDone: 'Mapa completado',
+        pickMap: 'Mapa', dailyMap: 'Mapa diario', leaked: 'Se colaron', kills: 'Derrotados',
+        noMoney: 'No tienes oro suficiente', gameOver: 'La fortaleza ha caído', needGold: 'Oro insuficiente: {have} de {need}',
+        buildHere: 'Construir aquí', cantBuild: 'No puedes construir en el camino',
+        pickTower: 'Primero elige una torre en la barra de abajo',
+        tutTitle1: 'Cierra el paso', tutText1: 'Los enemigos van de arriba abajo. Pon torres junto al camino para detenerlos.',
+        tutTitle2: 'Cuatro torres', tutText2: 'El arquero es rápido, el cañón daña en área, el hielo frena y la tesla salta entre objetivos. Combinarlas es la clave.',
+        tutTitle3: 'Veinte oleadas', tutText3: 'Aguanta veinte oleadas. Cuantas más vidas conserves, más estrellas ganas.'
+      }
+    }
+  });
+
+  var params = new URLSearchParams(location.search);
+  var dailyDate = params.get('daily');
+  var prefs = ctx.store.get('prefs', { map: 'm1', speed: 1 });
+  var starsBook = ctx.store.get('stars', {});
+
+  var S = null, mapId = null, raf = null, lastT = 0, selected = null, buildCell = null;
+  var panel = null;
+  function closePanel() { if (panel) { var p = panel; panel = null; p.close(); } }
+  var canvas = el('canvas');
+
+  /* ------------------------------------------------- تخته روی کارت نتیجه */
+  // بوم بازی همین حالا درست همان چیزی است که باید روی کارت بنشیند، پس
+  // یک نسخه از آن برمی‌داریم؛ بازی ادامه می‌دهد و بوم اصلی عوض می‌شود.
+  function cardPaint() {
+    var snap = document.createElement('canvas');
+    snap.width = canvas.width; snap.height = canvas.height;
+    if (!snap.width || !snap.height) return null;
+    try { snap.getContext('2d').drawImage(canvas, 0, 0); } catch (e) { return null; }
+    return function (g, W, H) {
+      var k = Math.min(W / snap.width, H / snap.height);
+      var w = snap.width * k, h = snap.height * k;
+      var x = (W - w) / 2, y = (H - h) / 2;
+      g.save();
+      C.rrect(g, x, y, w, h, 18);
+      g.clip();
+      g.drawImage(snap, x, y, w, h);
+      g.restore();
+    };
+  }
+
+  var cbox = el('div', { class: 'td-canvasbox ch-fit' }, [canvas]);
+  var top = el('div', { class: 'td-top ch-above' });
+  var preview = el('div', { class: 'td-preview' });
+  var startBtn = el('button', { class: 'ch-btn ch-btn--primary', type: 'button', text: C.t('startWave') });
+  var speedBtn = el('button', { class: 'ch-btn ch-btn--soft ch-btn--sm', type: 'button', text: '×' + C.num(1) });
+  // Auto waves (#245): after a wave ends the next starts by itself after a short countdown
+  var autoBtn = el('button', { class: 'ch-btn ch-btn--soft ch-btn--sm td-auto', type: 'button', text: C.t('auto') });
+  var AUTO_MS = 3000, autoAt = 0, wasActive = false;
+  var bottom = el('div', { class: 'td-bottom' }, [preview, autoBtn, speedBtn, startBtn]);
+  var dock = el('div', { class: 'td-dock' });
+  var note = el('div', { class: 'td-note', 'aria-live': 'polite' });
+  var wrap = el('div', { class: 'td-wrap ch-split' }, [cbox, el('div', { class: 'ch-side' }, [top, dock, note, bottom])]);
+
+  /* ----------------------------- نشان برج‌ها ----------------------------- */
+  // هر برج یک شکل پایه‌ی جدا و یک نماد سفید دارد، روی دکمه و روی نقشه یکی.
+  // قبلاً دکمه‌ها همه یک مربع رنگی بودند و با شکل برج روی نقشه نمی‌خواندند (#139).
+  var ICON = {
+    archer: { base: 'M12 2L22.5 21H1.5Z', mark: 'M12 18.5V9.5M8.6 13L12 9.5L15.4 13' },
+    cannon: { base: 'M12 1.5a10.5 10.5 0 1 0 0.01 0Z', mark: 'M6.1 14.8a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0 -5 0M12.9 14.8a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0 -5 0M9.5 8.9a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0 -5 0' },
+    frost: { base: 'M12 1.5L21.1 6.75V17.25L12 22.5L2.9 17.25V6.75Z', mark: 'M12 5v14M5.9 8.5l12.2 7M5.9 15.5l12.2-7' },
+    tesla: { base: 'M5.5 1.5h13a2 2 0 0 1 2 2v17a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-17a2 2 0 0 1 2-2Z', mark: 'M13.5 4L7 13h4.5l-1 7 6.5-9h-4.5Z' }
+  };
+  function iconSvg(kind, color) {
+    var i = ICON[kind];
+    return '<svg class="td-mark" viewBox="0 0 24 24" aria-hidden="true"><path d="' + i.base + '" fill="' + color + '"/>' +
+      '<path d="' + i.mark + '" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  }
+  var iconPaths = {};
+  function iconPath(kind, part) {
+    var k = kind + part;
+    if (!iconPaths[k] && typeof Path2D === 'function') iconPaths[k] = new Path2D(ICON[kind][part]);
+    return iconPaths[k] || null;
+  }
+
+  var noteTimer = null;
+  // پیام‌های بازی زیر نوار برج‌ها می‌آیند، نه به‌شکل اعلان بالای صفحه که روی آمار
+  // و تخته می‌نشست (#139)
+  function say(text) {
+    note.textContent = text;
+    clearTimeout(noteTimer);
+    noteTimer = setTimeout(function () { note.textContent = ''; }, 2600);
+  }
+  function notEnough(need) {
+    C.feedback('bad');
+    var box = ctx.statNode('money');
+    box = box && box.parentNode;
+    if (box) { box.classList.remove('td-flash'); void box.offsetWidth; box.classList.add('td-flash'); }
+    say(C.t('needGold', { have: C.num(S ? S.money : 0), need: C.num(need) }));
+  }
+
+  /* ------------------------------ نوار برج‌ها ------------------------------ */
+  var armed = null;          // برجی که الان در دست است
+  var dockBtns = {};
+
+  KINDS.forEach(function (k) {
+    var def = E.TOWERS[k];
+    var cost = el('small', { text: C.num(def.cost) });
+    var b = el('button', {
+      class: 'td-buy', type: 'button', 'aria-pressed': 'false',
+      style: { '--tc': def.color },
+      title: C.t(k + 'D')
+    }, [
+      el('span', { html: iconSvg(k, def.color) }),
+      el('b', { text: C.t(k) }),
+      cost
+    ]);
+    b.addEventListener('click', function () {
+      if (!S || S.over) return;
+      if (S.money < E.TOWERS[k].cost) { notEnough(E.TOWERS[k].cost); return; }
+      arm(armed === k ? null : k);
+      C.feedback('select');
+    });
+    dockBtns[k] = { btn: b, cost: cost };
+    dock.appendChild(b);
+  });
+
+  function arm(k) {
+    armed = k;
+    selected = null;
+    buildCell = null;
+    KINDS.forEach(function (x) {
+      dockBtns[x].btn.setAttribute('aria-pressed', armed === x ? 'true' : 'false');
+    });
+  }
+
+  function refreshDock() {
+    if (!S) return;
+    KINDS.forEach(function (k) {
+      var d = dockBtns[k];
+      var cost = E.TOWERS[k].cost;
+      var poor = S.money < cost || S.over;
+      d.btn.disabled = poor;
+      // پیشنهاد گزارش‌دهنده: برجی که پولش نمی‌رسد «طلای تو / قیمت» نشان می‌دهد
+      d.cost.textContent = poor && !S.over ? C.num(S.money) + ' / ' + C.num(cost) : C.num(cost);
+      if (poor && armed === k) arm(null);
+    });
+  }
+
+  function launchWave() {
+    autoAt = 0;
+    E.startWave(S, Math.random);
+    updateHud();
+    save();
+  }
+  startBtn.addEventListener('click', function () {
+    if (!S || S.over) return;
+    if (S.waveActive) return;
+    C.feedback('select');
+    launchWave();
+  });
+  autoBtn.addEventListener('click', function () {
+    prefs.auto = !prefs.auto;
+    ctx.store.set('prefs', prefs);
+    // switched on between waves: the countdown starts now; the first wave stays manual
+    autoAt = prefs.auto && S && !S.over && !S.waveActive && S.wave > 0 ? performance.now() + AUTO_MS : 0;
+    C.feedback('select');
+    updateHud();
+  });
+  speedBtn.addEventListener('click', function () {
+    prefs.speed = prefs.speed === 1 ? 2 : 1;
+    ctx.store.set('prefs', prefs);
+    speedBtn.textContent = '×' + C.num(prefs.speed);
+    C.feedback('select');
+  });
+
+  ctx.stat('wave', C.t('wave'));
+  ctx.stat('lives', C.t('lives'));
+  ctx.stat('money', C.t('money'));
+  ctx.button({ icon: 'help', label: C.t('help'), onClick: showHelp });
+  ctx.button({ icon: 'refresh', label: C.t('restart'), onClick: askNew });
+  ctx.main.appendChild(wrap);
+  ctx.main.className = 'ch-gamemain';
+  ctx.mount();
+
+  /* --------------------------------------------------------- رنگ‌ها */
+
+  // رنگ برج‌ها در موتور به شکل #RRGGBB است و برای پرکردن دایره شفافیت می‌خواهد
+  function hexA(hex, a) {
+    var h = String(hex).replace('#', '');
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    var n = parseInt(h, 16);
+    if (isNaN(n) || h.length !== 6) return 'rgba(224,122,95,' + a + ')';
+    return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+  }
+
+  var CO = {};
+  function readColors() {
+    var cs = getComputedStyle(document.documentElement);
+    function v(n, f) { return (cs.getPropertyValue(n) || f).trim() || f; }
+    CO = {
+      grass: v('--td-grass', '#F3EADC'),
+      grass2: v('--td-grass2', '#EDE2D0'),
+      path: v('--td-path', '#D8B87E'),
+      pathEdge: v('--c-line', '#E7DACA'),
+      text: v('--c-text', '#2C2620'),
+      dim: v('--c-text-faint', '#A99C8C'),
+      surface: v('--c-surface', '#fff'),
+      bad: v('--c-bad', '#C8574B'),
+      good: v('--c-good', '#5C9A6B'),
+      gold: v('--c-gold', '#D9A441')
+    };
+  }
+  readColors();
+  if (window.matchMedia) {
+    var mq = window.matchMedia('(prefers-color-scheme: dark)');
+    if (mq.addEventListener) mq.addEventListener('change', function () { setTimeout(readColors, 60); });
+  }
+
+  /* ---------------------------------------------------------- ساخت */
+
+  function pathFor(id, date) {
+    if (id === 'daily') return E.genPath(C.daily('tower-defence', date).rng, { minTurns: 5 });
+    var m = MAPS.filter(function (x) { return x.id === id; })[0] || MAPS[0];
+    var o = { minTurns: 5 };
+    for (var k in m.opts || {}) o[k] = m.opts[k];
+    return E.genPath(seedRng(m.seed), o);
+  }
+  function seedRng(n) { return C.rng(n); }
+
+  function newGame(id, date) {
+    closePanel();
+    autoAt = 0; wasActive = false; shotsLive = []; impacts = []; deaths = [];
+    mapId = id;
+    var path = pathFor(id, date);
+    S = E.createGame({ path: path, money: 200, lives: 20, lastWave: 20 });
+    S.mapId = id;
+    S.date = date || null;
+    selected = null;
+    if (typeof arm === 'function') arm(null);
+    resize();
+    render();
+    save();
+  }
+
+  /* ---------------------------------------------------------- رابط */
+
+  function render() {
+    top.innerHTML = '';
+    if (S.date) {
+      top.appendChild(el('span', { class: 'ch-badge ch-badge--accent' },
+        [C.icon('calendar', 14), el('span', { text: C.t('dailyMap') + ' — ' + C.num(S.date) })]));
+    } else {
+      // Six maps no longer fit a segmented row on a phone, so the map is a button
+      // that opens a list with each map's stars
+      top.appendChild(el('button', {
+        class: 'ch-btn ch-btn--soft ch-btn--sm td-mapbtn', type: 'button',
+        'aria-label': C.t('pickMap') + ': ' + mapName(mapId), onclick: pickMap
+      }, [el('span', { text: C.t('pickMap') + ' · ' + mapName(mapId) }), C.icon('list', 16)]));
+      top.appendChild(starRow(starsBook[mapId] || 0));
+    }
+    updateHud();
+  }
+
+  function mapName(id) {
+    var m = MAPS.filter(function (x) { return x.id === id; })[0] || MAPS[0];
+    return m[C.state.settings.lang] || m.en;
+  }
+
+  function starRow(n) {
+    var sr = el('span', { class: 'ch-badge td-stars' });
+    for (var i = 1; i <= 3; i++) {
+      var ic = C.icon('star', 13);
+      ic.style.color = i <= n ? 'var(--c-gold)' : 'var(--c-text-faint)';
+      if (i > n) ic.style.opacity = '.4';
+      if (i <= n) ic.setAttribute('fill', 'currentColor');
+      sr.appendChild(ic);
+    }
+    return sr;
+  }
+
+  // A small drawing of each map's path (#251): from the names alone the player picked
+  // blind, and switching mid-game restarts the run. Built from pathFor(), so it is the
+  // map that will actually be played.
+  function mapThumb(path) {
+    var pts = path.map(function (p) { return (p.c + 0.5) + ',' + (p.r + 0.5); }).join(' ');
+    var end = path[path.length - 1];
+    var span = document.createElement('span');
+    span.innerHTML = '<svg class="td-thumb" viewBox="0 0 ' + E.GW + ' ' + E.GH + '" aria-hidden="true">' +
+      '<polyline points="' + pts + '" fill="none" stroke="var(--td-path)" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<rect x="' + (end.c + 0.1) + '" y="' + (end.r + 0.1) + '" width="0.8" height="0.8" rx="0.15" fill="var(--game)"/></svg>';
+    return span.firstChild;
+  }
+  function pickMap() {
+    C.feedback('tap');
+    var dlg = null;
+    var list = el('div', { class: 'ch-list' }, MAPS.map(function (m) {
+      return el('button', {
+        class: 'ch-item ch-tap td-mapitem' + (m.id === mapId ? ' td-mapitem--on' : ''), type: 'button',
+        onclick: function () { if (dlg) dlg.close(); if (m.id !== mapId) askSwitch(m.id); }
+      }, [mapThumb(pathFor(m.id)), el('div', { class: 'ch-item__label', text: m[C.state.settings.lang] || m.en }), starRow(starsBook[m.id] || 0)]);
+    }));
+    dlg = C.ui.modal({ title: C.t('pickMap'), body: [list], actions: [{ label: C.t('close') }] });
+  }
+
+  function askSwitch(v) {
+    if (S && S.wave > 0 && !S.over) {
+      // انصراف باید انتخابگر را به نقشه‌ای که واقعاً بازی می‌شود برگرداند
+      C.ui.confirm({
+        title: C.t('restart'), body: C.t('resetWarn'),
+        onOk: function () { prefs.map = v; ctx.store.set('prefs', prefs); newGame(v); },
+        onCancel: function () { render(); }
+      });
+      render();
+      return;
+    }
+    prefs.map = v; ctx.store.set('prefs', prefs);
+    newGame(v);
+  }
+
+  function updateHud() {
+    ctx.setStat('wave', C.num(S.wave) + (S.endless ? '∞' : '/' + C.num(S.lastWave)));
+    ctx.setStat('lives', S.lives);
+    ctx.setStat('money', S.money);
+    refreshDock();
+    startBtn.disabled = S.waveActive || S.over;
+    startBtn.textContent = S.waveActive ? C.t('wave') + ' ' + C.num(S.wave) : C.t('startWave');
+    autoBtn.setAttribute('aria-pressed', prefs.auto ? 'true' : 'false');
+    autoBtn.classList.toggle('td-auto--on', !!prefs.auto);
+    speedBtn.textContent = '×' + C.num(prefs.speed);
+    drawPreview();
+  }
+
+  function drawPreview() {
+    preview.innerHTML = '';
+    var next = S.wave + 1;
+    if (S.over) { preview.appendChild(el('span', { class: 'ch-xs ch-dim', text: C.t('gameOver') })); return; }
+    preview.appendChild(el('span', { class: 'ch-xs ch-faint td-pvhead', text: C.t('nextWave') + ' ' + C.num(next) }));
+    var chips = el('div', { class: 'td-pvs' });
+    preview.appendChild(chips);
+    // بذر همان چیزی که startWave استفاده می‌کند تا پیش‌نمایش دروغ نگوید
+    var comp = E.waveComposition(next, C.rng('td|' + (S.mapId || '') + '|' + (S.date || '') + '|' + next));
+    comp.forEach(function (c) {
+      chips.appendChild(el('span', { class: 'td-pv' }, [
+        el('i', { style: { background: E.TYPES[c.type].color } }),
+        el('span', { text: C.num(c.count) })
+      ]));
+    });
+  }
+
+  /* ---------------------------------------------------------- رسم */
+
+  var cs = 30, ox = 0, oy = 0, dpr = 1;
+  function resize() {
+    var boxW = cbox.clientWidth || window.innerWidth;
+    var boxH = cbox.clientHeight || (window.innerHeight - 220);
+    cs = Math.max(16, Math.floor(Math.min(boxW / E.GW, boxH / E.GH)));
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var w = cs * E.GW, h = cs * E.GH;
+    canvas.width = Math.floor(w * dpr);
+    canvas.height = Math.floor(h * dpr);
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    ox = 0; oy = 0;
+  }
+  // the map follows its slot, which changes with the window and the side column (#359)
+  if (window.ResizeObserver) new ResizeObserver(function () { resize(); }).observe(cbox);
+  else window.addEventListener('resize', function () { resize(); });
+
+  function draw() {
+    if (!S) return;
+    var g = canvas.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, cs * E.GW, cs * E.GH);
+
+    // زمین
+    for (var r = 0; r < E.GH; r++) {
+      for (var c = 0; c < E.GW; c++) {
+        g.fillStyle = ((r + c) % 2) ? CO.grass : CO.grass2;
+        g.fillRect(c * cs, r * cs, cs, cs);
+      }
+    }
+    // مسیر
+    g.strokeStyle = CO.path;
+    g.lineWidth = cs * 0.8;
+    g.lineJoin = 'round';
+    g.lineCap = 'round';
+    g.beginPath();
+    for (var i = 0; i < S.path.length; i++) {
+      var p = S.path[i];
+      var x = (p.c + 0.5) * cs, y = (p.r + 0.5) * cs;
+      if (i === 0) g.moveTo(x, y); else g.lineTo(x, y);
+    }
+    g.stroke();
+
+    // قلعه‌ی پایین و دروازه‌ی بالا
+    var first = S.path[0], last = S.path[S.path.length - 1];
+    drawGate(g, (first.c + 0.5) * cs, (first.r + 0.5) * cs, CO.dim);
+    drawKeep(g, (last.c + 0.5) * cs, (last.r + 0.5) * cs);
+
+    // برج‌ها
+    for (var t = 0; t < S.towers.length; t++) drawTower(g, S.towers[t]);
+
+    // برد برج انتخاب‌شده
+    if (selected) {
+      var st = E.towerStats(selected.kind, selected.level);
+      g.beginPath();
+      g.arc((selected.c + 0.5) * cs, (selected.r + 0.5) * cs, st.range * cs, 0, Math.PI * 2);
+      g.fillStyle = 'rgba(224,122,95,.12)';
+      g.fill();
+      g.strokeStyle = 'rgba(224,122,95,.5)';
+      g.lineWidth = 2;
+      g.stroke();
+    }
+    // پیش‌نمایش برد پیش از خرید (#65). برد از خود موتور خوانده می‌شود و با
+    // سطح ساخت (صفر) حساب می‌شود، وگرنه بازیکن بردی می‌بیند که نمی‌خرد.
+    var pv = buildCell && armed ? E.buildPreview(S, buildCell.r, buildCell.c, armed) : null;
+    if (pv) {
+      var fits = pv.fits;
+      var cx = (buildCell.c + 0.5) * cs, cy = (buildCell.r + 0.5) * cs;
+      g.beginPath();
+      g.arc(cx, cy, pv.range * cs, 0, Math.PI * 2);
+      g.fillStyle = fits ? hexA(pv.color, 0.14) : 'rgba(0,0,0,.06)';
+      g.fill();
+      g.strokeStyle = fits ? pv.color : CO.bad;
+      g.lineWidth = 2;
+      g.setLineDash([6, 5]);
+      g.stroke();
+      g.setLineDash([]);
+      g.strokeStyle = fits ? CO.good : CO.bad;
+      g.lineWidth = 3;
+      g.strokeRect(buildCell.c * cs + 2, buildCell.r * cs + 2, cs - 4, cs - 4);
+    }
+
+    // Shots fly (#245): a tester could not see what towers did when each shot was a
+    // one-frame line. Projectiles are drawn from the shots the engine reports; damage
+    // still lands in the engine at once, so this is only what the player sees.
+    drawShots(g, performance.now());
+
+    // دشمن‌ها
+    for (var n = 0; n < S.enemies.length; n++) drawEnemy(g, S.enemies[n]);
+    drawDeaths(g, performance.now());
+  }
+
+  var SHOT_MS = { archer: 230, cannon: 340, frost: 260, tesla: 150 };
+  var shotsLive = [], impacts = [];
+  // #407: an enemy vanished in one frame and its bounty only changed the
+  // number at the top. Now it pops where it fell and a "+N" coin floats up.
+  var POP_MS = 260, FLOAT_MS = 750, deaths = [];
+  // the pop's scale and alpha, and the float's rise (in cells) and alpha, q ms after the kill
+  function deathAt(q) {
+    var a = Math.min(1, q / POP_MS), b = Math.min(1, q / FLOAT_MS);
+    return { scale: 1 + 0.7 * a, popAlpha: 1 - a, rise: 0.9 * (1 - Math.pow(1 - b, 2)), coinAlpha: b < 0.6 ? 1 : 1 - (b - 0.6) / 0.4 };
+  }
+  function drawDeaths(g, now) {
+    var keep = [];
+    for (var i = 0; i < deaths.length; i++) {
+      var d = deaths[i], q = now - d.t0;
+      if (q >= FLOAT_MS) continue;
+      keep.push(d);
+      var k = deathAt(q), x = d.x * cs, y = d.y * cs;
+      if (k.popAlpha > 0) {
+        g.globalAlpha = k.popAlpha;
+        g.strokeStyle = d.color; g.lineWidth = Math.max(2, cs * 0.07);
+        g.beginPath(); g.arc(x, y, d.r * cs * k.scale, 0, Math.PI * 2); g.stroke();
+      }
+      g.globalAlpha = Math.max(0, k.coinAlpha);
+      g.font = '800 ' + Math.round(cs * 0.36) + 'px Vazirmatn, system-ui, sans-serif';
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      // kept inside the board: a kill on the top row rose out of sight
+      var txt = '+' + C.num(d.gain), ty = Math.max(cs * 0.3, y - k.rise * cs);
+      g.lineWidth = 3; g.strokeStyle = 'rgba(40,30,20,.65)'; g.strokeText(txt, x, ty);
+      g.fillStyle = '#F2B84B'; g.fillText(txt, x, ty);
+      g.globalAlpha = 1;
+    }
+    deaths = keep;
+  }
+  function takeShots(now) {
+    if (!S || !S.effects.length) return;
+    for (var i = 0; i < S.effects.length && shotsLive.length < 160; i++) {
+      var f = S.effects[i];
+      if (f.kind === 'kill') { if (!C.ui.reduceMotion() && deaths.length < 60) deaths.push({ x: f.x, y: f.y, r: f.r, color: f.color, gain: f.gain, t0: now }); continue; }
+      shotsLive.push({ kind: f.kind, x1: f.x1, y1: f.y1, x2: f.x2, y2: f.y2, color: f.color, t0: now, dur: C.ui.reduceMotion() ? 90 : (SHOT_MS[f.kind] || 220) });
+    }
+    S.effects.length = 0;
+  }
+  function drawShots(g, now) {
+    var still = [], quiet = C.ui.reduceMotion();
+    for (var i = 0; i < shotsLive.length; i++) {
+      var f = shotsLive[i], p = (now - f.t0) / f.dur;
+      if (p >= 1) {
+        if (!quiet && (f.kind === 'cannon' || f.kind === 'frost')) impacts.push({ kind: f.kind, x: f.x2, y: f.y2, color: f.color, t0: now, dur: f.kind === 'cannon' ? 320 : 260 });
+        continue;
+      }
+      still.push(f);
+      var x = (f.x1 + (f.x2 - f.x1) * p) * cs, y = (f.y1 + (f.y2 - f.y1) * p) * cs;
+      var ang = Math.atan2(f.y2 - f.y1, f.x2 - f.x1);
+      if (quiet || f.kind === 'tesla') {
+        // a bolt is instant; it flickers for its short life instead of travelling
+        g.strokeStyle = f.color; g.globalAlpha = 1 - p; g.lineWidth = 3;
+        g.beginPath(); g.moveTo(f.x1 * cs, f.y1 * cs);
+        if (f.kind === 'tesla') for (var k = 1; k < 4; k++) g.lineTo((f.x1 + (f.x2 - f.x1) * k / 4) * cs + (Math.random() - 0.5) * cs * 0.35, (f.y1 + (f.y2 - f.y1) * k / 4) * cs + (Math.random() - 0.5) * cs * 0.35);
+        g.lineTo(f.x2 * cs, f.y2 * cs); g.stroke(); g.globalAlpha = 1;
+        continue;
+      }
+      g.save(); g.translate(x, y);
+      if (f.kind === 'archer') {
+        // an arrow: shaft and head, pointing where it flies
+        g.rotate(ang); g.strokeStyle = f.color; g.fillStyle = f.color; g.lineWidth = Math.max(2.5, cs * 0.08); g.lineCap = 'round';
+        g.beginPath(); g.moveTo(-cs * 0.34, 0); g.lineTo(cs * 0.12, 0); g.stroke();
+        g.beginPath(); g.moveTo(cs * 0.26, 0); g.lineTo(cs * 0.08, -cs * 0.11); g.lineTo(cs * 0.08, cs * 0.11); g.closePath(); g.fill();
+      } else if (f.kind === 'cannon') {
+        // a cannonball rises and falls on its way, with its shadow on the ground
+        var lift = Math.sin(Math.PI * p) * cs * 0.45;
+        g.fillStyle = 'rgba(0,0,0,.18)'; g.beginPath(); g.ellipse(0, cs * 0.06, cs * 0.1, cs * 0.05, 0, 0, Math.PI * 2); g.fill();
+        g.fillStyle = '#3B2F28'; g.beginPath(); g.arc(0, -lift, cs * 0.15, 0, Math.PI * 2); g.fill();
+        // a light rim keeps the ball visible on the dark board too
+        g.strokeStyle = 'rgba(255,240,220,.7)'; g.lineWidth = 1.5; g.stroke();
+        g.fillStyle = 'rgba(255,255,255,.35)'; g.beginPath(); g.arc(-cs * 0.04, -lift - cs * 0.04, cs * 0.035, 0, Math.PI * 2); g.fill();
+      } else {
+        // a frost shard spins as it goes
+        g.rotate(p * Math.PI * 3); g.fillStyle = f.color;
+        g.beginPath(); g.moveTo(0, -cs * 0.17); g.lineTo(cs * 0.09, 0); g.lineTo(0, cs * 0.17); g.lineTo(-cs * 0.09, 0); g.closePath(); g.fill();
+      }
+      g.restore();
+    }
+    shotsLive = still;
+    var left = [];
+    for (var j = 0; j < impacts.length; j++) {
+      var m = impacts[j], q = (now - m.t0) / m.dur;
+      if (q >= 1) continue;
+      left.push(m);
+      g.globalAlpha = 1 - q;
+      if (m.kind === 'cannon') {
+        // the burst grows to the splash radius
+        var R = cs * (0.25 + q * 0.85);
+        g.fillStyle = 'rgba(232,145,58,.35)'; g.beginPath(); g.arc(m.x * cs, m.y * cs, R, 0, Math.PI * 2); g.fill();
+        g.strokeStyle = '#E8913A'; g.lineWidth = 3; g.stroke();
+      } else {
+        g.strokeStyle = m.color; g.lineWidth = 2.5;
+        for (var r = 0; r < 6; r++) {
+          var an = r * Math.PI / 3, l1 = cs * 0.12, l2 = cs * (0.2 + q * 0.4);
+          g.beginPath(); g.moveTo(m.x * cs + Math.cos(an) * l1, m.y * cs + Math.sin(an) * l1); g.lineTo(m.x * cs + Math.cos(an) * l2, m.y * cs + Math.sin(an) * l2); g.stroke();
+        }
+      }
+      g.globalAlpha = 1;
+    }
+    impacts = left;
+  }
+
+  function drawGate(g, x, y, col) {
+    g.fillStyle = col;
+    g.globalAlpha = .5;
+    g.beginPath();
+    g.arc(x, y, cs * 0.28, 0, Math.PI * 2);
+    g.fill();
+    g.globalAlpha = 1;
+  }
+  function drawKeep(g, x, y) {
+    var s = cs * 0.42;
+    g.fillStyle = '#8A6A4F';
+    g.fillRect(x - s, y - s * 0.7, s * 2, s * 1.5);
+    g.fillStyle = '#A98263';
+    for (var i = -2; i <= 1; i++) g.fillRect(x - s + (i + 2) * s * 0.5, y - s * 1.05, s * 0.35, s * 0.4);
+    g.fillStyle = CO.bad;
+    g.beginPath();
+    g.moveTo(x, y - s * 1.6);
+    g.lineTo(x + s * 0.7, y - s * 1.35);
+    g.lineTo(x, y - s * 1.1);
+    g.closePath();
+    g.fill();
+    g.strokeStyle = '#6E5340';
+    g.lineWidth = 2;
+    g.beginPath(); g.moveTo(x, y - s * 1.6); g.lineTo(x, y - s * 0.7); g.stroke();
+  }
+
+  function drawTower(g, t) {
+    var x = (t.c + 0.5) * cs, y = (t.r + 0.5) * cs;
+    var st = E.towerStats(t.kind, t.level);
+    g.fillStyle = st.color;
+    var s = cs * 0.34;
+    g.beginPath();
+    if (t.kind === 'archer') {
+      g.moveTo(x, y - s); g.lineTo(x + s, y + s * 0.8); g.lineTo(x - s, y + s * 0.8);
+      g.closePath();
+    } else if (t.kind === 'cannon') {
+      g.arc(x, y, s, 0, Math.PI * 2);
+    } else if (t.kind === 'frost') {
+      for (var i = 0; i < 6; i++) {
+        var a = Math.PI / 3 * i - Math.PI / 2;
+        var px = x + Math.cos(a) * s, py = y + Math.sin(a) * s;
+        if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
+      }
+      g.closePath();
+    } else {
+      g.rect(x - s * 0.85, y - s, s * 1.7, s * 2);
+    }
+    g.fill();
+    // همان نماد دکمه‌ی برج، سفید روی شکل
+    var mk = iconPath(t.kind, 'mark');
+    if (mk) {
+      g.save();
+      var sc = (s * 1.5) / 24;
+      g.translate(x - 12 * sc, y - 12 * sc - s * 0.05);
+      g.scale(sc, sc);
+      g.strokeStyle = '#fff'; g.lineWidth = 2.4; g.lineCap = 'round'; g.lineJoin = 'round';
+      g.stroke(mk);
+      g.restore();
+    }
+    // نشان سطح
+    for (var l = 0; l < t.level; l++) {
+      g.fillStyle = CO.gold;
+      g.beginPath();
+      g.arc(x + (l - (t.level - 1) / 2) * s * 0.45, y + s * 1.15, cs * 0.055, 0, Math.PI * 2);
+      g.fill();
+    }
+  }
+
+  function drawEnemy(g, e) {
+    var p = E.posAt(S.geo, e.t);
+    var t = E.TYPES[e.type];
+    var x = p.x * cs, y = p.y * cs, r = t.r * cs;
+    g.fillStyle = t.color;
+    g.beginPath();
+    g.arc(x, y, r, 0, Math.PI * 2);
+    g.fill();
+    if (e.slow > 0) {
+      g.strokeStyle = '#6BB6C4';
+      g.lineWidth = 2;
+      g.stroke();
+    }
+    // چشم‌ها
+    g.fillStyle = '#2C2620';
+    g.beginPath(); g.arc(x - r * 0.32, y - r * 0.1, r * 0.16, 0, Math.PI * 2); g.fill();
+    g.beginPath(); g.arc(x + r * 0.32, y - r * 0.1, r * 0.16, 0, Math.PI * 2); g.fill();
+    // نوار سلامت
+    if (e.hp < e.max) {
+      var w = r * 2, h = Math.max(2, cs * 0.07);
+      g.fillStyle = 'rgba(0,0,0,.18)';
+      g.fillRect(x - w / 2, y - r - h * 2, w, h);
+      g.fillStyle = e.hp / e.max > 0.4 ? CO.good : CO.bad;
+      g.fillRect(x - w / 2, y - r - h * 2, w * (e.hp / e.max), h);
+    }
+  }
+
+  /* ---------------------------------------------------------- حلقه */
+
+  function loop(now) {
+    raf = requestAnimationFrame(loop);
+    var dt = Math.min((now - lastT) / 1000, 0.05);
+    lastT = now;
+    if (S && !S.over && S.waveActive) {
+      var mult = prefs.speed;
+      // هر گام افکت‌های خودش را پاک می‌کند، پس در سرعت دو برابر شلیک‌های
+      // گام اول قبل از رسم از بین می‌رفتند. اینجا جمعشان می‌کنیم.
+      var shots = [];
+      for (var i = 0; i < mult; i++) {
+        E.step(S, dt, Math.random);
+        if (mult > 1 && S.effects.length) shots = shots.concat(S.effects);
+      }
+      if (mult > 1) S.effects = shots;
+      takeShots(now);
+      hudTick();
+      wasActive = true;
+    } else if (S && S.effects.length) {
+      // افکت‌ها فقط داخل step پاک می‌شوند و step فقط وقتی موج فعال است اجرا
+      // می‌شود. بدون این، آخرین شلیک‌های موج تا ابد روی تخته می‌ماندند.
+      S.effects.length = 0;
+    }
+    // a wave just ended: with Auto on, count down to the next one on the start button
+    if (S && wasActive && !S.waveActive) {
+      wasActive = false;
+      if (prefs.auto && !S.over) autoAt = now + AUTO_MS;
+    }
+    if (S && autoAt && !S.waveActive && !S.over) {
+      if (!prefs.auto) autoAt = 0;
+      else if (now >= autoAt) launchWave();
+      else startBtn.textContent = C.t('nextIn', { n: C.num(Math.ceil((autoAt - now) / 1000)) });
+    }
+    draw();
+  }
+
+  var lastLives = -1, lastMoney = -1, lastWave = -1, lastActive = null;
+  function hudTick() {
+    if (S.lives !== lastLives) {
+      if (lastLives >= 0 && S.lives < lastLives) { C.audio.sfx('bad'); C.haptic('error'); C.ui.shake(canvas); }
+      lastLives = S.lives;
+      ctx.setStat('lives', S.lives);
+    }
+    if (S.money !== lastMoney) { lastMoney = S.money; ctx.setStat('money', S.money); refreshDock(); }
+    if (S.wave !== lastWave) { lastWave = S.wave; updateHud(); }
+    if (S.waveActive !== lastActive) {
+      lastActive = S.waveActive;
+      updateHud();
+      if (!S.waveActive) save();
+    }
+    if (S.over) { finish(); }
+  }
+
+  /* ---------------------------------------------------------- ورودی */
+
+  // نگه داشتن انگشت روی خانه، برد برج در دست را نشان می‌دهد و چیزی نمی‌خرد.
+  // بدون این، تنها راه دیدن برد یک برج خریدن آن بود (#65).
+  var HOLD_MS = 320, holdTimer = null, holdFired = false, holdFrom = null;
+
+  function cellOf(ev) {
+    var rect = canvas.getBoundingClientRect();
+    var c = Math.floor((ev.clientX - rect.left) / cs);
+    var r = Math.floor((ev.clientY - rect.top) / cs);
+    if (r < 0 || c < 0 || r >= E.GH || c >= E.GW) return null;
+    return { r: r, c: c };
+  }
+  function showRange(cell) {
+    var next = (armed && S && !S.over) ? cell : null;
+    var same = (!next && !buildCell) ||
+      (next && buildCell && next.r === buildCell.r && next.c === buildCell.c);
+    if (same) return;
+    buildCell = next;
+    draw();
+  }
+  function clearHold() {
+    if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+    holdFrom = null;
+  }
+
+  canvas.addEventListener('pointermove', function (ev) {
+    if (ev.pointerType === 'mouse') { showRange(cellOf(ev)); return; }
+    // انگشت که سُر خورد، دیگر نگه داشتن نیست
+    if (holdFrom && Math.abs(ev.clientX - holdFrom.x) + Math.abs(ev.clientY - holdFrom.y) > 12) clearHold();
+    else if (holdFired) showRange(cellOf(ev));
+  });
+  canvas.addEventListener('pointerleave', function () { clearHold(); showRange(null); });
+  canvas.addEventListener('pointerdown', function (ev) {
+    if (ev.pointerType === 'mouse' || !armed || !S || S.over) return;
+    var cell = cellOf(ev);
+    if (!cell) return;
+    holdFrom = { x: ev.clientX, y: ev.clientY };
+    holdTimer = setTimeout(function () {
+      holdTimer = null;
+      holdFired = true;
+      C.haptic('light');
+      showRange(cell);
+    }, HOLD_MS);
+  });
+  canvas.addEventListener('pointerup', function () { clearHold(); });
+  canvas.addEventListener('pointercancel', function () { clearHold(); holdFired = false; showRange(null); });
+
+  canvas.addEventListener('click', function (ev) {
+    // رها کردن انگشت بعد از پیش‌نمایش نباید برج بخرد
+    if (holdFired) { holdFired = false; showRange(null); return; }
+    if (!S || S.over) return;
+    var rect = canvas.getBoundingClientRect();
+    var c = Math.floor((ev.clientX - rect.left) / cs);
+    var r = Math.floor((ev.clientY - rect.top) / cs);
+    if (r < 0 || c < 0 || r >= E.GH || c >= E.GW) return;
+
+    var t = E.towerAt(S, r, c);
+    if (t) { arm(null); selected = t; buildCell = null; towerPanel(t); return; }
+
+    selected = null;
+    if (!E.canBuild(S, r, c)) { say(C.t('cantBuild')); return; }
+
+    // برجی در دست نیست: به‌جای باز کردن پنجره، نوار پایین را نشان بده
+    if (!armed) {
+      C.audio.sfx('tap');
+      say(C.t('pickTower'));
+      dock.classList.remove('ch-pulse');
+      void dock.offsetWidth;
+      dock.classList.add('ch-pulse');
+      return;
+    }
+
+    if (E.build(S, r, c, armed)) {
+      C.audio.sfx('build');
+      C.haptic('success');
+      buildCell = null;
+      updateHud();
+      save();
+      // برج در دست می‌ماند تا بشود چندتا پشت سر هم گذاشت
+      refreshDock();
+    } else {
+      notEnough(E.TOWERS[armed].cost);
+    }
+  });
+
+  function towerPanel(t) {
+    var st = E.towerStats(t.kind, t.level);
+    var up = t.level < E.MAX_LEVEL ? E.upgradeCost(t.kind, t.level) : null;
+    // What the upgrade buys, before paying for it (#245): the panel showed only the
+    // price, so a tester could not tell whether a level was worth it.
+    var nx = up !== null ? E.towerStats(t.kind, t.level + 1) : null;
+    var arrow = document.documentElement.dir === 'rtl' ? ' ← ' : ' → ';
+    function grow(a, b) { return nx ? C.num(a) + arrow + C.num(b) : C.num(a); }
+    var body = [
+      el('div', { class: 'ch-list' }, [
+        line(C.t('level'), grow(t.level + 1, t.level + 2)),
+        line(C.t('dps'), grow(Math.round(st.dps), nx && Math.round(nx.dps))),
+        line(C.t('range'), grow(st.range.toFixed(1), nx && nx.range.toFixed(1))),
+        line(C.t('kills'), C.num(t.kills))
+      ])
+    ];
+    var actions = [{ label: C.t('close'), onClick: function () { selected = null; } }];
+    actions.push({
+      label: C.t('sell') + ' ' + C.num(E.sellValue(S, t)), onClick: function () {
+        if (!S || S.towers.indexOf(t) < 0) return;
+        E.sell(S, t); selected = null; C.audio.sfx('coin'); updateHud(); save(); refreshDock();
+      }
+    });
+    if (up !== null) {
+      actions.push({
+        label: C.t('upgrade') + ' ' + C.num(up), kind: 'primary', onClick: function () {
+          if (!S || S.towers.indexOf(t) < 0) return;
+          if (E.upgrade(S, t)) { C.audio.sfx('build'); C.haptic('success'); updateHud(); save(); }
+          else { closePanel(); notEnough(up); }
+        }
+      });
+    }
+    closePanel();
+    var h = C.ui.modal({
+      title: C.t(t.kind), body: body, actions: actions,
+      onClose: function () { if (panel === h) { selected = null; panel = null; } }
+    });
+    panel = h;
+  }
+  function line(a, b) {
+    return el('div', { class: 'ch-item' }, [
+      el('div', { class: 'ch-item__label', text: a }), el('b', { class: 'ch-num', text: b })
+    ]);
+  }
+
+  /* --------------------------------------------------------- پایان */
+
+  var finished = false;
+  function finish() {
+    if (finished) return;
+    finished = true;
+    closePanel();
+    var won = S.won;
+    var st = E.stars(S);
+    if (won && !S.endless) {
+      if ((starsBook[mapId] || 0) < st) { starsBook[mapId] = st; ctx.store.set('stars', starsBook); }
+      C.achievements.unlock('td-win');
+      if (S.lives === S.maxLives) C.achievements.unlock('td-perfect');
+      if (st >= 3) C.achievements.unlock('td-stars');
+    }
+    if (S.wave >= 30) C.achievements.unlock('td-endless');
+    var coins = won ? (24 + st * 10 + S.wave) : Math.max(3, Math.round(S.wave * 1.6));
+    var points = won ? (90 + st * 25 + S.wave * 3) : Math.max(5, S.wave * 5);
+    var continued = !!S.endless;
+    var firstDaily = false;
+    if (S.date) {
+      firstDaily = C.stats.daily('tower-defence', S.date, {
+        label: C.t('wave') + ' ' + C.num(S.wave) + (won ? ' ★' + C.num(st) : ''), wave: S.wave, won: won
+      });
+    }
+    // پاداش روزانه فقط بار اول. تکرار همان روز دوباره سکه نمی‌دهد.
+    if (S.date && !firstDaily) { coins = Math.round(coins * 0.2); points = Math.round(points * 0.2); }
+    C.stats.best('tower-defence', 'wave', S.wave, false);
+    ctx.clearSave();
+
+    var cardPainter = cardPaint();
+    var resultModal = ctx.finish({
+      won: won,
+      continued: continued,
+      title: won ? C.t('mapDone') : C.t('gameOver'),
+      stars: won && !S.endless ? st : null,
+      timeMs: S.time * 1000,
+      coins: coins, points: points,
+      lines: [
+        { label: C.t('wave'), value: C.num(S.wave) },
+        { label: C.t('lives'), value: C.num(S.lives) },
+        { label: C.t('kills'), value: C.num(S.kills) },
+        { label: C.t('leaked'), value: C.num(S.leaked) }
+      ],
+      shareText: 'چوگان · دفاع از برج' + (S.date ? ('\nنقشه‌ی روزانه ' + S.date) : '') +
+        '\nموج ' + C.num(S.wave) + (won ? (' · ' + C.num(st) + ' ستاره') : '') + ' · جان ' + C.num(S.lives),
+      paint: cardPainter,
+      onAgain: function () { finished = false; newGame(mapId, S.date); }
+    });
+
+    // پیشنهاد حالت بی‌پایان بعد از برد
+    if (won && !S.endless) {
+      var forSession = S;
+      setTimeout(function () {
+        // بازی ممکن است در این ۴۰۰ میلی‌ثانیه با «دوباره» عوض شده باشد
+        if (S !== forSession || S.over === false) return;
+        C.ui.confirm({
+          title: C.t('endless'), body: C.t('tutText3'),
+          okLabel: C.t('endlessGo'),
+          onOk: function () {
+            S.endless = true; S.over = false; S.won = false; finished = false;
+            // بستن درست، نه کندن گره از DOM: وگرنه شنونده‌ی کیبورد پنجره
+            // هیچ‌وقت برداشته نمی‌شود و با هر ادامه یکی نشت می‌کند.
+            if (resultModal) resultModal.close();
+            updateHud();
+          }
+        });
+      }, 400);
+    }
+  }
+
+  /* --------------------------------------------------------- ذخیره */
+
+  ctx.autosave(function () {
+    if (!E.inProgress(S)) return { inProgress: false };
+    return {
+      mapId: mapId, date: S.date, prefs: prefs,
+      s: {
+        path: S.path, towers: S.towers, enemies: S.enemies, queue: S.queue,
+        money: S.money, lives: S.lives, maxLives: S.maxLives, wave: S.wave,
+        waveActive: S.waveActive, time: S.time, nextId: S.nextId,
+        kills: S.kills, leaked: S.leaked, spent: S.spent, endless: S.endless,
+        lastWave: S.lastWave
+      }
+    };
+  });
+  function save() { ctx.save(); }
+
+  function askNew() {
+    if (!E.inProgress(S)) { newGame(mapId, S ? S.date : null); return; }
+    C.ui.confirm({ title: C.t('restart'), body: C.t('resetWarn'), onOk: function () { finished = false; newGame(mapId, S.date); } });
+  }
+
+  function showHelp() {
+    C.ui.modal({
+      title: C.t('help'),
+      body: [
+        el('p', { class: 'ch-dim', text: C.t('tutText1') }),
+        el('div', { class: 'ch-list' }, [
+          line(C.t('archer'), C.t('archerD')),
+          line(C.t('cannon'), C.t('cannonD')),
+          line(C.t('frost'), C.t('frostD')),
+          line(C.t('tesla'), C.t('teslaD'))
+        ]),
+        el('h3', { style: { 'margin-top': 'var(--s-4)' }, text: C.t('keyboard') }),
+        el('div', { class: 'ch-list' }, [
+          line(C.t('startWave'), 'Space'),
+          line(C.t('speed'), 'S')
+        ])
+      ],
+      actions: [
+        { label: C.t('tutorial'), onClick: function () { ctx.showTutorial(TUT); } },
+        { label: C.t('done'), kind: 'primary' }
+      ]
+    });
+  }
+
+  var TUT = [
+    { title: C.t('tutTitle1'), text: C.t('tutText1'),
+      art: '<svg viewBox="0 0 200 120" width="100%"><rect x="20" y="10" width="160" height="100" rx="10" fill="var(--c-surface-2)"/>' +
+        '<path d="M60 10v40h80v40H60v20" stroke="var(--c-warn-soft)" stroke-width="20" fill="none" stroke-linecap="round" stroke-linejoin="round"/>' +
+        '<circle cx="60" cy="25" r="8" fill="#7BAE7F"/><polygon points="40,44 50,62 30,62" fill="#E07A5F"/>' +
+        '<polygon points="160,64 170,82 150,82" fill="#E07A5F"/></svg>' },
+    { title: C.t('tutTitle2'), text: C.t('tutText2'),
+      art: '<svg viewBox="0 0 200 120" width="100%">' +
+        '<polygon points="45,35 62,70 28,70" fill="#E07A5F"/><circle cx="95" cy="55" r="18" fill="#C8783C"/>' +
+        '<polygon points="140,37 155,46 155,64 140,73 125,64 125,46" fill="#6BB6C4"/>' +
+        '<rect x="170" y="38" width="22" height="34" rx="5" fill="#A57BD1"/></svg>' },
+    { title: C.t('tutTitle3'), text: C.t('tutText3'),
+      art: '<svg viewBox="0 0 200 120" width="100%"><g fill="var(--c-gold)">' +
+        '<path d="M60 30l7 15 16 2-12 11 3 16-14-8-14 8 3-16-12-11 16-2z"/>' +
+        '<path d="M100 22l8 17 18 2-13 13 3 18-16-9-16 9 3-18-13-13 18-2z"/>' +
+        '<path d="M140 30l7 15 16 2-12 11 3 16-14-8-14 8 3-16-12-11 16-2z"/></g></svg>' }
+  ];
+
+  window.addEventListener('keydown', function (e) {
+    if (!S || S.over) return;
+    if (document.querySelector('.ch-scrim')) return;
+    var tg = e.target, tag = tg && tg.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (tg && tg.isContentEditable)) return;
+    if (tag === 'BUTTON' && (e.key === ' ' || e.key === 'Enter')) return;
+    if (e.key === ' ') { startBtn.click(); e.preventDefault(); }
+    else if (C.keyIs(e, 's')) { speedBtn.click(); e.preventDefault(); }
+  });
+
+  C.onPause(function () { if (raf) { cancelAnimationFrame(raf); raf = null; } });
+  C.onResume(function () { if (!raf) { lastT = performance.now(); raf = requestAnimationFrame(loop); } });
+
+  /* ---------------------------------------------------------- شروع */
+
+  var saved = ctx.loadSave();
+  // هسته برای هر روز خانه‌ی ذخیره‌ی جدا دارد، ولی این بازی روزانه را همیشه از نو
+  // می‌ساخت و پیشرفت نیمه‌کاره‌ی همان روز گم می‌شد (#132). اول ذخیره‌ی همین روز.
+  var resume = saved && E.inProgress(saved.s) && (saved.date || null) === (dailyDate || null);
+  if (resume) {
+    restoreSaved(saved);
+  } else if (dailyDate) {
+    newGame('daily', dailyDate);
+    if (C.stats.dailyDone('tower-defence', dailyDate)) {
+      var rec = C.stats.dailyOf(dailyDate)['tower-defence'];
+      C.ui.toast({ icon: 'check', title: C.t('dailyDone'), sub: rec.label });
+    }
+    ctx.tutorialIfNew(TUT);
+  } else {
+    newGame(prefs.map || 'm1');
+    ctx.tutorialIfNew(TUT);
+  }
+
+  function restoreSaved(saved) {
+    if (saved.prefs && !saved.date) prefs = saved.prefs;
+    mapId = saved.mapId;
+    var v = saved.s;
+    S = E.createGame({ path: v.path, money: v.money, lives: v.maxLives, lastWave: v.lastWave });
+    S.towers = v.towers; S.enemies = v.enemies; S.queue = v.queue;
+    S.money = v.money; S.lives = v.lives; S.wave = v.wave;
+    S.waveActive = v.waveActive; S.time = v.time; S.nextId = v.nextId;
+    S.kills = v.kills; S.leaked = v.leaked; S.spent = v.spent;
+    S.endless = v.endless; S.date = saved.date || null;
+    S.mapId = mapId;
+    resize();
+    render();
+  }
+
+  setTimeout(resize, 30);
+  lastT = performance.now();
+  raf = requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

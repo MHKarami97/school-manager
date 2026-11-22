@@ -1,0 +1,1003 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#FBF6EF">
+<title>گوریل‌ها — چوگان</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../lib/chogan.css">
+<script src="../../lib/early.js"></script>
+<style>
+  .gz-wrap > .ch-fit { --fit-ar: calc(640 / 560); }
+  .ch-fit > .gz-box { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
+  /* a city is a physical thing: the left gorilla stays on the left in Persian too */
+  .gz-canvas { display: block; touch-action: none; border-radius: var(--r-lg); direction: ltr; }
+  .gz-top { display: flex; justify-content: center; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
+  .gz-players { display: flex; justify-content: space-between; gap: var(--s-2); width: 100%; max-width: 640px; direction: ltr; }
+  .gz-player { flex: 1; display: flex; align-items: center; gap: var(--s-2); padding: 6px 10px; border-radius: var(--r-md); background: var(--c-surface-2); font-weight: 700; min-width: 0; }
+  .gz-player:last-child { flex-direction: row-reverse; }
+  .gz-player--on { box-shadow: inset 0 0 0 2px var(--game); }
+  .gz-player__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; text-align: start; }
+  .gz-player:last-child .gz-player__name { text-align: end; }
+  .gz-pips { display: flex; gap: 3px; }
+  .gz-pip { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--game); box-sizing: border-box; }
+  .gz-pip--won { background: var(--game); }
+  .gz-status { min-height: 1.6em; font-weight: 700; color: var(--c-text-dim); text-align: center; font-size: var(--fs-sm); }
+  .gz-pad { display: flex; justify-content: center; align-items: center; gap: var(--s-3); flex-wrap: wrap; direction: ltr; }
+  .gz-dial { display: flex; align-items: center; gap: 4px; }
+  .gz-dial__val { min-width: 4.2ch; text-align: center; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .gz-dial__lbl { font-size: var(--fs-xs); color: var(--c-text-dim); }
+  .gz-gear .ch-icon { pointer-events: none; }
+  /* the joystick (#511): its own touch area, so a push never scrolls the page */
+  .gz-stick { position: relative; width: clamp(84px, min(34cqw, 26cqh), 168px); aspect-ratio: 1; border-radius: 50%; touch-action: none; cursor: grab;
+    background: radial-gradient(circle, var(--c-surface-2) 0 55%, var(--c-surface-3) 100%); box-shadow: inset 0 0 0 2px var(--c-line), var(--sh-1); }
+  .gz-stick__knob { position: absolute; left: 50%; top: 50%; width: 38%; aspect-ratio: 1; margin: -19% 0 0 -19%; border-radius: 50%;
+    background: var(--game); box-shadow: 0 0 0 5px var(--c-surface), var(--sh-2); pointer-events: none; }
+  .gz-stick--on .gz-stick__knob { transition: none; }
+  .gz-stick:not(.gz-stick--on) .gz-stick__knob { transition: transform var(--t-fast) var(--ease); }
+</style>
+</head>
+<body>
+<script src="../../version.js"></script>
+<script src="../../lib/chogan.js"></script>
+<script>
+/* ==== ENGINE START ==== */
+function GorillasEngineFactory() {
+  'use strict';
+
+  // The world is 640 × 560 units, y down; the ground is y = H. A throw is simulated in
+  // fixed steps, so the same throw lands in the same place on every device, and the
+  // bot thinks with the very code that flies the banana.
+  var W = 640, H = 560, GRAV = 300, DT = 1 / 60, SPEED = 4.6, MAX_STEPS = 600;
+  var GW = 28, GH = 30, HOLE = 22, BIG = 42, WIND = 40, WIN_ROUNDS = 3;
+
+  // A new skyline: buildings side by side across the width, a gorilla on the roof of the
+  // second from each edge, and the wind for the round (units per second squared).
+  function city(rnd) {
+    var b = [], x = 0;
+    while (x < W) {
+      var w = 56 + Math.floor(rnd() * 40);
+      if (W - x - w < 56) w = W - x;
+      b.push({ x: x, w: w, h: 110 + Math.floor(rnd() * 270), c: Math.floor(rnd() * 3), s: Math.floor(rnd() * 1e9) });
+      x += w;
+    }
+    // the gorillas stand where they can be seen and reached: a building right beside a
+    // gorilla that towers over it left no throw that cleared it (17 cities in 60 in the
+    // first draft), so the inner neighbours stay near the gorilla's roof and the middle
+    // of the city below the higher of the two by a margin
+    var li = 1, ri = b.length - 2;
+    [li, ri].forEach(function (i) { b[i].h = Math.max(140, Math.min(300, b[i].h)); });
+    b[li + 1].h = Math.min(b[li + 1].h, b[li].h + 50);
+    b[ri - 1].h = Math.min(b[ri - 1].h, b[ri].h + 50);
+    var cap = Math.max(b[li].h, b[ri].h) + 120;
+    for (var m = li + 2; m < ri - 1; m++) b[m].h = Math.min(b[m].h, cap);
+    var l = b[li], r = b[ri];
+    var wind = Math.round((rnd() * 2 - 1) * WIND);
+    return { b: b, g: [{ x: l.x + l.w / 2, y: H - l.h }, { x: r.x + r.w / 2, y: H - r.h }], wind: wind, holes: [] };
+  }
+
+  function solid(c, x, y) {
+    if (y >= H) return true;
+    for (var i = 0; i < c.b.length; i++) {
+      var b = c.b[i];
+      if (x < b.x || x >= b.x + b.w) continue;
+      if (y < H - b.h) return false;
+      for (var k = 0; k < c.holes.length; k++) {
+        var o = c.holes[k];
+        if ((x - o.x) * (x - o.x) + (y - o.y) * (y - o.y) < o.r * o.r) return false;
+      }
+      return true;
+    }
+    return false;
+  }
+  function gorillaAt(c, x, y) {
+    for (var i = 0; i < 2; i++) {
+      var g = c.g[i];
+      if (Math.abs(x - g.x) <= GW / 2 && y <= g.y && y >= g.y - GH) return i;
+    }
+    return -1;
+  }
+
+  // Where the banana leaves the hand: above the head, on the thrower's side
+  function hand(c, who) { var g = c.g[who], dir = who === 0 ? 1 : -1; return { x: g.x + dir * 8, y: g.y - GH - 6 }; }
+
+  // angle: degrees above the level, towards the other gorilla; power: 0..100
+  function shoot(c, who, angle, power) {
+    var dir = who === 0 ? 1 : -1, a = angle * Math.PI / 180, v = power * SPEED;
+    var p = hand(c, who), x = p.x, y = p.y, vx = Math.cos(a) * v * dir, vy = -Math.sin(a) * v;
+    var path = [[x, y]];
+    for (var n = 0; n < MAX_STEPS; n++) {
+      vx += c.wind * DT; vy += GRAV * DT;
+      x += vx * DT; y += vy * DT;
+      path.push([x, y]);
+      if (x < -60 || x > W + 60 || y > H) return { path: path, end: { kind: 'out', x: x, y: y } };
+      // a banana may fly above the sky and come back down
+      if (y < 0) continue;
+      var gi = gorillaAt(c, x, y);
+      if (gi >= 0 && (gi !== who || n > 8)) return { path: path, end: { kind: 'gorilla', who: gi, x: x, y: y } };
+      if (solid(c, x, y)) return { path: path, end: { kind: 'building', x: x, y: y } };
+    }
+    return { path: path, end: { kind: 'out', x: x, y: y } };
+  }
+
+  // A hit eats a hole out of the city; a gorilla hit eats a big one
+  function apply(c, end) {
+    if (end.kind === 'building') c.holes.push({ x: Math.round(end.x), y: Math.round(end.y), r: HOLE });
+    else if (end.kind === 'gorilla') c.holes.push({ x: Math.round(end.x), y: Math.round(end.y), r: BIG });
+  }
+
+  // A city is dealt only if each gorilla has some throw that hits the other; the check
+  // is the bot's own search, so a dealt round can always be won
+  function fairCity(rnd) {
+    var c = null;
+    for (var t = 0; t < 12; t++) {
+      c = city(rnd);
+      if (best(c, 0).hit && best(c, 1).hit) return c;
+    }
+    return c;
+  }
+
+  /* A match: first to three rounds. The players take turns; the first throw of each
+     round goes to the one who did not open the last round. */
+  function match(rnd) {
+    return { round: 1, score: [0, 0], turn: 0, opener: 0, city: fairCity(rnd), throws: [0, 0], misses: [0, 0], last: [{ angle: 45, power: 50 }, { angle: 45, power: 50 }], winner: -1, roundWinner: -1 };
+  }
+  // Records a throw's end and moves the match on. Returns 'next' (the other player),
+  // 'round' (someone was hit, a new round follows) or 'match' (the match is won).
+  function record(M, who, shot, angle, power) {
+    M.throws[who]++;
+    M.last[who] = { angle: angle, power: power };
+    apply(M.city, shot.end);
+    if (shot.end.kind === 'gorilla') {
+      // hitting yourself gives the round away, as in the original
+      var w = shot.end.who === who ? 1 - who : who;
+      M.score[w]++;
+      M.roundWinner = w;
+      if (M.score[w] >= WIN_ROUNDS) { M.winner = w; return 'match'; }
+      return 'round';
+    }
+    M.misses[who]++;
+    M.turn = 1 - who;
+    return 'next';
+  }
+  function nextRound(M, rnd) {
+    M.round++;
+    M.opener = 1 - M.opener;
+    M.turn = M.opener;
+    M.city = fairCity(rnd);
+    M.misses = [0, 0];
+    M.roundWinner = -1;
+  }
+
+  /* The bot: it tries a grid of throws in the same simulation and takes the one that
+     ends nearest the other gorilla, then misses by a level's spread. Each miss in a
+     round tightens the spread, the way a person corrects after seeing where the last
+     one went. */
+  var SPREAD = { easy: { a: 7, p: 9 }, medium: { a: 3.6, p: 4.4 }, hard: { a: 2.2, p: 2.6 } };
+  // A coarse sweep, then a fine one around the best of it: about 550 throws instead of
+  // 2,500 for the full fine grid, so a new round is dealt without a pause on a phone
+  function best(c, who) {
+    var other = c.g[1 - who], tx = other.x, ty = other.y - GH / 2, top = null;
+    function look(a, p) {
+      var s = shoot(c, who, a, p), d, hit = s.end.kind === 'gorilla' && s.end.who === 1 - who;
+      if (hit) d = Math.abs(s.end.x - tx) * 0.01;
+      else if (s.end.kind === 'gorilla') d = 1e6;
+      else d = Math.hypot(s.end.x - tx, s.end.y - ty);
+      if (!top || d < top.d) top = { angle: a, power: p, d: d, hit: hit };
+    }
+    var a, p;
+    for (a = 20; a <= 80; a += 4) for (p = 20; p <= 100; p += 3) look(a, p);
+    var a0 = top.angle, p0 = top.power;
+    for (a = Math.max(5, a0 - 4); a <= Math.min(85, a0 + 4); a += 1) for (p = Math.max(5, p0 - 3); p <= Math.min(100, p0 + 3); p += 0.5) look(a, p);
+    return top;
+  }
+  function gauss(rnd) { var u = 1 - rnd(), v = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
+  function botAim(c, who, level, misses, rnd) {
+    var t = best(c, who), sp = SPREAD[level] || SPREAD.medium, k = Math.max(0.35, Math.pow(0.75, misses || 0));
+    var angle = Math.max(5, Math.min(85, Math.round((t.angle + gauss(rnd) * sp.a * k) * 10) / 10));
+    var power = Math.max(5, Math.min(100, Math.round((t.power + gauss(rnd) * sp.p * k) * 10) / 10));
+    return { angle: angle, power: power };
+  }
+
+  function validMatch(M) {
+    if (!M || !Array.isArray(M.score) || M.score.length !== 2 || !(M.turn === 0 || M.turn === 1) || !M.city || !Array.isArray(M.city.b) || !Array.isArray(M.city.g) || M.city.g.length !== 2) return false;
+    if (!Array.isArray(M.city.holes) || typeof M.city.wind !== 'number' || Math.abs(M.city.wind) > WIND) return false;
+    if (M.winner >= 0 || M.score[0] >= WIN_ROUNDS || M.score[1] >= WIN_ROUNDS) return false;
+    var x = 0;
+    for (var i = 0; i < M.city.b.length; i++) { var b = M.city.b[i]; if (b.x !== x || !(b.w > 0) || !(b.h > 0) || b.h > H) return false; x += b.w; }
+    return x === W && Array.isArray(M.last) && M.last.length === 2;
+  }
+
+  return { W: W, H: H, GW: GW, GH: GH, WIND: WIND, WIN_ROUNDS: WIN_ROUNDS, SPREAD: SPREAD, city: city, solid: solid, gorillaAt: gorillaAt, hand: hand,
+    shoot: shoot, apply: apply, fairCity: fairCity, match: match, record: record, nextRound: nextRound, best: best, botAim: botAim, validMatch: validMatch };
+}
+if (typeof module !== 'undefined' && module.exports) module.exports = GorillasEngineFactory;
+/* ==== ENGINE END ==== */
+</script>
+<script>
+(function () {
+  'use strict';
+  var C = window.Chogan, el = C.el;
+  var E = GorillasEngineFactory();
+  var LEVELS = ['easy', 'medium', 'hard'];
+
+  C.boot({});
+  var ctx = C.game({
+    id: 'gorillas',
+    name: { fa: 'گوریل‌ها', en: 'Gorillas', zh: '大猩猩', de: 'Gorillas', es: 'Gorilas', pl: 'Goryle', fr: 'Gorilles', ar: 'الغوريلات', hi: 'गोरिल्ला' },
+    accent: '#6B4423',
+    mood: 'menu',
+    strings: {
+      fa: {
+        city: 'شهر و دو گوریل', vsBot: 'مقابل ربات', people: 'دو نفره', bot: 'ربات', playerN: 'بازیکن {n}', newMatch: 'مسابقه‌ی تازه',
+        yourTurn: 'نوبت توست', turnOf: 'نوبت {n}', botThinks: '{n} نشانه می‌گیرد', roundN: 'دست {n}', roundTo: 'تا {n} برد',
+        aimDrag: 'از هر جای شهر بگیر و به عقب بکش، مثل فلاخن؛ رها کن تا پرت شود.', aimNums: 'زاویه و قدرت را تنظیم کن و «پرتاب» را بزن.', aimStick: 'دسته را به سمتی که می‌خواهی پرت شود بکش؛ هرچه دورتر، قوی‌تر. رها کن تا پرت شود.', stick: 'دسته‌ی نشانه‌گیری',
+        angle: 'زاویه', power: 'قدرت', throwIt: 'پرتاب', wind: 'باد', calm: 'بی‌باد', control: 'نشانه‌گیری', ctlDrag: 'کشیدن', ctlNums: 'عدد', ctlStick: 'دسته',
+        hitOther: 'به {n} خورد!', hitSelf: 'به خودش خورد!', missed: 'نخورد', roundTo2: '{n} این دست را برد', playerWon: '{n} برد', dailyGz: 'گوریل‌های روزانه',
+        throwsN: '{n} پرتاب', rounds: 'دست‌ها', throws: 'پرتاب‌ها',
+        kAngle: 'زاویه بیشتر یا کمتر', kPower: 'قدرت بیشتر یا کمتر', kThrow: 'پرتاب',
+        rules: 'دو گوریل روی پشت‌بام‌ها ایستاده‌اند و به نوبت موز منفجره پرت می‌کنند. زاویه و قدرت پرتاب را تو تعیین می‌کنی؛ جاذبه موز را پایین می‌کشد و باد، که پایین صفحه نشان داده می‌شود، آن را به چپ یا راست می‌برد. موزی که به ساختمان بخورد تکه‌ای از آن را می‌کند. هر کس اول گوریل دیگر را بزند آن دست را می‌برد؛ اگر به خودت بزنی، دست را باخته‌ای. سه دست برد مسابقه را می‌برد و هر دست شهری تازه دارد. دو جور نشانه‌گیری هست و از چرخ‌دنده عوضش می‌کنی: کشیدن مثل فلاخن، یا عدد زاویه و قدرت مثل بازی اصلی. چالش روزانه مسابقه‌ای با ربات متوسط در شهرهای یکسان برای همه است.',
+        tutTitle1: 'هدف', tutText1: 'موز را طوری پرت کن که به گوریل آن طرف بخورد. سه دست برد یعنی بردن مسابقه.',
+        tutTitle2: 'نشانه بگیر', tutText2: 'از هر جای شهر بگیر و به عقب بکش، مثل فلاخن. زاویه و قدرت کنار پیکان نوشته می‌شود؛ رها کن تا پرت شود.',
+        tutTitle3: 'باد', tutText3: 'پیکان پایین صفحه باد این دست را نشان می‌دهد. پرتاب بعدی‌ات را با جای افتادن قبلی درست کن.'
+      },
+      en: {
+        city: 'A city and two gorillas', vsBot: 'Against the bot', people: 'Two players', bot: 'Bot', playerN: 'Player {n}', newMatch: 'New match',
+        yourTurn: 'Your turn', turnOf: '{n}\'s turn', botThinks: '{n} is aiming', roundN: 'Round {n}', roundTo: 'First to {n}',
+        aimDrag: 'Grab anywhere on the city and pull back like a slingshot; let go to throw.', aimNums: 'Set the angle and power, then tap Throw.', aimStick: 'Push the joystick the way you want to throw; further is stronger. Let go to throw.', stick: 'Aiming joystick',
+        angle: 'Angle', power: 'Power', throwIt: 'Throw', wind: 'Wind', calm: 'Calm', control: 'Aiming', ctlDrag: 'Drag', ctlNums: 'Numbers', ctlStick: 'Joystick',
+        hitOther: '{n} is hit!', hitSelf: 'Hit itself!', missed: 'Missed', roundTo2: '{n} takes the round', playerWon: '{n} wins', dailyGz: 'Daily Gorillas',
+        throwsN: '{n} throws', rounds: 'Rounds', throws: 'Throws',
+        kAngle: 'Raise or lower the angle', kPower: 'More or less power', kThrow: 'Throw',
+        rules: 'Two gorillas stand on the rooftops and take turns throwing an exploding banana. You choose the angle and the power; gravity pulls the banana down and the wind, shown at the bottom, pushes it left or right. A banana that hits a building takes a bite out of it. The first to hit the other gorilla takes the round; hit yourself and you lose it. Three rounds win the match, and every round has a new city. There are two ways to aim, switched behind the gear: drag like a slingshot, or numbers for the angle and power as in the original game. The daily challenge is a match against the medium bot in cities that are the same for everyone.',
+        tutTitle1: 'The goal', tutText1: 'Throw the banana so it hits the gorilla across the city. Three rounds win the match.',
+        tutTitle2: 'Aim', tutText2: 'Grab anywhere on the city and pull back like a slingshot. The angle and power show by the arrow; let go to throw.',
+        tutTitle3: 'Wind', tutText3: 'The arrow at the bottom shows this round\'s wind. Correct your next throw by where the last one fell.'
+      },
+      pl: {
+        city: 'Miasto i dwa goryle', vsBot: 'Przeciwko botowi', people: 'Dwóch graczy', bot: 'Bot', playerN: 'Gracz {n}', newMatch: 'Nowy mecz',
+        yourTurn: 'Twoja kolej', turnOf: 'Kolej gracza {n}', botThinks: '{n} celuje', roundN: 'Runda {n}', roundTo: 'Gra do {n}',
+        aimDrag: 'Chwyć w dowolnym miejscu miasta i odciągnij jak z procy; puść, aby rzucić.', aimNums: 'Ustaw kąt i siłę, a następnie stuknij Rzuć.', aimStick: 'Popchnij dżojstik w stronę, w którą chcesz rzucić; mocniejsze wychylenie to większa siła. Puść, aby rzucić.', stick: 'Dżojstik celowania',
+        angle: 'Kąt', power: 'Siła', throwIt: 'Rzuć', wind: 'Wiatr', calm: 'Bez wiatru', control: 'Sterowanie', ctlDrag: 'Przeciąganie', ctlNums: 'Liczby', ctlStick: 'Dżojstik',
+        hitOther: '{n} trafiony!', hitSelf: 'Trafienie we własnego goryla!', missed: 'Pudło', roundTo2: '{n} zdobywa rundę', playerWon: '{n} wygrywa', dailyGz: 'Codzienne Goryle',
+        throwsN: 'Rzuty: {n}', rounds: 'Rundy', throws: 'Rzuty',
+        kAngle: 'Zwiększ lub zmniejsz kąt', kPower: 'Większa lub mniejsza siła', kThrow: 'Rzuć',
+        rules: 'Dwa goryle stoją na dachach wieżowców i na zmianę rzucają wybuchającym bananem. Wybierasz kąt oraz siłę rzutu; grawitacja ściąga banan w dół, a wiatr (pokazany na dole) spycha go w lewo lub w prawo. Banan, który trafi w budynek, niszczy jego fragment. Kto pierwszy trafi przeciwnego goryla, zdobywa rundę; trafienie samego siebie oznacza jej przegraną. Trzy wygrane rundy kończą mecz, a każda runda to zupełnie nowe miasto. Dostępne są dwa sposoby celowania, które zmienisz pod ikoną zębatki: przeciąganie jak z procy lub wpisywanie liczb dla kąta i siły – zupełnie jak w oryginalnej grze. Codzienne wyzwanie to mecz przeciwko średniemu botowi w miastach, które są takie same dla wszystkich graczy.',
+        tutTitle1: 'Cel gry', tutText1: 'Rzuć bananem tak, aby trafić w goryla po drugiej stronie miasta. Trzy wygrane rundy dają zwycięstwo w meczu.',
+        tutTitle2: 'Celowanie', tutText2: 'Chwyć w dowolnym miejscu ekranu miasta i odciągnij w tył jak z procy. Strzałka pokaże kąt oraz siłę; puść palec, aby wykonać rzut.',
+        tutTitle3: 'Wiatr', tutText3: 'Strzałka na dole ekranu pokazuje wiatr w tej rundzie. Skoryguj swój kolejny rzut na podstawie tego, gdzie spadł poprzedni banan.'
+      },
+      fr: {
+        city: 'Une ville et deux gorilles', vsBot: 'Contre le robot', people: 'Deux joueurs', bot: 'Robot', playerN: 'Joueur {n}', newMatch: 'Nouveau match',
+        yourTurn: 'À toi', turnOf: 'Au tour de {n}', botThinks: '{n} vise', roundN: 'Manche {n}', roundTo: 'Premier à {n}',
+        aimDrag: 'Attrape la ville n’importe où et tire en arrière comme une fronde ; relâche pour lancer.', aimNums: 'Règle l’angle et la puissance, puis touche Lancer.', aimStick: 'Pousse le joystick dans la direction du lancer ; plus loin, plus fort. Relâche pour lancer.', stick: 'Joystick de visée',
+        angle: 'Angle', power: 'Puissance', throwIt: 'Lancer', wind: 'Vent', calm: 'Calme', control: 'Visée', ctlDrag: 'Glisser', ctlNums: 'Nombres', ctlStick: 'Joystick',
+        hitOther: '{n} est touché !', hitSelf: 'Touché lui-même !', missed: 'Raté', roundTo2: '{n} gagne la manche', playerWon: '{n} gagne', dailyGz: 'Gorilles du jour',
+        throwsN: '{n} lancers', rounds: 'Manches', throws: 'Lancers',
+        kAngle: 'Monter ou baisser l’angle', kPower: 'Plus ou moins de puissance', kThrow: 'Lancer',
+        rules: 'Deux gorilles se tiennent sur les toits et lancent à tour de rôle une banane explosive. Tu choisis l’angle et la puissance ; la gravité tire la banane vers le bas et le vent, affiché en bas, la pousse à gauche ou à droite. Une banane qui touche un immeuble y fait un trou. Le premier à toucher l’autre gorille gagne la manche ; si tu te touches toi-même, tu la perds. Trois manches gagnent le match, et chaque manche a une nouvelle ville. Il y a deux façons de viser, au choix derrière l’engrenage : glisser comme une fronde, ou des nombres pour l’angle et la puissance comme dans le jeu d’origine. Le défi du jour est un match contre le robot moyen dans des villes identiques pour tous.',
+        tutTitle1: 'Le but', tutText1: 'Lance la banane pour toucher le gorille de l’autre côté de la ville. Trois manches gagnent le match.',
+        tutTitle2: 'Vise', tutText2: 'Attrape la ville n’importe où et tire en arrière comme une fronde. L’angle et la puissance s’affichent près de la flèche ; relâche pour lancer.',
+        tutTitle3: 'Le vent', tutText3: 'La flèche en bas montre le vent de cette manche. Corrige ton prochain lancer selon où le dernier est tombé.'
+      },
+      ar: {
+        city: 'مدينة وغوريلان', vsBot: 'ضد الروبوت', people: 'لاعبان', bot: 'الروبوت', playerN: 'اللاعب {n}', newMatch: 'مباراة جديدة',
+        yourTurn: 'دورك', turnOf: 'دور {n}', botThinks: '{n} يصوّب', roundN: 'الجولة {n}', roundTo: 'الأول إلى {n}',
+        aimDrag: 'أمسك المدينة من أي مكان واسحب إلى الخلف كالمقلاع؛ أفلت لترمي.', aimNums: 'اضبط الزاوية والقوة، ثم انقر «ارمِ».', aimStick: 'ادفع عصا التحكم في اتجاه الرمي؛ كلما ابتعدت كان أقوى. أفلت لترمي.', stick: 'عصا التصويب',
+        angle: 'الزاوية', power: 'القوة', throwIt: 'ارمِ', wind: 'الريح', calm: 'هادئة', control: 'التصويب', ctlDrag: 'سحب', ctlNums: 'أرقام', ctlStick: 'عصا',
+        hitOther: 'أُصيب {n}!', hitSelf: 'أصاب نفسه!', missed: 'أخطأ', roundTo2: '{n} يفوز بالجولة', playerWon: 'فاز {n}', dailyGz: 'غوريلات اليوم',
+        throwsN: '{n} رميات', rounds: 'الجولات', throws: 'الرميات',
+        kAngle: 'ارفع الزاوية أو اخفضها', kPower: 'قوة أكثر أو أقل', kThrow: 'ارمِ',
+        rules: 'يقف غوريلان على أسطح المباني ويتناوبان رمي موزة متفجرة. تختار الزاوية والقوة؛ والجاذبية تسحب الموزة إلى الأسفل، والريح الظاهرة في الأسفل تدفعها يمينًا أو يسارًا. الموزة التي تصيب مبنى تقتطع منه جزءًا. أول من يصيب الغوريلا الأخرى يفوز بالجولة؛ وإن أصبت نفسك خسرتها. ثلاث جولات تحسم المباراة، ولكل جولة مدينة جديدة. هناك طريقتان للتصويب تبدّل بينهما خلف الترس: السحب كالمقلاع، أو أرقام للزاوية والقوة كما في اللعبة الأصلية. تحدي اليوم مباراة ضد الروبوت المتوسط في مدن واحدة للجميع.',
+        tutTitle1: 'الهدف', tutText1: 'ارمِ الموزة لتصيب الغوريلا في الجهة الأخرى من المدينة. ثلاث جولات تحسم المباراة.',
+        tutTitle2: 'صوّب', tutText2: 'أمسك المدينة من أي مكان واسحب إلى الخلف كالمقلاع. تظهر الزاوية والقوة بجانب السهم؛ أفلت لترمي.',
+        tutTitle3: 'الريح', tutText3: 'السهم في الأسفل يبين ريح هذه الجولة. صحّح رميتك التالية حسب مكان سقوط السابقة.'
+      },
+      hi: {
+        city: 'एक शहर और दो गोरिल्ला', vsBot: 'बॉट से', people: 'दो खिलाड़ी', bot: 'बॉट', playerN: 'खिलाड़ी {n}', newMatch: 'नया मुक़ाबला',
+        yourTurn: 'आपकी बारी', turnOf: '{n} की बारी', botThinks: '{n} निशाना ले रहे हैं', roundN: 'दौर {n}', roundTo: '{n} जीत तक',
+        aimDrag: 'शहर में कहीं भी पकड़ें और गुलेल की तरह पीछे खींचें; फेंकने के लिए छोड़ें।', aimNums: 'कोण और ताक़त तय करें, फिर फेंकें दबाएँ।', aimStick: 'जॉयस्टिक को उस ओर धकेलें जिधर फेंकना है; जितना दूर, उतना ज़ोर। फेंकने के लिए छोड़ें।', stick: 'निशाने का जॉयस्टिक',
+        angle: 'कोण', power: 'ताक़त', throwIt: 'फेंकें', wind: 'हवा', calm: 'शांत', control: 'निशाना', ctlDrag: 'खींचना', ctlNums: 'अंक', ctlStick: 'जॉयस्टिक',
+        hitOther: '{n} को लगा!', hitSelf: 'ख़ुद को लगा!', missed: 'चूक गया', roundTo2: '{n} ने दौर जीता', playerWon: '{n} जीत गए', dailyGz: 'रोज़ के गोरिल्ला',
+        throwsN: '{n} फेंक', rounds: 'दौर', throws: 'फेंक',
+        kAngle: 'कोण बढ़ाएँ या घटाएँ', kPower: 'ताक़त बढ़ाएँ या घटाएँ', kThrow: 'फेंकें',
+        rules: 'दो गोरिल्ला छतों पर खड़े हैं और बारी-बारी फटने वाला केला फेंकते हैं। कोण और ताक़त आप चुनते हैं; गुरुत्व केले को नीचे खींचता है और हवा, जो नीचे दिखती है, उसे बाएँ या दाएँ धकेलती है। इमारत से टकराया केला उसका एक टुकड़ा उड़ा देता है। जो पहले दूसरे गोरिल्ला को मारे, वह दौर जीतता है; ख़ुद को मारा तो दौर हार गए। तीन दौर जीतने पर मुक़ाबला जीतते हैं, और हर दौर में नया शहर होता है। निशाना लगाने के दो तरीक़े हैं, जो गियर में बदलते हैं: गुलेल की तरह खींचना, या असली खेल की तरह कोण और ताक़त के अंक। रोज़ की चुनौती मध्यम बॉट के ख़िलाफ़ ऐसे शहरों में मुक़ाबला है जो सबके लिए एक जैसे हैं।',
+        tutTitle1: 'लक्ष्य', tutText1: 'केला ऐसे फेंकें कि शहर के उस पार वाले गोरिल्ला को लगे। तीन दौर जीतने पर मुक़ाबला आपका।',
+        tutTitle2: 'निशाना', tutText2: 'शहर में कहीं भी पकड़ें और गुलेल की तरह पीछे खींचें। कोण और ताक़त तीर के पास दिखते हैं; फेंकने के लिए छोड़ें।',
+        tutTitle3: 'हवा', tutText3: 'नीचे का तीर इस दौर की हवा दिखाता है। पिछला केला जहाँ गिरा, उसे देखकर अगला फेंक सुधारें।'
+      },
+      zh: {
+        city: '城市和两只大猩猩', vsBot: '对战电脑', people: '双人', bot: '电脑', playerN: '玩家 {n}', newMatch: '新比赛',
+        yourTurn: '轮到你了', turnOf: '轮到{n}', botThinks: '{n}正在瞄准', roundN: '第 {n} 回合', roundTo: '先赢 {n} 回合',
+        aimDrag: '在城市任意位置按住，像弹弓一样往后拉；松手投掷。', aimNums: '调好角度和力度，然后点“投掷”。', aimStick: '把摇杆推向想投掷的方向，推得越远力度越大；松手投掷。', stick: '瞄准摇杆',
+        angle: '角度', power: '力度', throwIt: '投掷', wind: '风', calm: '无风', control: '瞄准方式', ctlDrag: '拖动', ctlNums: '数字', ctlStick: '摇杆',
+        hitOther: '{n}被击中！', hitSelf: '打中了自己！', missed: '没打中', roundTo2: '{n}赢下本回合', playerWon: '{n}获胜', dailyGz: '每日大猩猩',
+        throwsN: '{n} 次投掷', rounds: '回合', throws: '投掷',
+        kAngle: '加大或减小角度', kPower: '加大或减小力度', kThrow: '投掷',
+        rules: '两只大猩猩站在屋顶上，轮流扔会爆炸的香蕉。角度和力度由你决定；重力会把香蕉往下拉，屏幕底部显示的风会把它往左或往右吹。打中楼房的香蕉会炸掉一块。先打中对方大猩猩的一方赢下本回合；打中自己就输掉本回合。先赢三回合者赢得比赛，每回合都是一座新城市。有两种瞄准方式，可在齿轮里切换：像弹弓一样拖动，或像原版游戏那样输入角度和力度。每日挑战是在人人相同的城市里对战中等电脑。',
+        tutTitle1: '目标', tutText1: '扔出香蕉，打中城市另一边的大猩猩。先赢三回合者获胜。',
+        tutTitle2: '瞄准', tutText2: '在城市任意位置按住，像弹弓一样往后拉。箭头旁会显示角度和力度；松手投掷。',
+        tutTitle3: '风', tutText3: '底部的箭头显示本回合的风。根据上一次落点调整下一次投掷。'
+      },
+      de: {
+        city: 'Eine Stadt und zwei Gorillas', vsBot: 'Gegen den Bot', people: 'Zu zweit', bot: 'Bot', playerN: 'Spieler {n}', newMatch: 'Neues Spiel',
+        yourTurn: 'Du bist dran', turnOf: 'Am Zug: {n}', botThinks: '{n} zielt', roundN: 'Runde {n}', roundTo: 'Bis {n} Runden',
+        aimDrag: 'Greif irgendwo in die Stadt und zieh zurück wie eine Schleuder; lass los zum Werfen.', aimNums: 'Stell Winkel und Kraft ein und tippe auf Werfen.', aimStick: 'Schieb den Joystick in die Wurfrichtung; je weiter, desto kräftiger. Lass los zum Werfen.', stick: 'Joystick zum Zielen',
+        angle: 'Winkel', power: 'Kraft', throwIt: 'Werfen', wind: 'Wind', calm: 'Windstill', control: 'Zielen', ctlDrag: 'Ziehen', ctlNums: 'Zahlen', ctlStick: 'Joystick',
+        hitOther: '{n} getroffen!', hitSelf: 'Sich selbst getroffen!', missed: 'Daneben', roundTo2: 'Runde an {n}', playerWon: 'Sieg: {n}', dailyGz: 'Gorillas des Tages',
+        throwsN: '{n} Würfe', rounds: 'Runden', throws: 'Würfe',
+        kAngle: 'Winkel größer oder kleiner', kPower: 'Mehr oder weniger Kraft', kThrow: 'Werfen',
+        rules: 'Zwei Gorillas stehen auf den Dächern und werfen abwechselnd eine explodierende Banane. Du wählst Winkel und Kraft; die Schwerkraft zieht die Banane nach unten, und der Wind, unten angezeigt, schiebt sie nach links oder rechts. Eine Banane, die ein Haus trifft, reißt ein Stück heraus. Wer zuerst den anderen Gorilla trifft, holt die Runde; triffst du dich selbst, verlierst du sie. Drei Runden gewinnen das Spiel, und jede Runde hat eine neue Stadt. Es gibt zwei Arten zu zielen, umschaltbar hinter dem Zahnrad: Ziehen wie eine Schleuder oder Zahlen für Winkel und Kraft wie im Original. Die Tagesaufgabe ist ein Spiel gegen den mittleren Bot in Städten, die für alle gleich sind.',
+        tutTitle1: 'Das Ziel', tutText1: 'Wirf die Banane so, dass sie den Gorilla auf der anderen Seite trifft. Drei Runden gewinnen das Spiel.',
+        tutTitle2: 'Zielen', tutText2: 'Greif irgendwo in die Stadt und zieh zurück wie eine Schleuder. Winkel und Kraft stehen am Pfeil; lass los zum Werfen.',
+        tutTitle3: 'Wind', tutText3: 'Der Pfeil unten zeigt den Wind dieser Runde. Korrigiere den nächsten Wurf danach, wo der letzte landete.'
+      },
+      es: {
+        city: 'Una ciudad y dos gorilas', vsBot: 'Contra el bot', people: 'Dos jugadores', bot: 'Bot', playerN: 'Jugador {n}', newMatch: 'Nueva partida',
+        yourTurn: 'Te toca', turnOf: 'Le toca a {n}', botThinks: '{n} apunta', roundN: 'Ronda {n}', roundTo: 'Gana quien llegue a {n}',
+        aimDrag: 'Agarra cualquier punto de la ciudad y tira hacia atrás como un tirachinas; suelta para lanzar.', aimNums: 'Ajusta el ángulo y la fuerza y toca Lanzar.', aimStick: 'Empuja el joystick hacia donde quieres lanzar; cuanto más lejos, más fuerza. Suelta para lanzar.', stick: 'Joystick para apuntar',
+        angle: 'Ángulo', power: 'Fuerza', throwIt: 'Lanzar', wind: 'Viento', calm: 'Sin viento', control: 'Apuntar', ctlDrag: 'Arrastrar', ctlNums: 'Números', ctlStick: 'Joystick',
+        hitOther: '¡{n} recibe el golpe!', hitSelf: '¡Se dio a sí mismo!', missed: 'Fallo', roundTo2: 'Ronda para {n}', playerWon: 'Gana {n}', dailyGz: 'Gorilas del día',
+        throwsN: '{n} lanzamientos', rounds: 'Rondas', throws: 'Lanzamientos',
+        kAngle: 'Subir o bajar el ángulo', kPower: 'Más o menos fuerza', kThrow: 'Lanzar',
+        rules: 'Dos gorilas en las azoteas se turnan para lanzar un plátano explosivo. Tú eliges el ángulo y la fuerza; la gravedad tira del plátano hacia abajo y el viento, que se ve abajo, lo empuja a izquierda o derecha. Un plátano que da en un edificio le arranca un trozo. Quien primero acierta al otro gorila gana la ronda; si te das a ti mismo, la pierdes. Tres rondas ganan la partida, y cada ronda tiene una ciudad nueva. Hay dos formas de apuntar, que se cambian tras el engranaje: arrastrar como un tirachinas, o números para el ángulo y la fuerza como en el juego original. El reto diario es una partida contra el bot medio en ciudades iguales para todos.',
+        tutTitle1: 'El objetivo', tutText1: 'Lanza el plátano para que dé al gorila del otro lado. Tres rondas ganan la partida.',
+        tutTitle2: 'Apunta', tutText2: 'Agarra cualquier punto de la ciudad y tira hacia atrás como un tirachinas. El ángulo y la fuerza aparecen junto a la flecha; suelta para lanzar.',
+        tutTitle3: 'Viento', tutText3: 'La flecha de abajo muestra el viento de la ronda. Corrige el siguiente lanzamiento según dónde cayó el anterior.'
+      }
+    }
+  });
+
+  var params = new URLSearchParams(location.search);
+  var dailyDate = params.get('daily');
+  var prefs = ctx.store.get('prefs', null);
+  if (!prefs) prefs = { mode: 'bot', level: 'medium', control: 'drag' };
+  if (prefs.mode !== 'bot' && prefs.mode !== 'people') prefs.mode = 'bot';
+  if (LEVELS.indexOf(prefs.level) < 0) prefs.level = 'medium';
+  if (prefs.control !== 'nums' && prefs.control !== 'stick') prefs.control = 'drag';
+
+  // G: the game. phase: 'aim' (a person aims), 'busy' (a banana flies or the bot
+  // thinks), 'over' (between rounds) or 'done'.
+  var G = null, timer = null, raf = 0, flight = null, blast = null, aiming = null, msg = '', dance = 0;
+  var cityLayer = null, cityKey = '';
+
+  var cv = el('canvas', { class: 'gz-canvas', role: 'img', 'aria-label': C.t('city') });
+  var box = el('div', { class: 'gz-box' }, [cv]);
+  var top = el('div', { class: 'gz-top ch-above' });
+  var players = el('div', { class: 'gz-players ch-above' });
+  var status = el('div', { class: 'gz-status', role: 'status', 'aria-live': 'polite' });
+  var pad = el('div', { class: 'gz-pad' });
+  var wrap = el('div', { class: 'gz-wrap ch-split' }, [el('div', { class: 'ch-fit' }, [box]), el('div', { class: 'ch-side' }, [top, players, status, pad])]);
+
+  ctx.button({ icon: 'help', label: C.t('help'), onClick: showHelp });
+  ctx.button({ icon: 'refresh', label: C.t('newMatch'), onClick: askNew });
+  ctx.main.appendChild(wrap);
+  ctx.mount();
+
+  /* ------------------------------------------------------------ setup */
+
+  function rngFor(tag) { return G.daily ? C.daily('gorillas', G.daily + '|' + tag).rng : Math.random; }
+
+  function newGame(o) {
+    stop();
+    var daily = o.daily || null;
+    G = { mode: daily ? 'bot' : o.mode, level: daily ? 'medium' : o.level, daily: daily, startedAt: Date.now(), done: false, phase: 'aim', firstHits: 0 };
+    G.M = E.match(rngFor('city1'));
+    if (!daily) { prefs.mode = o.mode; prefs.level = o.level; ctx.store.set('prefs', prefs); }
+    flight = blast = aiming = null; msg = '';
+    render();
+    save();
+    startTurn();
+  }
+  function current() { return { mode: G.mode, level: G.level }; }
+  function fromPrefs() { return { mode: prefs.mode, level: prefs.level }; }
+
+  function isBot(seat) { return G.mode === 'bot' && seat === 1; }
+  function stop() { if (timer) { clearTimeout(timer); timer = null; } }
+  function later(fn, ms) { stop(); timer = setTimeout(function () { timer = null; fn(); }, ms); }
+
+  function pname(seat) {
+    if (seat === 0) return G.mode === 'people' ? C.t('playerN', { n: C.num(1) }) : (C.state.profile.name || C.t('you'));
+    return isBot(seat) ? C.t('bot') : C.t('playerN', { n: C.num(2) });
+  }
+
+  /* ------------------------------------------------------------- turns */
+
+  function startTurn() {
+    if (!G || G.done) return;
+    var seat = G.M.turn;
+    G.phase = isBot(seat) ? 'busy' : 'aim';
+    render();
+    if (isBot(seat)) later(botThrow, C.ui.reduceMotion() ? 300 : 900);
+  }
+
+  function botThrow() {
+    if (!G || G.done || !isBot(G.M.turn)) return;
+    var M = G.M, rnd = rngFor('bot' + M.round + '.' + M.throws[1]);
+    var aim = E.botAim(M.city, 1, G.level, M.misses[1], rnd);
+    M.last[1] = aim;
+    throwNow(1, aim.angle, aim.power);
+  }
+
+  function throwNow(who, angle, power) {
+    var M = G.M;
+    G.phase = 'busy';
+    msg = '';
+    aiming = null;
+    var shot = E.shoot(M.city, who, angle, power);
+    var firstOfRound = M.misses[who] === 0;
+    C.feedback('whoosh');
+    flight = { who: who, shot: shot, t0: performance.now(), angle: angle, power: power, first: firstOfRound };
+    // the status said "Your turn" through the whole flight until the first draft did this
+    renderStatus(); renderPlayers(); renderPad();
+    if (C.ui.reduceMotion()) { landed(); return; }
+    kick();
+  }
+
+  function landed() {
+    var f = flight, M = G.M, end = f.shot.end;
+    flight = null;
+    var r = E.record(M, f.who, f.shot, f.angle, f.power);
+    cityKey = '';
+    if (end.kind !== 'out') {
+      blast = { x: end.x, y: end.y, r: end.kind === 'gorilla' ? 46 : 26, t0: performance.now(), big: end.kind === 'gorilla' };
+      C.feedback(end.kind === 'gorilla' ? 'boom' : 'thud');
+    } else C.feedback('tap');
+    if (end.kind === 'gorilla') {
+      msg = end.who === f.who ? C.t('hitSelf') : C.t('hitOther', { n: pname(end.who) });
+      if (end.who !== f.who && f.first && f.who === 0 && G.mode === 'bot') G.firstHits++;
+      dance = performance.now();
+    } else msg = C.t('missed');
+    kick();
+    if (r === 'match') {
+      G.done = true; G.phase = 'done';
+      C.feedback(M.winner === 0 || G.mode === 'people' ? 'good' : 'bad');
+      render();
+      later(finish, C.ui.reduceMotion() ? 300 : 1800);
+      return;
+    }
+    if (r === 'round') {
+      G.phase = 'over';
+      render();
+      save();
+      later(function () {
+        msg = C.t('roundTo2', { n: pname(M.roundWinner) });
+        E.nextRound(M, rngFor('city' + (M.round + 1)));
+        cityKey = ''; blast = null;
+        render(); save();
+        later(startTurn, 900);
+      }, C.ui.reduceMotion() ? 400 : 1700);
+      return;
+    }
+    save();
+    render();
+    later(startTurn, C.ui.reduceMotion() ? 200 : 650);
+  }
+
+  /* ------------------------------------------------------------ result */
+
+  function finish() {
+    stop();
+    var M = G.M, w = M.winner, won = G.mode === 'people' ? null : w === 0;
+    var coins = 6, points = 15;
+    if (G.mode === 'bot') {
+      var base = { easy: 6, medium: 12, hard: 20 }[G.level];
+      coins = won ? base : Math.max(2, Math.round(base * 0.3));
+      points = won ? base * 4 : Math.round(base * 1.2);
+      if (won) {
+        C.achievements.unlock('gor-win');
+        if (G.level === 'hard') C.achievements.unlock('gor-hard');
+      }
+      if (G.firstHits > 0) C.achievements.unlock('gor-sharp');
+    }
+    var label = C.num(M.score[0]) + '–' + C.num(M.score[1]);
+    if (G.daily) {
+      var first = C.stats.daily('gorillas', G.daily, { label: label, win: won });
+      if (!first) { coins = Math.round(coins * 0.2); points = Math.round(points * 0.2); }
+    }
+    ctx.clearSave();
+    ctx.finish({
+      won: won,
+      title: G.mode === 'people' ? C.t('playerWon', { n: pname(w) }) : (won ? C.t('won') : C.t('lost')),
+      timeMs: Date.now() - G.startedAt, coins: coins, points: points,
+      lines: [
+        { label: C.t('rounds'), value: label },
+        { label: C.t('throws'), value: C.num(M.throws[0]) + ' · ' + C.num(M.throws[1]) }
+      ],
+      shareText: 'چوگان · گوریل‌ها' + (G.daily ? ('\nروزانه ' + G.daily) : '') + '\n' + label,
+      paint: cardPaint(),
+      onAgain: G.daily ? null : function () { newGame(current()); }
+    });
+  }
+
+  /* ------------------------------------------------------------- saves */
+
+  // Saved after every throw: the city with its holes, the score and both last aims
+  ctx.autosave(function () {
+    if (!G || G.done || (G.M.throws[0] + G.M.throws[1] === 0 && G.M.round === 1)) return { inProgress: false };
+    return { g: { mode: G.mode, level: G.level, daily: G.daily, M: G.M, firstHits: G.firstHits, elapsed: Date.now() - G.startedAt } };
+  });
+  function save() { ctx.save(); }
+  function validSave(sv) { var g = sv && sv.g; return !!(g && (g.mode === 'bot' || g.mode === 'people') && LEVELS.indexOf(g.level) >= 0 && E.validMatch(g.M)); }
+  function restore(g) {
+    G = { mode: g.mode, level: g.level, daily: g.daily || null, M: g.M, firstHits: g.firstHits || 0, startedAt: Date.now() - (g.elapsed || 0), done: false, phase: 'aim' };
+    G.M.roundWinner = -1;
+    cityKey = '';
+    render();
+    startTurn();
+  }
+
+  function askNew() {
+    if (!G || !G.daily) { settings(); return; }
+    var dd = G.daily;
+    if (G.done || !G.M.throws[0]) { newGame({ daily: dd }); return; }
+    C.ui.confirm({ title: C.t('newMatch'), body: C.t('resetWarn'), onOk: function () { newGame({ daily: dd }); } });
+  }
+
+  function settings() {
+    var o = G ? current() : fromPrefs(), body = el('div', { class: 'ch-col', style: { gap: 'var(--s-3)', 'align-items': 'center' } });
+    function rows() {
+      body.innerHTML = '';
+      body.appendChild(C.ui.segmented([{ value: 'bot', label: C.t('vsBot') }, { value: 'people', label: C.t('people') }], o.mode, function (v) { o.mode = v; rows(); }));
+      if (o.mode === 'bot') body.appendChild(C.ui.segmented(LEVELS.map(function (l) { return { value: l, label: C.t(l) }; }), o.level, function (v) { o.level = v; }));
+      if (G && !G.done && (G.M.throws[0] || G.M.round > 1)) body.appendChild(el('p', { class: 'ch-xs ch-dim', text: C.t('resetWarn') }));
+    }
+    rows();
+    C.ui.modal({
+      title: C.t('newMatch'), closeButton: true, body: [body],
+      actions: [{ label: C.t('cancel') }, { label: C.t('start'), kind: 'primary', onClick: function () { newGame(o); } }]
+    });
+  }
+
+  // The aim control lives behind the gear (the owner's choice): drag like a slingshot,
+  // numbers as in the original, or a joystick a player asked for (#511). It switches
+  // at once, mid-turn too.
+  function showSettings() {
+    var seg = C.ui.segmented([{ value: 'drag', label: C.t('ctlDrag') }, { value: 'nums', label: C.t('ctlNums') }, { value: 'stick', label: C.t('ctlStick') }], prefs.control, function (v) {
+      prefs.control = v === 'nums' || v === 'stick' ? v : 'drag';
+      ctx.store.set('prefs', prefs);
+      aiming = null;
+      render();
+    });
+    C.ui.modal({
+      title: C.t('settings'),
+      body: [el('div', { class: 'ch-list' }, [el('div', { class: 'ch-item' }, [el('div', { class: 'ch-item__label', text: C.t('control') }), seg])])],
+      actions: [{ label: C.t('done'), kind: 'primary' }]
+    });
+  }
+
+  /* --------------------------------------------------------------- draw */
+
+  function css(name, fb) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fb; }
+  function dark() {
+    var t = document.documentElement.getAttribute('data-theme');
+    if (t === 'dark') return true;
+    if (t === 'light') return false;
+    return window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+  // Theme colours of the city: a day sky in light, a night sky with lit windows in dark
+  function palette() {
+    return dark()
+      ? { sky0: '#0D1430', sky1: '#24305A', b: ['#2F5F66', '#7A3A35', '#4B4B5A'], lit: '#F6D365', unlit: '#1A1D2B', sun: '#E9E4C8', ape: '#8A5A36', apeDk: '#5A3820', ground: '#14161F' }
+      : { sky0: '#8FCDEB', sky1: '#E4F3FA', b: ['#3F8F92', '#C25A4E', '#7F8292'], lit: '#FBE7A1', unlit: '#2E3440', sun: '#F7C23C', ape: '#6B4423', apeDk: '#46290F', ground: '#3B3F4A' };
+  }
+
+  // The skyline with its holes is drawn once per change into its own layer
+  function cityCanvas(scale, P) {
+    // the key names the city by its first building's seed: a new match is round 1 with no
+    // holes again, so without it the old match's skyline stayed under the new gorillas (#552)
+    var M = G.M, key = scale + '|' + M.city.b[0].s + '|' + M.round + '|' + M.city.holes.length + '|' + (dark() ? 1 : 0);
+    if (cityLayer && cityKey === key) return cityLayer;
+    var c = cityLayer || document.createElement('canvas');
+    c.width = Math.round(E.W * scale); c.height = Math.round(E.H * scale);
+    var g = c.getContext('2d');
+    g.setTransform(scale, 0, 0, scale, 0, 0);
+    g.clearRect(0, 0, E.W, E.H);
+    M.city.b.forEach(function (b) {
+      var y0 = E.H - b.h;
+      g.fillStyle = P.b[b.c];
+      g.fillRect(b.x + 1, y0, b.w - 2, b.h);
+      // windows from the building's own seed, so they stay put through the round
+      var s = b.s >>> 0, rnd = function () { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+      for (var wy = y0 + 10; wy < E.H - 14; wy += 18) {
+        for (var wx = b.x + 9; wx < b.x + b.w - 14; wx += 14) {
+          g.fillStyle = rnd() < 0.62 ? P.lit : P.unlit;
+          g.fillRect(wx, wy, 6, 9);
+        }
+      }
+    });
+    g.globalCompositeOperation = 'destination-out';
+    M.city.holes.forEach(function (o) { g.beginPath(); g.arc(o.x, o.y, o.r, 0, Math.PI * 2); g.fill(); });
+    g.globalCompositeOperation = 'source-over';
+    cityLayer = c; cityKey = key;
+    return c;
+  }
+
+  function drawGorilla(g, x, y, P, pose, t) {
+    // y is the roof the gorilla stands on; it is 28 wide and 30 tall
+    g.save();
+    g.translate(x, y);
+    g.fillStyle = P.ape;
+    // legs and body
+    C.rrect(g, -9, -20, 18, 16, 6); g.fill();
+    g.fillRect(-9, -6, 6, 6); g.fillRect(3, -6, 6, 6);
+    // head
+    g.beginPath(); g.arc(0, -24, 7, 0, Math.PI * 2); g.fill();
+    g.fillStyle = P.apeDk;
+    g.fillRect(-4, -26, 8, 2.5);
+    g.fillStyle = '#F4E3C9';
+    g.beginPath(); g.ellipse(0, -21.5, 3.6, 2.4, 0, 0, Math.PI * 2); g.fill();
+    // arms: down, one up to throw, or both up dancing
+    g.strokeStyle = P.ape; g.lineWidth = 5; g.lineCap = 'round';
+    var up = pose === 'dance' ? (Math.floor(t / 220) % 2 ? [1, 0] : [0, 1]) : pose === 'throwL' ? [1, 0] : pose === 'throwR' ? [0, 1] : [0, 0];
+    if (pose === 'cheer') up = [1, 1];
+    [[-1, up[0]], [1, up[1]]].forEach(function (a) {
+      g.beginPath(); g.moveTo(a[0] * 9, -16);
+      if (a[1]) g.lineTo(a[0] * 12, -30); else g.lineTo(a[0] * 12, -6);
+      g.stroke();
+    });
+    g.restore();
+  }
+
+  function drawBanana(g, x, y, rot) {
+    g.save();
+    g.translate(x, y); g.rotate(rot);
+    g.fillStyle = '#F2C230'; g.strokeStyle = '#8A6A10'; g.lineWidth = 1.2;
+    g.beginPath(); g.arc(0, 0, 7, 0.2 * Math.PI, 0.8 * Math.PI); g.arc(0, -3, 6, 0.75 * Math.PI, 0.25 * Math.PI, true); g.closePath();
+    g.fill(); g.stroke();
+    g.restore();
+  }
+
+  function paint(g, w, h, now, card) {
+    var M = G.M, P = palette(), k = w / E.W;
+    var sky = g.createLinearGradient(0, 0, 0, h);
+    sky.addColorStop(0, P.sky0); sky.addColorStop(1, P.sky1);
+    g.fillStyle = sky; g.fillRect(0, 0, w, h);
+    g.save();
+    g.scale(k, k);
+    // the sun (the moon in the dark theme) makes an "o" when a banana goes past it
+    var surprised = flight && flight.shot.path.some(function (p) { return Math.hypot(p[0] - E.W / 2, p[1] - 52) < 30; });
+    g.fillStyle = P.sun;
+    g.beginPath(); g.arc(E.W / 2, 52, 22, 0, Math.PI * 2); g.fill();
+    g.fillStyle = 'rgba(0,0,0,.55)';
+    g.beginPath(); g.arc(E.W / 2 - 7, 47, 2.2, 0, Math.PI * 2); g.arc(E.W / 2 + 7, 47, 2.2, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = 'rgba(0,0,0,.55)'; g.lineWidth = 2;
+    g.beginPath();
+    if (surprised) g.arc(E.W / 2, 59, 4, 0, Math.PI * 2); else g.arc(E.W / 2, 54, 8, 0.2 * Math.PI, 0.8 * Math.PI);
+    g.stroke();
+    g.restore();
+    g.drawImage(cityCanvas(k * (card ? 1 : Math.min(2, window.devicePixelRatio || 1)), P), 0, 0, w, h);
+    g.save();
+    g.scale(k, k);
+    // gorillas: the one hit this round is gone in the blast; the other dances
+    var hit = blast && blast.big ? E.gorillaAt(M.city, blast.x, blast.y) : -1;
+    var lastEnd = M.roundWinner;
+    for (var i = 0; i < 2; i++) {
+      if (G.phase === 'over' && lastEnd >= 0 && i !== lastEnd) continue;
+      if (hit === i && G.phase !== 'over') continue;
+      var pose = 'idle';
+      if (G.phase === 'over' || (G.done && M.winner === i)) pose = 'dance';
+      else if (flight && flight.who === i && now - flight.t0 < 260) pose = i === 0 ? 'throwR' : 'throwL';
+      drawGorilla(g, M.city.g[i].x, M.city.g[i].y, P, pose, now - dance);
+    }
+    // the aim: an arrow from the hand with the angle and power beside it, no path
+    var aim = aimNow();
+    if (aim && !card) {
+      var hp = E.hand(M.city, M.turn), dir = M.turn === 0 ? 1 : -1, a = aim.angle * Math.PI / 180, len = 18 + aim.power * 0.9;
+      var tx = hp.x + Math.cos(a) * len * dir, ty = hp.y - Math.sin(a) * len;
+      g.strokeStyle = css('--game', '#6B4423'); g.fillStyle = g.strokeStyle; g.lineWidth = 3.5; g.lineCap = 'round';
+      g.beginPath(); g.moveTo(hp.x, hp.y); g.lineTo(tx, ty); g.stroke();
+      g.beginPath(); g.arc(tx, ty, 4, 0, Math.PI * 2); g.fill();
+      var label = Math.round(aim.angle) + '° · ' + Math.round(aim.power);
+      g.font = '800 15px ' + (getComputedStyle(document.body).fontFamily || 'sans-serif');
+      g.textAlign = dir > 0 ? 'left' : 'right'; g.textBaseline = 'bottom';
+      // dark text with a light halo on the day sky, light text with a dark halo at night
+      var night = dark();
+      g.lineWidth = 4; g.strokeStyle = night ? 'rgba(0,0,0,.7)' : 'rgba(255,255,255,.85)'; g.strokeText(label, tx + dir * 6, ty - 4);
+      g.fillStyle = night ? '#F4EEE4' : '#1F1A17'; g.fillText(label, tx + dir * 6, ty - 4);
+    }
+    // the banana in flight
+    if (flight && !card) {
+      var n = Math.min(flight.shot.path.length - 1, Math.floor((now - flight.t0) / 1000 * 60));
+      var p = flight.shot.path[n];
+      drawBanana(g, p[0], p[1], (now - flight.t0) / 90);
+    }
+    // the blast: rings that grow and fade
+    if (blast && !card) {
+      var bt = (now - blast.t0) / (blast.big ? 700 : 420);
+      if (bt < 1) {
+        g.fillStyle = 'rgba(255, 196, 64,' + (1 - bt) + ')';
+        g.beginPath(); g.arc(blast.x, blast.y, blast.r * (0.4 + bt * 0.8), 0, Math.PI * 2); g.fill();
+        g.fillStyle = 'rgba(232, 90, 40,' + (1 - bt) * 0.9 + ')';
+        g.beginPath(); g.arc(blast.x, blast.y, blast.r * (0.2 + bt * 0.5), 0, Math.PI * 2); g.fill();
+      }
+    }
+    // the wind: an arrow at the bottom, as long as the wind is strong
+    var wv = M.city.wind;
+    g.fillStyle = 'rgba(255,255,255,.85)';
+    C.rrect(g, E.W / 2 - 74, E.H - 30, 148, 22, 11); g.fill();
+    g.fillStyle = '#1F1A17'; g.strokeStyle = '#1F1A17'; g.lineWidth = 3;
+    g.font = '700 12px ' + (getComputedStyle(document.body).fontFamily || 'sans-serif');
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    if (!wv) g.fillText(C.t('calm'), E.W / 2, E.H - 19);
+    else {
+      var L = 8 + Math.abs(wv) / E.WIND * 52, sx = E.W / 2 - Math.sign(wv) * L / 2, ex = E.W / 2 + Math.sign(wv) * L / 2;
+      g.beginPath(); g.moveTo(sx, E.H - 19); g.lineTo(ex, E.H - 19); g.stroke();
+      g.beginPath(); g.moveTo(ex, E.H - 19); g.lineTo(ex - Math.sign(wv) * 7, E.H - 25); g.lineTo(ex - Math.sign(wv) * 7, E.H - 13); g.closePath(); g.fill();
+    }
+    g.restore();
+  }
+
+  function size() {
+    var r = box.getBoundingClientRect(), w = Math.floor(Math.min(r.width, r.height * E.W / E.H));
+    return { w: Math.max(200, w), h: Math.max(175, Math.round(Math.max(200, w) * E.H / E.W)) };
+  }
+  function draw() {
+    if (!G) return;
+    var S = size(), dpr = Math.min(2, window.devicePixelRatio || 1), now = performance.now();
+    // both sides: a new canvas is 300×150 (#359)
+    if (cv.width !== Math.round(S.w * dpr) || cv.height !== Math.round(S.h * dpr)) { cv.width = Math.round(S.w * dpr); cv.height = Math.round(S.h * dpr); }
+    cv.style.width = S.w + 'px'; cv.style.height = S.h + 'px';
+    var g = cv.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    paint(g, S.w, S.h, now);
+    if (flight && (now - flight.t0) / 1000 * 60 >= flight.shot.path.length - 1) landed();
+  }
+  function loop() {
+    raf = 0;
+    draw();
+    var now = performance.now();
+    var moving = flight || aiming || (blast && now - blast.t0 < 800) || G && (G.phase === 'over' || (G.done && G.M.winner >= 0));
+    if (moving && !document.hidden) raf = requestAnimationFrame(loop);
+  }
+  function kick() { if (!raf) raf = requestAnimationFrame(loop); }
+
+  function cardPaint() {
+    return function (g, W, H) {
+      var w = Math.min(W, H * E.W / E.H), h = w * E.H / E.W;
+      g.save(); g.translate((W - w) / 2, (H - h) / 2);
+      paint(g, w, h, performance.now(), true);
+      g.restore();
+    };
+  }
+
+  /* ----------------------------------------------------------------- ui */
+
+  function aimNow() {
+    if (!G || G.phase !== 'aim' || isBot(G.M.turn)) return null;
+    if (prefs.control !== 'nums') return aiming && aiming.aim ? aiming.aim : null;
+    return G.M.last[G.M.turn];
+  }
+
+  function renderTop() {
+    top.innerHTML = '';
+    if (G.daily) top.appendChild(el('span', { class: 'ch-badge ch-badge--accent' }, [C.icon('calendar', 14), el('span', { text: C.t('dailyGz') + ' — ' + C.num(G.daily) })]));
+    else top.appendChild(el('button', { class: 'ch-badge ch-tap', type: 'button', onclick: askNew, text: G.mode === 'bot' ? C.t('vsBot') + ' · ' + C.t(G.level) : C.t('people') }));
+    top.appendChild(el('span', { class: 'ch-badge', text: C.t('roundN', { n: C.num(G.M.round) }) + ' · ' + C.t('roundTo', { n: C.num(E.WIN_ROUNDS) }) }));
+    var gear = el('button', { class: 'ch-iconbtn gz-gear', type: 'button', 'aria-label': C.t('settings'), title: C.t('settings') }, [C.icon('gear', 20)]);
+    gear.addEventListener('click', showSettings);
+    top.appendChild(gear);
+  }
+  function renderPlayers() {
+    players.innerHTML = '';
+    for (var s = 0; s < 2; s++) {
+      var pips = el('div', { class: 'gz-pips' });
+      for (var k = 0; k < E.WIN_ROUNDS; k++) pips.appendChild(el('i', { class: 'gz-pip' + (k < G.M.score[s] ? ' gz-pip--won' : '') }));
+      players.appendChild(el('div', { class: 'gz-player' + (G.M.turn === s && !G.done && G.phase !== 'over' ? ' gz-player--on' : '') }, [el('span', { class: 'gz-player__name', text: pname(s) }), pips]));
+    }
+  }
+  function renderStatus() {
+    var seat = G.M.turn, who = isBot(seat) ? C.t('botThinks', { n: pname(seat) }) : (G.mode === 'people' ? C.t('turnOf', { n: pname(seat) }) : C.t('yourTurn'));
+    var how = G.phase === 'aim' ? ' — ' + C.t(prefs.control === 'nums' ? 'aimNums' : prefs.control === 'stick' ? 'aimStick' : 'aimDrag') : '';
+    // in flight the line names nobody's turn: it waits for where the banana lands
+    status.textContent = flight ? '…' : (msg && G.phase !== 'aim' ? msg : (G.done ? msg : who + how));
+  }
+  // The number pad: angle and power with − and +, held to repeat, and Throw
+  function dial(key, min, max) {
+    var val = el('span', { class: 'gz-dial__val' });
+    function show() { var v = G.M.last[G.M.turn][key]; val.textContent = C.num(Math.round(v)) + (key === 'angle' ? '°' : ''); }
+    function step(d) {
+      var L = G.M.last[G.M.turn];
+      L[key] = Math.max(min, Math.min(max, Math.round(L[key]) + d));
+      show(); draw();
+    }
+    function btn(d, label) {
+      var b = el('button', { class: 'ch-iconbtn', type: 'button', 'aria-label': C.t(key) + ' ' + label, text: label });
+      var rep = null, t0 = null;
+      var end = function () { clearTimeout(t0); clearInterval(rep); t0 = rep = null; };
+      b.addEventListener('pointerdown', function (e) {
+        if (G.phase !== 'aim' || isBot(G.M.turn)) return;
+        e.preventDefault(); step(d);
+        t0 = setTimeout(function () { rep = setInterval(function () { step(d); }, 70); }, 380);
+      });
+      b.addEventListener('pointerup', end); b.addEventListener('pointerleave', end); b.addEventListener('pointercancel', end);
+      return b;
+    }
+    show();
+    return el('div', { class: 'gz-dial' }, [el('span', { class: 'gz-dial__lbl', text: C.t(key) }), btn(-1, '−'), val, btn(1, '+')]);
+  }
+  // The joystick: pushed the way the banana should go, further is stronger. A push
+  // that comes back to the middle is taken back, not thrown.
+  function renderStick() {
+    var knob = el('div', { class: 'gz-stick__knob' });
+    var st = el('div', { class: 'gz-stick', role: 'img', 'aria-label': C.t('stick') }, [knob]);
+    var grab = null;
+    function move(e) {
+      var r = st.getBoundingClientRect(), R = r.width / 2;
+      var dx = e.clientX - (r.left + R), dy = e.clientY - (r.top + R), len = Math.hypot(dx, dy), k = len > R ? R / len : 1;
+      knob.style.transform = 'translate(' + (dx * k) + 'px,' + (dy * k) + 'px)';
+      aiming = { id: -1, aim: stickAim(dx, dy, R, G.M.turn === 0 ? 1 : -1) };
+      draw();
+    }
+    st.addEventListener('pointerdown', function (e) {
+      if (!canAim()) return;
+      e.preventDefault();
+      grab = e.pointerId;
+      st.classList.add('gz-stick--on');
+      try { st.setPointerCapture(e.pointerId); } catch (er) { /* old browsers */ }
+      move(e); kick();
+    });
+    st.addEventListener('pointermove', function (e) { if (grab === e.pointerId) move(e); });
+    function end(e, cancel) {
+      if (grab !== e.pointerId) return;
+      grab = null;
+      st.classList.remove('gz-stick--on');
+      knob.style.transform = '';
+      var a = aiming && aiming.aim;
+      aiming = null;
+      if (cancel || !a || a.power < 6 || !canAim()) { draw(); return; }
+      G.M.last[G.M.turn] = a;
+      throwNow(G.M.turn, a.angle, a.power);
+    }
+    st.addEventListener('pointerup', function (e) { end(e, false); });
+    st.addEventListener('pointercancel', function (e) { end(e, true); });
+    return st;
+  }
+  function renderPad() {
+    pad.innerHTML = '';
+    if (!G || G.done || isBot(G.M.turn) || G.phase !== 'aim') return;
+    if (prefs.control === 'stick') { pad.appendChild(renderStick()); return; }
+    if (prefs.control !== 'nums') return;
+    pad.appendChild(dial('angle', 0, 90));
+    pad.appendChild(dial('power', 1, 100));
+    var go = el('button', { class: 'ch-btn ch-btn--primary', type: 'button', text: C.t('throwIt') });
+    go.addEventListener('click', function () { if (canAim()) { var L = G.M.last[G.M.turn]; throwNow(G.M.turn, L.angle, L.power); } });
+    pad.appendChild(go);
+  }
+  function render() {
+    if (!G) return;
+    renderTop(); renderPlayers(); renderStatus(); renderPad();
+    draw(); kick();
+  }
+
+  /* -------------------------------------------------------------- input */
+
+  function canAim() { return G && !G.done && G.phase === 'aim' && !isBot(G.M.turn) && !document.querySelector('.ch-scrim'); }
+
+  // A slingshot: the pull from where the finger went down sets the throw, the other
+  // way from the pull. A full pull is 40% of the city's width.
+  function pullAim(dx, dy) {
+    var dir = G.M.turn === 0 ? 1 : -1, tx = -dx * dir, ty = dy;
+    var len = Math.hypot(dx, dy), full = size().w * 0.4;
+    var angle = Math.atan2(ty, tx) * 180 / Math.PI;
+    if (tx < 0) angle = ty >= 0 ? 90 : 0;
+    angle = Math.max(0, Math.min(90, angle));
+    return { angle: Math.round(angle), power: Math.max(0, Math.min(100, Math.round(len / full * 100))) };
+  }
+  // The joystick's push, the way the banana goes: its length against the stick's
+  // radius is the power, so a full push is 100
+  function stickAim(dx, dy, r, dir) {
+    var tx = dx * dir, ty = -dy, len = Math.min(r, Math.hypot(dx, dy));
+    var angle = Math.atan2(ty, tx) * 180 / Math.PI;
+    if (tx < 0) angle = ty >= 0 ? 90 : 0;
+    return { angle: Math.round(Math.max(0, Math.min(90, angle))), power: Math.round(len / r * 100) };
+  }
+  cv.addEventListener('pointerdown', function (e) {
+    if (!canAim() || prefs.control !== 'drag') return;
+    e.preventDefault();
+    aiming = { id: e.pointerId, x: e.clientX, y: e.clientY, aim: null };
+    try { cv.setPointerCapture(e.pointerId); } catch (er) { /* old browsers */ }
+    kick();
+  });
+  cv.addEventListener('pointermove', function (e) {
+    if (!aiming || e.pointerId !== aiming.id) return;
+    aiming.aim = pullAim(e.clientX - aiming.x, e.clientY - aiming.y);
+  });
+  cv.addEventListener('pointerup', function (e) {
+    if (!aiming || e.pointerId !== aiming.id) return;
+    var a = aiming.aim;
+    aiming = null;
+    // a short pull is taken back, not thrown
+    if (!a || a.power < 6 || !canAim()) { draw(); return; }
+    G.M.last[G.M.turn] = a;
+    throwNow(G.M.turn, a.angle, a.power);
+  });
+  cv.addEventListener('pointercancel', function () { aiming = null; draw(); });
+
+  // Keys work with both controls: ↑ ↓ change the angle, ← → the power (towards the
+  // other gorilla is more), Space or Enter throws
+  window.addEventListener('keydown', function (e) {
+    if (!canAim()) return;
+    var tg = e.target, tag = tg && tg.tagName;
+    if (tag === 'BUTTON' && (e.key === ' ' || e.key === 'Enter')) return;
+    var L = G.M.last[G.M.turn], step = e.shiftKey ? 5 : 1, dir = G.M.turn === 0 ? 1 : -1, k = e.key;
+    if (k === 'ArrowUp' || k === 'ArrowDown') { L.angle = Math.max(0, Math.min(90, Math.round(L.angle) + (k === 'ArrowUp' ? step : -step))); }
+    else if (k === 'ArrowLeft' || k === 'ArrowRight') { L.power = Math.max(1, Math.min(100, Math.round(L.power) + (k === 'ArrowRight' ? step : -step) * dir)); }
+    else if (k === ' ' || k === 'Enter') { e.preventDefault(); throwNow(G.M.turn, L.angle, L.power); return; }
+    else return;
+    e.preventDefault();
+    if (prefs.control !== 'nums') aiming = { id: -1, aim: { angle: L.angle, power: L.power } };
+    renderPad(); draw();
+  });
+
+  if (window.ResizeObserver) new ResizeObserver(function () { if (G) draw(); }).observe(box);
+  else window.addEventListener('resize', function () { if (G) draw(); });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && G) kick(); });
+  if (window.matchMedia) { try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () { cityKey = ''; draw(); }); } catch (er) { /* old WebViews */ } }
+  // A pause mid-flight lets that banana land when the game comes back
+  C.onPause(function () { stop(); aiming = null; });
+  C.onResume(function () {
+    if (!G || G.done) return;
+    if (flight) { landed(); return; }
+    if (G.phase === 'over') {
+      E.nextRound(G.M, rngFor('city' + (G.M.round + 1)));
+      cityKey = ''; blast = null; render(); save();
+    }
+    startTurn();
+  });
+
+  /* --------------------------------------------------------------- help */
+
+  function kb(k, what) { return el('div', { class: 'ch-item' }, [el('div', { class: 'ch-item__label', text: what }), el('span', { class: 'ch-badge', text: k })]); }
+  function showHelp() {
+    C.ui.modal({
+      title: C.t('help'),
+      body: [
+        el('p', { class: 'ch-dim', text: C.t('rules') }),
+        el('h3', { style: { 'margin-top': 'var(--s-4)' }, text: C.t('keyboard') }),
+        el('div', { class: 'ch-list' }, [kb('↑ ↓ / Shift', C.t('kAngle')), kb('← → / Shift', C.t('kPower')), kb('Space / Enter', C.t('kThrow'))])
+      ],
+      actions: [{ label: C.t('tutorial'), onClick: function () { ctx.showTutorial(TUT); } }, { label: C.t('done'), kind: 'primary' }]
+    });
+  }
+  var APE = '<g fill="#6B4423"><rect x="-9" y="-20" width="18" height="16" rx="6"/><rect x="-9" y="-6" width="6" height="6"/><rect x="3" y="-6" width="6" height="6"/><circle cx="0" cy="-24" r="7"/></g>';
+  function tArt(kind) {
+    var s = '<svg viewBox="0 0 220 110" width="100%" direction="ltr"><rect width="220" height="110" rx="10" fill="#8FCDEB"/>' +
+      '<rect x="10" y="62" width="44" height="48" fill="#3F8F92"/><rect x="56" y="80" width="40" height="30" fill="#7F8292"/><rect x="98" y="50" width="30" height="60" fill="#C25A4E"/>' +
+      '<rect x="130" y="76" width="36" height="34" fill="#3F8F92"/><rect x="168" y="58" width="44" height="52" fill="#7F8292"/>' +
+      '<g transform="translate(32 62)">' + APE + '</g><g transform="translate(190 58)">' + APE + '</g>';
+    if (kind === 1) s += '<path d="M40 30 Q 110 -20 182 30" fill="none" stroke="#F2C230" stroke-width="3" stroke-dasharray="5 5"/>';
+    if (kind === 2) s += '<path d="M40 30 L72 10" stroke="#6B4423" stroke-width="4" stroke-linecap="round"/><text x="76" y="14" font-size="12" font-weight="800" fill="#1F1A17">45° · 60</text>' +
+      '<circle cx="150" cy="30" r="6" fill="none" stroke="#6B4423" stroke-width="2"/><path d="M150 30 L118 52" stroke="#6B4423" stroke-width="2" stroke-dasharray="3 3"/>';
+    if (kind === 3) s += '<rect x="76" y="88" width="68" height="16" rx="8" fill="#fff"/><path d="M92 96 H124" stroke="#1F1A17" stroke-width="3"/><path d="M128 96 l-7 -5 v10z" fill="#1F1A17"/>';
+    return s + '</svg>';
+  }
+  var TUT = [
+    { title: C.t('tutTitle1'), text: C.t('tutText1'), art: tArt(1) },
+    { title: C.t('tutTitle2'), text: C.t('tutText2'), art: tArt(2) },
+    { title: C.t('tutTitle3'), text: C.t('tutText3'), art: tArt(3) }
+  ];
+
+  /* -------------------------------------------------------------- start */
+
+  var saved = ctx.loadSave();
+  if (dailyDate) {
+    // The daily match has its own save slot, so a half-played day goes on
+    if (validSave(saved) && saved.g.daily === dailyDate) restore(saved.g);
+    else newGame({ daily: dailyDate });
+    if (C.stats.dailyDone('gorillas', dailyDate)) {
+      var rec = C.stats.dailyOf(dailyDate).gorillas;
+      C.ui.toast({ icon: 'check', title: C.t('dailyDone'), sub: rec && rec.label });
+    }
+  } else if (validSave(saved) && !saved.g.daily) {
+    restore(saved.g);
+  } else {
+    newGame(fromPrefs());
+  }
+  ctx.tutorialIfNew(TUT);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { if (G) draw(); });
+})();
+</script>
+</body>
+</html>

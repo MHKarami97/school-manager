@@ -1,0 +1,994 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#FBF6EF">
+<title>سالیتر — چوگان</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../lib/chogan.css">
+<script src="../../lib/early.js"></script>
+<style>
+  /* a card face in the dark theme is a step lighter than the surface, as in Hokm,
+     so long columns don't read as one dark block */
+  :root { --ch-pface: var(--c-surface); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --ch-pface: var(--c-surface-3); } }
+  :root[data-theme="dark"] { --ch-pface: var(--c-surface-3); }
+
+  .kl-wrap { flex: 1; min-height: 0; align-self: stretch; display: flex; flex-direction: column; align-items: center; gap: var(--s-2); }
+  .kl-top { display: flex; gap: var(--s-2); flex-wrap: wrap; justify-content: center; align-items: center; }
+  /* a table is a physical thing: stock on the left, homes on the right, in every language */
+  .kl-board { direction: ltr; position: relative; flex: 1; min-height: 0; width: 100%; touch-action: none; user-select: none; -webkit-user-select: none; }
+  .kl-slot {
+    position: absolute; left: 0; top: 0; width: var(--cw); aspect-ratio: 5 / 7; box-sizing: border-box; border-radius: 8px;
+    border: 2px dashed var(--c-line); display: grid; place-items: center; color: var(--c-text-faint); font-size: calc(var(--cw) * .42);
+  }
+  .kl-slot--stock { cursor: pointer; border-style: solid; }
+  .kl-card { position: absolute; left: 0; top: 0; width: var(--cw); aspect-ratio: 5 / 7; transition: transform var(--kl-move, 180ms) var(--ease); }
+  .kl-card > .ch-pcard { --pw: var(--cw); position: absolute; top: 0; right: 0; bottom: 0; left: 0; cursor: pointer; }
+  .kl-card > .ch-pback { position: absolute; top: 0; right: 0; bottom: 0; left: 0; width: var(--cw); }
+  .kl-card--down > .ch-pcard, .kl-card:not(.kl-card--down) > .ch-pback { display: none; }
+  .kl-card--still, .kl-card--drag { transition: none; }
+  .kl-card--drag > * { box-shadow: var(--sh-3, var(--sh-2)); }
+  /* its own layer while dragged, so a move does not re-rasterise the cards (#532, as Spider) */
+  .kl-card--drag { will-change: transform; }
+  /* a card turned face up opens like a page (#407) */
+  .kl-flip > .ch-pcard { animation: kl-flip 240ms var(--ease); }
+  @keyframes kl-flip { from { transform: scaleX(0); } }
+  .kl-focus { outline: 3px solid var(--game); outline-offset: 2px; border-radius: 8px; }
+  .kl-hint { position: absolute; left: 0; top: 0; width: var(--cw); aspect-ratio: 5 / 7; border-radius: 8px; box-sizing: border-box;
+    border: 3px solid var(--game); pointer-events: none; display: none; }
+  .kl-cascade { position: absolute; top: 0; right: 0; bottom: 0; left: 0; width: 100%; height: 100%; z-index: 5000; }
+  .kl-gear .ch-icon { pointer-events: none; }
+</style>
+</head>
+<body>
+<script src="../../version.js"></script>
+<script src="../../lib/chogan.js"></script>
+<script>
+/* ==== ENGINE START ==== */
+function KlondikeEngineFactory() {
+  'use strict';
+
+  // A card is rank * 4 + suit, as in Chogan.cards: suits ♣ ♦ ♥ ♠, so 1 and 2 are red.
+  function rank(c) { return c >> 2; }
+  function suit(c) { return c & 3; }
+  function isRed(c) { var s = c & 3; return s === 1 || s === 2; }
+
+  function shuffled(rnd) {
+    var d = [];
+    for (var i = 0; i < 52; i++) d.push(i);
+    for (var j = 51; j > 0; j--) { var k = Math.floor(rnd() * (j + 1)), t = d[j]; d[j] = d[k]; d[k] = t; }
+    return d;
+  }
+
+  // S: tab — seven columns, bottom first; down[i] — how many of column i lie face down
+  // (always the first ones); stock and waste — top is the last card; found[s] — how
+  // many of suit s are home, so its top card has rank found[s] - 1; hist — the moves,
+  // each one exactly reversible, for undo.
+  function deal(rnd, draw) {
+    var d = shuffled(rnd), S = { tab: [], down: [], stock: [], waste: [], found: [0, 0, 0, 0], draw: draw === 3 ? 3 : 1, hist: [], undos: 0, passes: 0 };
+    var k = 0;
+    for (var i = 0; i < 7; i++) { S.tab.push(d.slice(k, k + i + 1)); S.down.push(i); k += i + 1; }
+    S.stock = d.slice(k);
+    return S;
+  }
+
+  function clone(S) {
+    return { tab: S.tab.map(function (c) { return c.slice(); }), down: S.down.slice(), stock: S.stock.slice(), waste: S.waste.slice(),
+      found: S.found.slice(), draw: S.draw, hist: S.hist.slice(), undos: S.undos, passes: S.passes };
+  }
+
+  function canTab(S, c, col) {
+    var t = S.tab[col];
+    if (!t.length) return rank(c) === 12;
+    var top = t[t.length - 1];
+    return rank(top) === rank(c) + 1 && isRed(top) !== isRed(c);
+  }
+  function canFound(S, c) { return S.found[suit(c)] === rank(c); }
+
+  // Where cards can be taken from: { k: 'waste' }, { k: 'tab', col, i } (the card at
+  // index i and everything on it) or { k: 'found', s }. Null if nothing can be taken.
+  function cardsAt(S, src) {
+    if (src.k === 'waste') return S.waste.length ? [S.waste[S.waste.length - 1]] : null;
+    if (src.k === 'found') return S.found[src.s] ? [(S.found[src.s] - 1) * 4 + src.s] : null;
+    if (src.k === 'tab') {
+      var t = S.tab[src.col];
+      if (!t || src.i < S.down[src.col] || src.i >= t.length) return null;
+      return t.slice(src.i);
+    }
+    return null;
+  }
+
+  // dst: { k: 'found' } or { k: 'tab', col }
+  function legal(S, src, dst) {
+    var cards = cardsAt(S, src);
+    if (!cards) return false;
+    if (dst.k === 'found') return src.k !== 'found' && cards.length === 1 && canFound(S, cards[0]);
+    if (dst.k === 'tab') {
+      if (src.k === 'tab' && src.col === dst.col) return false;
+      return dst.col >= 0 && dst.col < 7 && canTab(S, cards[0], dst.col);
+    }
+    return false;
+  }
+
+  function take(S, src, n) {
+    if (src.k === 'waste') return S.waste.splice(S.waste.length - n, n);
+    if (src.k === 'tab') return S.tab[src.col].splice(S.tab[src.col].length - n, n);
+    S.found[src.s]--;
+    return [S.found[src.s] * 4 + src.s];
+  }
+  function put(S, dst, cards) {
+    if (dst.k === 'tab') { for (var i = 0; i < cards.length; i++) S.tab[dst.col].push(cards[i]); return; }
+    if (dst.k === 'waste') { for (var j = 0; j < cards.length; j++) S.waste.push(cards[j]); return; }
+    S.found[suit(cards[0])]++;
+  }
+
+  // Returns the move it made, or null. A column whose face-up cards are all gone turns
+  // its new top card over.
+  function move(S, src, dst) {
+    if (!legal(S, src, dst)) return null;
+    var n = cardsAt(S, src).length;
+    var cards = take(S, src, n);
+    put(S, dst, cards);
+    var flip = false;
+    if (src.k === 'tab') {
+      var t = S.tab[src.col];
+      if (t.length && S.down[src.col] >= t.length) { S.down[src.col] = t.length - 1; flip = true; }
+    }
+    var from = src.k === 'tab' ? { k: 'tab', col: src.col } : (src.k === 'found' ? { k: 'found', s: src.s } : { k: 'waste' });
+    var h = { t: 'mv', from: from, to: dst.k === 'tab' ? { k: 'tab', col: dst.col } : { k: 'found' }, n: n, flip: flip, c: cards[0] };
+    S.hist.push(h);
+    return h;
+  }
+
+  // One tap on the stock: turn over one or three cards, or, when it is empty, turn the
+  // waste back into the stock (as often as you like).
+  function drawStock(S) {
+    if (S.stock.length) {
+      var n = Math.min(S.draw, S.stock.length);
+      for (var i = 0; i < n; i++) S.waste.push(S.stock.pop());
+      S.hist.push({ t: 'draw', n: n });
+      return 'draw';
+    }
+    if (S.waste.length) {
+      S.stock = S.waste.reverse();
+      S.waste = [];
+      S.passes++;
+      S.hist.push({ t: 'rec', n: S.stock.length });
+      return 'recycle';
+    }
+    return null;
+  }
+
+  function undo(S) {
+    var h = S.hist.pop();
+    if (!h) return null;
+    S.undos++;
+    if (h.t === 'draw') { for (var i = 0; i < h.n; i++) S.stock.push(S.waste.pop()); return h; }
+    if (h.t === 'rec') { S.waste = S.stock.reverse(); S.stock = []; S.passes--; return h; }
+    if (h.flip) S.down[h.from.col] = S.tab[h.from.col].length;
+    var cards = h.to.k === 'found' ? [h.c] : S.tab[h.to.col].splice(S.tab[h.to.col].length - h.n, h.n);
+    if (h.to.k === 'found') S.found[suit(h.c)]--;
+    if (h.from.k === 'found') S.found[h.from.s] += cards.length;
+    else put(S, h.from, cards);
+    return h;
+  }
+
+  function won(S) { return S.found[0] + S.found[1] + S.found[2] + S.found[3] === 52; }
+
+  // Where a tap sends cards: home if it can go, else the first column that takes them,
+  // a column with cards before an empty one. A king already at the bottom of a column
+  // is not moved to another empty column; that changes nothing.
+  function autoTarget(S, src) {
+    var cards = cardsAt(S, src);
+    if (!cards) return null;
+    if (cards.length === 1 && src.k !== 'found' && canFound(S, cards[0])) return { k: 'found' };
+    var empty = null;
+    for (var col = 0; col < 7; col++) {
+      if (src.k === 'tab' && src.col === col) continue;
+      if (!canTab(S, cards[0], col)) continue;
+      if (S.tab[col].length) return { k: 'tab', col: col };
+      if (empty === null && !(src.k === 'tab' && src.i === 0)) empty = { k: 'tab', col: col };
+    }
+    return empty;
+  }
+
+  // Everything is face up and the stock and waste are empty: the rest goes home alone
+  function canFinish(S) {
+    if (S.stock.length || S.waste.length) return false;
+    for (var i = 0; i < 7; i++) if (S.down[i]) return false;
+    return !won(S);
+  }
+  // the lowest card that can go home now, as a source
+  function nextHome(S) {
+    var best = null, br = 99;
+    if (S.waste.length && canFound(S, S.waste[S.waste.length - 1])) { best = { k: 'waste' }; br = rank(S.waste[S.waste.length - 1]); }
+    for (var col = 0; col < 7; col++) {
+      var t = S.tab[col];
+      if (!t.length) continue;
+      var c = t[t.length - 1];
+      if (canFound(S, c) && rank(c) < br) { best = { k: 'tab', col: col, i: t.length - 1 }; br = rank(c); }
+    }
+    return best;
+  }
+
+  /* The solver for the daily deal: a depth-first search over positions with every
+     position seen kept, so a deal is only offered when a winning line is known.
+     Moves it tries, best first: home, a whole face-up run onto another column when
+     that turns a card over (or frees a column for a king), the waste onto a column,
+     then the stock. It gives up after `limit` positions; an unsolved deal is not
+     proven lost, it is just not offered. */
+  function key(S) {
+    var k = S.found.join(',') + '|' + S.stock.join(',') + '|' + S.waste.join(',');
+    for (var i = 0; i < 7; i++) k += '|' + S.down[i] + ':' + S.tab[i].join(',');
+    return k;
+  }
+  function solverMoves(S) {
+    var out = [], col, t, w = S.waste.length ? S.waste[S.waste.length - 1] : -1;
+    if (w >= 0 && canFound(S, w)) out.push([{ k: 'waste' }, { k: 'found' }]);
+    for (col = 0; col < 7; col++) {
+      t = S.tab[col];
+      if (t.length && canFound(S, t[t.length - 1])) out.push([{ k: 'tab', col: col, i: t.length - 1 }, { k: 'found' }]);
+    }
+    // emptying a column only helps if a king could move into it
+    var kingFree = w >= 0 && rank(w) === 12;
+    for (col = 0; col < 7 && !kingFree; col++) if (S.down[col] > 0 && S.tab[col].length && rank(S.tab[col][S.down[col]]) === 12) kingFree = true;
+    for (col = 0; col < 7; col++) {
+      t = S.tab[col];
+      if (!t.length) continue;
+      var i = S.down[col], c = t[i];
+      if (i === 0 && (rank(c) === 12 || !kingFree)) continue;
+      for (var d = 0; d < 7; d++) {
+        if (d === col || !canTab(S, c, d)) continue;
+        if (!S.tab[d].length && i === 0) continue;
+        out.push([{ k: 'tab', col: col, i: i }, { k: 'tab', col: d }]);
+        if (!S.tab[d].length) break;
+      }
+    }
+    if (w >= 0) for (col = 0; col < 7; col++) if (canTab(S, w, col)) { out.push([{ k: 'waste' }, { k: 'tab', col: col }]); if (!S.tab[col].length) break; }
+    if (S.stock.length || S.waste.length) out.push(null);
+    return out;
+  }
+  function solve(S0, limit) {
+    var S = clone(S0), seen = {}, nodes = 0, path = [];
+    S.hist = [];
+    function rec() {
+      if (won(S)) return true;
+      if (++nodes > limit) return false;
+      var k = key(S);
+      if (seen[k]) return false;
+      seen[k] = 1;
+      var ms = solverMoves(S);
+      for (var m = 0; m < ms.length; m++) {
+        if (ms[m]) { if (!move(S, ms[m][0], ms[m][1])) continue; path.push({ src: ms[m][0], dst: ms[m][1] }); }
+        else { drawStock(S); path.push(null); }
+        if (rec()) return true;
+        path.pop();
+        undo(S);
+        if (nodes > limit) return false;
+      }
+      return false;
+    }
+    var ok = rec();
+    return { solved: ok, nodes: nodes, path: ok ? path : null };
+  }
+
+  // The daily deal: the first of the day's deals the solver wins, drawing one card.
+  var DAILY_TRIES = 40, SOLVE_LIMIT = 20000;
+  function dailyDeal(rnd) {
+    for (var n = 0; n < DAILY_TRIES; n++) {
+      var S = deal(rnd, 1);
+      if (solve(S, SOLVE_LIMIT).solved) { S.tries = n + 1; return S; }
+    }
+    return deal(rnd, 1);
+  }
+
+  function validState(v) {
+    if (!v || !Array.isArray(v.tab) || v.tab.length !== 7 || !Array.isArray(v.down) || !Array.isArray(v.stock) || !Array.isArray(v.waste) || !Array.isArray(v.found)) return false;
+    var seen = {}, n = 0;
+    var add = function (c) { if (typeof c !== 'number' || c < 0 || c > 51 || seen[c]) return false; seen[c] = 1; n++; return true; };
+    for (var i = 0; i < 7; i++) {
+      if (!Array.isArray(v.tab[i]) || v.down[i] < 0 || (v.tab[i].length && v.down[i] >= v.tab[i].length) || (!v.tab[i].length && v.down[i] !== 0)) return false;
+      for (var j = 0; j < v.tab[i].length; j++) if (!add(v.tab[i][j])) return false;
+    }
+    for (var a = 0; a < v.stock.length; a++) if (!add(v.stock[a])) return false;
+    for (var b = 0; b < v.waste.length; b++) if (!add(v.waste[b])) return false;
+    for (var s = 0; s < 4; s++) {
+      if (!(v.found[s] >= 0 && v.found[s] <= 13)) return false;
+      for (var r = 0; r < v.found[s]; r++) if (!add(r * 4 + s)) return false;
+    }
+    return n === 52;
+  }
+
+  return {
+    rank: rank, suit: suit, isRed: isRed, deal: deal, clone: clone, canTab: canTab, canFound: canFound,
+    cardsAt: cardsAt, legal: legal, move: move, drawStock: drawStock, undo: undo, won: won,
+    autoTarget: autoTarget, canFinish: canFinish, nextHome: nextHome, solve: solve, dailyDeal: dailyDeal,
+    validState: validState, DAILY_TRIES: DAILY_TRIES, SOLVE_LIMIT: SOLVE_LIMIT
+  };
+}
+if (typeof module !== 'undefined' && module.exports) module.exports = KlondikeEngineFactory;
+/* ==== ENGINE END ==== */
+</script>
+<script>
+(function () {
+  'use strict';
+  var C = window.Chogan, el = C.el;
+  var E = KlondikeEngineFactory();
+
+  C.boot({});
+  var ctx = C.game({
+    id: 'klondike',
+    name: { fa: 'سالیتر', en: 'Klondike', zh: '克朗代克', de: 'Klondike', es: 'Solitario', pl: 'Klondike', fr: 'Klondike', ar: 'كلوندايك', hi: 'क्लोंडाइक' },
+    accent: '#408040',
+    mood: 'sudoku',
+    cardSpeed: true,
+    strings: {
+      fa: {
+        table: 'میز ورق', moves: 'حرکت', movesN: '{n} حرکت', dailyKl: 'سالیتر روزانه', newDeal: 'دست تازه', restartDaily: 'از اول همین دست',
+        undoMove: 'برگرداندن حرکت', drawRule: 'برداشتن از دسته', draw1: 'یک‌کارتی', draw3: 'سه‌کارتی', drawNote: 'از دست بعد اعمال می‌شود. روزانه همیشه یک‌کارتی است.',
+        drawMode: 'برداشتن', passes: 'دور دسته', stock: 'دسته', waste: 'کارت رو', home: 'پایه', column: 'ستون {n}',
+        kbSpot: 'رفتن بین دسته، کارت رو و ستون‌ها', kbAuto: 'فرستادن به بهترین جا', kbDraw: 'برداشتن از دسته', kbNew: 'دست تازه',
+        rules: 'چهار پایه را از آس تا شاه، هر خال جدا، پر کن. در ستون‌ها کارت روی کارتی یک رتبه بالاتر با رنگ مخالف می‌نشیند و فقط شاه به ستون خالی می‌رود. کارت پشت‌وروی هر ستون وقتی رو می‌شود که کارت‌های روی آن بروند. هر بار که دسته را بزنی یک یا سه کارت رو می‌شود و وقتی تمام شد، کارت‌های رو دوباره دسته می‌شوند، هر چند بار که بخواهی. روزانه برای همه یک دست است و پیش از اینکه به تو برسد حل شده است.',
+        tutTitle1: 'هدف', tutText1: 'همه‌ی کارت‌ها را به چهار پایه‌ی بالا ببر: هر خال از آس تا شاه.',
+        tutTitle2: 'ستون‌ها', tutText2: 'کارت روی کارتی یک رتبه بالاتر با رنگ مخالف می‌نشیند. ستون خالی فقط شاه می‌گیرد.',
+        tutTitle3: 'بزن یا بکش', tutText3: 'روی کارت بزن تا به بهترین جا برود، یا بکشش هر جا که خواستی. دسته را بزن تا کارت تازه رو شود. برگرداندن بی‌حد است.'
+      },
+      en: {
+        table: 'Card table', moves: 'Moves', movesN: '{n} moves', dailyKl: 'Daily Klondike', newDeal: 'New deal', restartDaily: 'Restart this deal',
+        undoMove: 'Undo move', drawRule: 'Draw from the stock', draw1: 'Draw one', draw3: 'Draw three', drawNote: 'Applies from the next deal. The daily deal always draws one.',
+        drawMode: 'Draw', passes: 'Passes', stock: 'Stock', waste: 'Waste', home: 'Foundation', column: 'Column {n}',
+        kbSpot: 'Move between stock, waste and columns', kbAuto: 'Send to the best place', kbDraw: 'Draw from the stock', kbNew: 'New deal',
+        rules: 'Build the four foundations from ace to king, one suit each. In the columns a card goes on one a rank higher of the other colour, and only a king goes into an empty column. A face-down card turns over once the cards on it have moved. Each tap on the stock turns over one or three cards; when it runs out, the waste turns back into the stock, as often as you like. The daily deal is the same for everyone and is solved before it reaches you.',
+        tutTitle1: 'The goal', tutText1: 'Move every card to the four foundations at the top: each suit from ace to king.',
+        tutTitle2: 'Columns', tutText2: 'A card goes on one a rank higher of the other colour. An empty column takes only a king.',
+        tutTitle3: 'Tap or drag', tutText3: 'Tap a card to send it to the best place, or drag it wherever you like. Tap the stock for new cards. Undo as often as you like.'
+      },
+      pl: {
+        table: 'Stół karciany', moves: 'Ruchy', movesN: '{n} ruchów', dailyKl: 'Codzienny Klondike', newDeal: 'Rozdaj nowe karty', restartDaily: 'Zacznij to rozdanie od nowa',
+        undoMove: 'Cofnij ruch', drawRule: 'Ciągnij ze stosu', draw1: 'Ciągnij jedną', draw3: 'Ciągnij trzy', drawNote: 'Obowiązuje od następnego rozdania. Codzienne rozdanie zawsze pozwala na ciągnięcie jednej karty.',
+        drawMode: 'Ciągnięcie', passes: 'Przejścia', stock: 'Stos główny', waste: 'Stos kart odrzuconych', home: 'Pole bazowe', column: 'Kolumna {n}',
+        kbSpot: 'Przemieść między stosem głównym, odrzuconym a kolumnami', kbAuto: 'Wyślij w najlepsze miejsce', kbDraw: 'Ciągnij ze stosu', kbNew: 'Rozdaj nowe karty',
+        rules: 'Zbuduj cztery pola bazowe od asa do króla, po jednym dla każdego koloru. W kolumnach kartę kładzie się na kartę o jeden stopień wyższą i przeciwnego koloru, a w pustej kolumnie można umieścić tylko króla. Zakryta karta odwraca się, gdy leżące na niej karty zostaną przeniesione. Każde dotknięcie stosu głównego odkrywa jedną lub trzy karty; gdy się skończy, stos kart odrzuconych zmienia się z powrotem w stos główny – tyle razy, ile chcesz. Codzienne rozdanie jest takie samo dla wszystkich i zostało rozwiązane przez SI, zanim do Ciebie trafiło.',
+        tutTitle1: 'Cel gry', tutText1: 'Przenieś każdą kartę na cztery pola bazowe u góry: każdy kolor od asa do króla.',
+        tutTitle2: 'Kolumny', tutText2: 'Kartę kładzie się na kartę o jeden stopień wyższą i przeciwnego koloru. W pustej kolumnie można umieścić tylko króla.',
+        tutTitle3: 'Dotknij lub przeciągnij', tutText3: 'Dotknij karty, aby wysłać ją w najlepsze miejsce, lub przeciągnij ją tam, gdzie chcesz. Dotknij stosu głównego, aby dobrać nowe karty. Cofaj ruchy tyle razy, ile chcesz.'
+      },
+      fr: {
+        table: 'Table de jeu', moves: 'Coups', movesN: '{n} coups', dailyKl: 'Klondike du jour', newDeal: 'Nouvelle donne', restartDaily: 'Recommencer cette donne',
+        undoMove: 'Annuler le coup', drawRule: 'Piocher dans le talon', draw1: 'Une carte', draw3: 'Trois cartes', drawNote: 'S’applique dès la prochaine donne. La donne du jour pioche toujours une carte.',
+        drawMode: 'Pioche', passes: 'Passages', stock: 'Talon', waste: 'Défausse', home: 'Fondation', column: 'Colonne {n}',
+        kbSpot: 'Passer entre talon, défausse et colonnes', kbAuto: 'Envoyer à la meilleure place', kbDraw: 'Piocher dans le talon', kbNew: 'Nouvelle donne',
+        rules: 'Monte les quatre fondations de l’as au roi, une couleur chacune. Dans les colonnes, une carte se pose sur une carte d’un rang au-dessus et de l’autre couleur, et seul un roi va dans une colonne vide. Une carte face cachée se retourne quand les cartes posées dessus sont parties. Chaque touche sur le talon retourne une ou trois cartes ; quand il est vide, la défausse redevient le talon, autant de fois que tu veux. La donne du jour est la même pour tous et a été résolue avant de t’arriver.',
+        tutTitle1: 'Le but', tutText1: 'Mets toutes les cartes sur les quatre fondations en haut : chaque couleur de l’as au roi.',
+        tutTitle2: 'Colonnes', tutText2: 'Une carte se pose sur une carte d’un rang au-dessus et de l’autre couleur. Une colonne vide n’accepte qu’un roi.',
+        tutTitle3: 'Touche ou glisse', tutText3: 'Touche une carte pour l’envoyer à la meilleure place, ou glisse-la où tu veux. Touche le talon pour de nouvelles cartes. Annule autant que tu veux.'
+      },
+      ar: {
+        table: 'طاولة الأوراق', moves: 'النقلات', movesN: '{n} نقلات', dailyKl: 'كلوندايك اليومي', newDeal: 'توزيع جديد', restartDaily: 'أعد هذا التوزيع',
+        undoMove: 'تراجع', drawRule: 'السحب من المخزون', draw1: 'سحب واحدة', draw3: 'سحب ثلاث', drawNote: 'يسري من التوزيع التالي. توزيع اليوم يسحب واحدة دائمًا.',
+        drawMode: 'السحب', passes: 'الدورات', stock: 'المخزون', waste: 'المكشوفة', home: 'الأساس', column: 'العمود {n}',
+        kbSpot: 'التنقل بين المخزون والمكشوفة والأعمدة', kbAuto: 'أرسل إلى أفضل مكان', kbDraw: 'اسحب من المخزون', kbNew: 'توزيع جديد',
+        rules: 'ابنِ الأسس الأربعة من الآس إلى الملك، نوع واحد لكل أساس. في الأعمدة توضع الورقة على ورقة أعلى منها برتبة واحدة ومن اللون الآخر، ولا يوضع في العمود الفارغ إلا ملك. تنقلب الورقة المقلوبة بعد أن تُنقل الأوراق التي فوقها. كل نقرة على المخزون تكشف ورقة أو ثلاثًا؛ وحين ينفد، تعود المكشوفة إلى المخزون، كلما شئت. توزيع اليوم واحد للجميع وقد حُلّ قبل أن يصلك.',
+        tutTitle1: 'الهدف', tutText1: 'انقل كل الأوراق إلى الأسس الأربعة في الأعلى: كل نوع من الآس إلى الملك.',
+        tutTitle2: 'الأعمدة', tutText2: 'توضع الورقة على ورقة أعلى منها برتبة ومن اللون الآخر. العمود الفارغ لا يقبل إلا ملكًا.',
+        tutTitle3: 'انقر أو اسحب', tutText3: 'انقر ورقة لترسلها إلى أفضل مكان، أو اسحبها حيث تشاء. انقر المخزون لأوراق جديدة. تراجع كلما شئت.'
+      },
+      hi: {
+        table: 'पत्तों की मेज़', moves: 'चालें', movesN: '{n} चालें', dailyKl: 'रोज़ का क्लोंडाइक', newDeal: 'नई बाज़ी', restartDaily: 'यह बाज़ी फिर से',
+        undoMove: 'चाल वापस', drawRule: 'गड्डी से पत्ते उठाना', draw1: 'एक पत्ता', draw3: 'तीन पत्ते', drawNote: 'अगली बाज़ी से लागू होगा। रोज़ की बाज़ी में हमेशा एक पत्ता उठता है।',
+        drawMode: 'उठाना', passes: 'चक्कर', stock: 'गड्डी', waste: 'खुले पत्ते', home: 'नींव', column: 'कतार {n}',
+        kbSpot: 'गड्डी, खुले पत्तों और कतारों के बीच जाएँ', kbAuto: 'सबसे अच्छी जगह भेजें', kbDraw: 'गड्डी से पत्ता उठाएँ', kbNew: 'नई बाज़ी',
+        rules: 'चारों नींव इक्के से बादशाह तक बनाएँ, हर नींव एक रंग की। कतारों में पत्ता अपने से एक दर्जा ऊँचे पत्ते पर रखा जाता है, लाल पर काला और काले पर लाल, और ख़ाली कतार में सिर्फ़ बादशाह जा सकता है। उल्टा पत्ता तब सीधा होता है जब उस पर रखे पत्ते हट जाते हैं। गड्डी को हर बार छूने पर एक या तीन पत्ते खुलते हैं; गड्डी ख़त्म होने पर खुले पत्ते फिर से गड्डी बन जाते हैं, जितनी बार चाहें। रोज़ की बाज़ी सबके लिए एक जैसी है और आप तक पहुँचने से पहले हल करके जाँची गई है।',
+        tutTitle1: 'लक्ष्य', tutText1: 'सारे पत्ते ऊपर की चार नींवों पर ले जाएँ: हर रंग इक्के से बादशाह तक।',
+        tutTitle2: 'कतारें', tutText2: 'पत्ता अपने से एक दर्जा ऊँचे, दूसरे रंग (लाल या काला) के पत्ते पर रखें। ख़ाली कतार में सिर्फ़ बादशाह जाता है।',
+        tutTitle3: 'छुएँ या खींचें', tutText3: 'पत्ते को छुएँ तो वह सबसे अच्छी जगह चला जाएगा, या उसे जहाँ चाहें खींचें। नए पत्तों के लिए गड्डी छुएँ। जितनी बार चाहें चाल वापस लें।'
+      },
+      zh: {
+        table: '牌桌', moves: '步数', movesN: '{n} 步', dailyKl: '每日克朗代克', newDeal: '新一局', restartDaily: '重开本局',
+        undoMove: '撤销', drawRule: '从牌堆翻牌', draw1: '翻一张', draw3: '翻三张', drawNote: '从下一局开始生效。每日挑战总是翻一张。',
+        drawMode: '翻牌', passes: '轮次', stock: '牌堆', waste: '翻开的牌', home: '收牌区', column: '第 {n} 列',
+        kbSpot: '在牌堆、翻开的牌和各列之间移动', kbAuto: '送到最佳位置', kbDraw: '从牌堆翻牌', kbNew: '新一局',
+        rules: '把四个收牌区按花色从A排到K。在各列中，牌只能放在大一点、颜色不同的牌上，空列只能放K。一列上面的牌移走后，下面的暗牌会翻开。每点一次牌堆翻开一张或三张；翻完后，翻开的牌会重新变成牌堆，次数不限。每日挑战人人相同，并且在送到你面前之前已被解开。',
+        tutTitle1: '目标', tutText1: '把所有牌移到上方四个收牌区：每种花色从A到K。',
+        tutTitle2: '各列', tutText2: '牌放在大一点、颜色不同的牌上。空列只能放K。',
+        tutTitle3: '点击或拖动', tutText3: '点一张牌把它送到最佳位置，或者把它拖到任何地方。点牌堆翻新牌。撤销次数不限。'
+      },
+      de: {
+        table: 'Kartentisch', moves: 'Züge', movesN: '{n} Züge', dailyKl: 'Tägliches Klondike', newDeal: 'Neues Spiel', restartDaily: 'Dieses Spiel neu starten',
+        undoMove: 'Zug zurück', drawRule: 'Vom Stapel ziehen', draw1: 'Eine ziehen', draw3: 'Drei ziehen', drawNote: 'Gilt ab dem nächsten Spiel. Das Tagesspiel zieht immer eine.',
+        drawMode: 'Ziehen', passes: 'Durchgänge', stock: 'Stapel', waste: 'Ablage', home: 'Grundstapel', column: 'Spalte {n}',
+        kbSpot: 'Zwischen Stapel, Ablage und Spalten wechseln', kbAuto: 'An den besten Platz legen', kbDraw: 'Vom Stapel ziehen', kbNew: 'Neues Spiel',
+        rules: 'Lege die vier Grundstapel vom Ass bis zum König, jede Farbe für sich. In den Spalten kommt eine Karte auf eine um eins höhere der anderen Farbe, und nur ein König darf in eine leere Spalte. Eine verdeckte Karte wird aufgedeckt, sobald die Karten darauf weg sind. Jeder Tipp auf den Stapel deckt eine oder drei Karten auf; ist er leer, wird die Ablage wieder zum Stapel, so oft du willst. Das Tagesspiel ist für alle gleich und wurde gelöst, bevor es dich erreicht.',
+        tutTitle1: 'Das Ziel', tutText1: 'Bring alle Karten auf die vier Grundstapel oben: jede Farbe vom Ass bis zum König.',
+        tutTitle2: 'Spalten', tutText2: 'Eine Karte kommt auf eine um eins höhere der anderen Farbe. Eine leere Spalte nimmt nur einen König.',
+        tutTitle3: 'Tippen oder ziehen', tutText3: 'Tippe eine Karte an, damit sie an den besten Platz geht, oder zieh sie, wohin du willst. Tippe auf den Stapel für neue Karten. Zurücknehmen so oft du willst.'
+      },
+      es: {
+        table: 'Mesa de cartas', moves: 'Movimientos', movesN: '{n} movimientos', dailyKl: 'Solitario diario', newDeal: 'Nueva partida', restartDaily: 'Reiniciar esta partida',
+        undoMove: 'Deshacer', drawRule: 'Robar del mazo', draw1: 'Robar una', draw3: 'Robar tres', drawNote: 'Se aplica desde la próxima partida. La diaria siempre roba una.',
+        drawMode: 'Robo', passes: 'Vueltas', stock: 'Mazo', waste: 'Descarte', home: 'Base', column: 'Columna {n}',
+        kbSpot: 'Moverse entre mazo, descarte y columnas', kbAuto: 'Enviar al mejor sitio', kbDraw: 'Robar del mazo', kbNew: 'Nueva partida',
+        rules: 'Sube las cuatro bases del as al rey, un palo en cada una. En las columnas una carta va sobre otra un punto más alta y de otro color, y solo un rey entra en una columna vacía. Una carta boca abajo se gira cuando se van las que tiene encima. Cada toque en el mazo gira una o tres cartas; cuando se acaba, el descarte vuelve a ser el mazo, tantas veces como quieras. La partida diaria es la misma para todos y está resuelta antes de llegar a ti.',
+        tutTitle1: 'El objetivo', tutText1: 'Lleva todas las cartas a las cuatro bases de arriba: cada palo del as al rey.',
+        tutTitle2: 'Columnas', tutText2: 'Una carta va sobre otra un punto más alta y de otro color. Una columna vacía solo admite un rey.',
+        tutTitle3: 'Toca o arrastra', tutText3: 'Toca una carta para enviarla al mejor sitio, o arrástrala adonde quieras. Toca el mazo para sacar cartas. Deshaz tantas veces como quieras.'
+      }
+    }
+  });
+
+  var params = new URLSearchParams(location.search);
+  var dailyDate = params.get('daily');
+  var prefs = ctx.store.get('prefs', { draw: 1 });
+  if (prefs.draw !== 3) prefs.draw = 1;
+
+  var S = null, L = null, nodes = {}, press = null, focus = -1, kbOn = false, pausedAt = 0, busy = false, movesEl = null;
+  var lastDown = null, autoTimer = null;
+
+  var board = el('div', { class: 'kl-board', role: 'application', 'aria-label': C.t('table') });
+  var top = el('div', { class: 'kl-top' });
+  var wrap = el('div', { class: 'kl-wrap' }, [top, board]);
+  var slots = { stock: el('div', { class: 'kl-slot kl-slot--stock', 'aria-label': C.t('stock') }), waste: el('div', { class: 'kl-slot' }) };
+  slots.stock.appendChild(C.icon('refresh', 22));
+  for (var s0 = 0; s0 < 4; s0++) slots['f' + s0] = el('div', { class: 'kl-slot', text: C.cards.GLYPH[s0] });
+  for (var c0 = 0; c0 < 7; c0++) slots['t' + c0] = el('div', { class: 'kl-slot' });
+  Object.keys(slots).forEach(function (k) { board.appendChild(slots[k]); });
+  var hint = el('div', { class: 'kl-hint' });
+  board.appendChild(hint);
+
+  ctx.button({ icon: 'help', label: C.t('help'), onClick: showHelp });
+  ctx.button({ icon: 'undo', label: C.t('undoMove'), onClick: undo });
+  ctx.button({ icon: 'refresh', label: C.t('newDeal'), onClick: askNew });
+  ctx.main.appendChild(wrap);
+  ctx.mount();
+
+  /* ------------------------------------------------------------ start */
+
+  function start(daily) {
+    stopAuto();
+    if (daily) S = E.dailyDeal(C.daily('klondike', daily).rng);
+    else S = E.deal(Math.random, prefs.draw);
+    S.daily = daily || null;
+    S.done = false;
+    S.startedAt = Date.now();
+    build();
+    dealIn();
+  }
+  function resume(v) {
+    S = { tab: v.tab, down: v.down, stock: v.stock, waste: v.waste, found: v.found, draw: v.draw === 3 ? 3 : 1,
+      hist: v.hist || [], undos: v.undos || 0, passes: v.passes || 0, daily: v.daily || null, done: false,
+      startedAt: Date.now() - (v.elapsed || 0) };
+    build();
+    render(true);
+  }
+
+  // One node per card for the whole game, so a move is a change of position that
+  // the browser animates, and a card is never redrawn from scratch
+  function build() {
+    Object.keys(nodes).forEach(function (k) { nodes[k].remove(); });
+    nodes = {};
+    for (var c = 0; c < 52; c++) {
+      var n = el('div', { class: 'kl-card kl-card--still' }, [C.cards.el(c), C.cards.back()]);
+      n.firstChild.tabIndex = -1;
+      n._c = c;
+      nodes[c] = n;
+      board.appendChild(n);
+    }
+    lastDown = null;
+    renderTop();
+  }
+
+  function renderTop() {
+    top.innerHTML = '';
+    if (S.daily) {
+      top.appendChild(el('span', { class: 'ch-badge ch-badge--accent' },
+        [C.icon('calendar', 14), el('span', { text: C.t('dailyKl') + ' — ' + C.num(S.daily) })]));
+    }
+    top.appendChild(el('span', { class: 'ch-badge', text: C.t(S.draw === 3 ? 'draw3' : 'draw1') }));
+    movesEl = el('span', { class: 'ch-badge' });
+    top.appendChild(movesEl);
+    top.appendChild(C.cards.backPicker());
+    // options live behind a gear in the top row: a fourth button in the game bar cut the title (#409)
+    var gear = el('button', { class: 'ch-iconbtn kl-gear', type: 'button', 'aria-label': C.t('settings'), title: C.t('settings') }, [C.icon('gear', 20)]);
+    gear.addEventListener('click', showSettings);
+    top.appendChild(gear);
+    setMoves();
+  }
+  function setMoves() { if (movesEl) movesEl.textContent = C.t('movesN', { n: C.num(S.hist.length) }); }
+
+  /* ----------------------------------------------------------- layout */
+
+  function layout() {
+    var W = board.clientWidth, H = board.clientHeight;
+    if (!W || !H) return null;
+    var gap = Math.max(4, Math.round(Math.min(W, 760) * 0.012));
+    var cw = Math.floor((Math.min(W, 760) - gap * 8) / 7);
+    // on a wide, short window the card height has to fit too: a full column is about 4.6 cards tall
+    cw = Math.max(30, Math.min(cw, 110, Math.floor(H / 4.6 / 1.4)));
+    var ch = Math.round(cw * 1.4), bw = cw * 7 + gap * 6;
+    board.style.setProperty('--cw', cw + 'px');
+    board.style.setProperty('--kl-move', C.cards.pace(180) + 'ms');
+    return { W: W, H: H, gap: gap, cw: cw, ch: ch, x0: Math.round((W - bw) / 2), ty: gap, cy: gap * 3 + ch,
+      up: Math.max(18, Math.round(ch * 0.3)), dn: Math.max(6, Math.round(ch * 0.12)), fan: Math.round(cw * 0.3) };
+  }
+  function colX(i) { return L.x0 + i * (L.cw + L.gap); }
+  // a long column closes up so its last card stays on the board
+  function offsets(col) {
+    var t = S.tab[col], d = S.down[col], up = L.up, dn = L.dn;
+    var need = d * dn + Math.max(0, t.length - d - 1) * up;
+    var room = L.H - L.cy - L.ch - 4;
+    if (need > room && need > 0) { var k = room / need; up = Math.max(10, up * k); dn = Math.max(3, dn * k); }
+    return { up: up, dn: dn };
+  }
+
+  // Where every card sits: { x, y, z, down, under }. A card under two others on the
+  // same spot is hidden: 24 stacked backs added up their shadows into a dark halo.
+  function positions() {
+    var P = {}, i, z = 1;
+    for (i = 0; i < S.stock.length; i++) P[S.stock[i]] = { x: colX(0), y: L.ty, z: z++, down: true, under: i < S.stock.length - 2 };
+    var wn = S.waste.length, fanFrom = S.draw === 3 ? Math.max(0, wn - 3) : wn - 1;
+    for (i = 0; i < wn; i++) P[S.waste[i]] = { x: colX(1) + (i > fanFrom ? (i - fanFrom) * L.fan : 0), y: L.ty, z: z++, down: false, under: i < fanFrom - 1 };
+    for (var s = 0; s < 4; s++) for (var r = 0; r < S.found[s]; r++) P[r * 4 + s] = { x: colX(3 + s), y: L.ty, z: 100 + r, down: false, under: r < S.found[s] - 2 };
+    for (var col = 0; col < 7; col++) {
+      var t = S.tab[col], o = offsets(col), y = L.cy;
+      for (i = 0; i < t.length; i++) {
+        var dn = i < S.down[col];
+        P[t[i]] = { x: colX(col), y: Math.round(y), z: 200 + i, down: dn };
+        y += dn ? o.dn : o.up;
+      }
+    }
+    return P;
+  }
+
+  function place(n, p) { n.style.transform = 'translate(' + p.x + 'px,' + p.y + 'px)'; }
+
+  // still: no animation (first paint, resize, undo of many cards)
+  function render(still) {
+    L = layout();
+    if (!L || !S) return;
+    place(slots.stock, { x: colX(0), y: L.ty });
+    place(slots.waste, { x: colX(1), y: L.ty });
+    for (var s = 0; s < 4; s++) place(slots['f' + s], { x: colX(3 + s), y: L.ty });
+    for (var c = 0; c < 7; c++) place(slots['t' + c], { x: colX(c), y: L.cy });
+    slots.stock.style.opacity = S.stock.length ? 0 : 1;
+    var P = positions(), moved = [];
+    for (var k = 0; k < 52; k++) {
+      var n = nodes[k], p = P[k];
+      if (!p) continue;
+      // the browser keeps the value as "translate(Xpx, Ypx)"; compared without the
+      // space, every card looked moved and rose above its neighbours by card number
+      var t = 'translate(' + p.x + 'px, ' + p.y + 'px)';
+      if (n.style.transform !== t) moved.push(n);
+      n.classList.toggle('kl-card--still', !!still);
+      var wasDown = n.classList.contains('kl-card--down');
+      n.classList.toggle('kl-card--down', p.down);
+      if (wasDown && !p.down && !still && !C.ui.reduceMotion()) { n.classList.remove('kl-flip'); void n.offsetWidth; n.classList.add('kl-flip'); }
+      n.style.transform = t;
+      n.style.zIndex = p.z;
+      n.style.visibility = p.under ? 'hidden' : '';
+    }
+    // cards on the move fly above the rest, then take their places in the pile
+    if (!still) moved.forEach(function (n, i) { n.style.zIndex = 1000 + i; });
+    clearTimeout(render.zt);
+    render.zt = setTimeout(function () { if (!S) return; var P2 = positions(); for (var q in P2) nodes[q].style.zIndex = P2[q].z; }, C.cards.pace(220));
+    setMoves();
+    showFocus();
+  }
+
+  // A new deal: the cards fly out of the stock to their columns one by one, and the
+  // seven top cards turn over as they land (#398's helper)
+  function dealIn() {
+    render(true);
+    if (C.ui.reduceMotion() || !L) return;
+    var from = slots.stock.getBoundingClientRect(), n = 0;
+    for (var row = 0; row < 7; row++) {
+      for (var col = row; col < 7; col++) {
+        var c = S.tab[col][row];
+        C.ui.fly(nodes[c], from, { ms: 220, delay: n++ * 28, flip: row === S.down[col] });
+      }
+    }
+  }
+
+  /* ------------------------------------------------------------ moves */
+
+  // where a card is: a source for the engine, or null
+  function sourceOf(c) {
+    if (S.waste.length && S.waste[S.waste.length - 1] === c) return { k: 'waste' };
+    for (var s = 0; s < 4; s++) if (S.found[s] && (S.found[s] - 1) * 4 + s === c) return { k: 'found', s: s };
+    for (var col = 0; col < 7; col++) {
+      var i = S.tab[col].indexOf(c);
+      if (i >= 0) return i >= S.down[col] ? { k: 'tab', col: col, i: i } : null;
+    }
+    return null;
+  }
+  function inStock(c) { return S.stock.indexOf(c) >= 0; }
+
+  function blocked() { return !S || S.done || busy || !!document.querySelector('.ch-scrim'); }
+
+  function draw() {
+    if (blocked()) return;
+    var r = E.drawStock(S);
+    if (!r) { C.feedback('bad'); return; }
+    C.audio.sfx(r === 'draw' ? 'flip' : 'shuffle');
+    after();
+  }
+
+  function tap(src) {
+    var dst = E.autoTarget(S, src);
+    if (!dst) {
+      C.feedback('bad');
+      var cards = E.cardsAt(S, src);
+      if (cards) C.ui.shake(nodes[cards[0]]);
+      return;
+    }
+    doMove(src, dst);
+  }
+
+  function doMove(src, dst) {
+    var h = E.move(S, src, dst);
+    if (!h) { C.feedback('bad'); render(); return false; }
+    C.audio.sfx(dst.k === 'found' ? 'pop' : 'place');
+    C.haptic('tap');
+    after();
+    return true;
+  }
+
+  function after() {
+    render();
+    save();
+    if (E.won(S)) { win(); return; }
+    if (E.canFinish(S)) autoFinish();
+  }
+
+  // Everything is face up: the rest goes home by itself, lowest first
+  function autoFinish() {
+    if (busy) return;
+    busy = true;
+    (function step() {
+      var src = E.nextHome(S);
+      if (!src) { busy = false; return; }
+      E.move(S, src, { k: 'found' });
+      C.audio.sfx('pop');
+      render();
+      if (E.won(S)) { busy = false; save(); win(); return; }
+      autoTimer = setTimeout(step, C.ui.reduceMotion() ? 0 : C.cards.pace(70));
+    })();
+  }
+  function stopAuto() { clearTimeout(autoTimer); autoTimer = null; busy = false; }
+
+  function undo() {
+    if (!S || S.done || busy || document.querySelector('.ch-scrim')) return;
+    if (!E.undo(S)) { C.feedback('bad'); return; }
+    C.feedback('tap');
+    render();
+    save();
+  }
+
+  /* ------------------------------------------------------------ input */
+
+  function boardPoint(e) { var r = board.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+
+  board.addEventListener('pointerdown', function (e) {
+    if (blocked() || press) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    kbOn = false; showFocus();
+    var n = e.target.closest ? e.target.closest('.kl-card') : null;
+    if ((n && inStock(n._c)) || e.target.closest('.kl-slot--stock')) { draw(); return; }
+    if (!n) return;
+    var src = sourceOf(n._c);
+    if (!src) return;
+    var cards = E.cardsAt(S, src) || [];
+    var p0 = boardPoint(e);
+    press = { id: e.pointerId, src: src, cards: cards, x0: p0.x, y0: p0.y, drag: false, base: positions() };
+    try { board.setPointerCapture(e.pointerId); } catch (err) { /* older WebViews */ }
+    e.preventDefault();
+  });
+  board.addEventListener('pointermove', function (e) {
+    if (!press || press.id !== e.pointerId) return;
+    var p = boardPoint(e), dx = p.x - press.x0, dy = p.y - press.y0;
+    if (!press.drag && Math.abs(dx) + Math.abs(dy) < 8) return;
+    press.drag = true;
+    press.cards.forEach(function (c, i) {
+      var n = nodes[c], b = press.base[c];
+      n.classList.add('kl-card--drag');
+      n.style.zIndex = 3000 + i;
+      n.style.transform = 'translate(' + (b.x + dx) + 'px,' + (b.y + dy) + 'px)';
+    });
+    press.dx = dx; press.dy = dy;
+  });
+  function endPress(e, cancelled) {
+    if (!press || press.id !== e.pointerId) return;
+    var pr = press;
+    press = null;
+    pr.cards.forEach(function (c) { nodes[c].classList.remove('kl-card--drag'); });
+    if (cancelled) { render(); return; }
+    if (!pr.drag) { tap(pr.src); return; }
+    // the dragged card's centre decides where it goes
+    var b = pr.base[pr.cards[0]], x = b.x + pr.dx + L.cw / 2, y = b.y + pr.dy + L.ch / 2;
+    var col = Math.floor((x - L.x0 + L.gap / 2) / (L.cw + L.gap));
+    var dst = null;
+    if (col >= 0 && col < 7) dst = y < L.cy - L.gap && col >= 3 ? { k: 'found' } : (y >= L.cy - L.gap ? { k: 'tab', col: col } : null);
+    if (dst && E.legal(S, pr.src, dst)) doMove(pr.src, dst);
+    else render();
+  }
+  board.addEventListener('pointerup', function (e) { endPress(e, false); });
+  board.addEventListener('pointercancel', function (e) { endPress(e, true); });
+
+  // Keyboard: ← → walk stock, waste and the seven columns; Enter sends the card there to
+  // its best place (a column's whole face-up run when that can move, else its top card)
+  var SPOTS = 9;
+  function spotBox(f) {
+    if (!L) return null;
+    if (f === 0) return { x: colX(0), y: L.ty };
+    if (f === 1) { var P = positions(), w = S.waste[S.waste.length - 1]; return w !== undefined ? P[w] : { x: colX(1), y: L.ty }; }
+    var col = f - 2, t = S.tab[col];
+    if (!t.length) return { x: colX(col), y: L.cy };
+    return positions()[t[t.length - 1]];
+  }
+  function showFocus() {
+    var b = kbOn && focus >= 0 && S && !S.done ? spotBox(focus) : null;
+    hint.style.display = b ? 'block' : 'none';
+    if (b) { hint.style.transform = 'translate(' + b.x + 'px,' + b.y + 'px)'; hint.style.zIndex = 4000; }
+  }
+  function keySend() {
+    if (focus === 0) { draw(); return; }
+    if (focus === 1) { if (S.waste.length) tap({ k: 'waste' }); else C.feedback('bad'); return; }
+    var col = focus - 2, t = S.tab[col];
+    if (!t.length) { C.feedback('bad'); return; }
+    var run = { k: 'tab', col: col, i: S.down[col] }, top1 = { k: 'tab', col: col, i: t.length - 1 };
+    var dRun = E.autoTarget(S, run), dTop = E.autoTarget(S, top1);
+    if (dTop && dTop.k === 'found') doMove(top1, dTop);
+    else if (dRun) doMove(run, dRun);
+    else tap(top1);
+  }
+  window.addEventListener('keydown', function (e) {
+    if (blocked()) return;
+    var tg = e.target, tag = tg && tg.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (tg && tg.isContentEditable)) return;
+    if (tag === 'BUTTON' && (e.key === ' ' || e.key === 'Enter')) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) { if (C.undoKey(e)) { undo(); e.preventDefault(); } return; }
+    if (C.undoKey(e)) { undo(); e.preventDefault(); return; }
+    var k = e.key;
+    if (k === 'ArrowLeft' || k === 'ArrowRight') {
+      kbOn = true;
+      focus = focus < 0 ? 0 : (focus + (k === 'ArrowRight' ? 1 : SPOTS - 1)) % SPOTS;
+      showFocus();
+      e.preventDefault();
+      return;
+    }
+    if (k === 'Enter') { if (focus < 0) { kbOn = true; focus = 0; showFocus(); } else keySend(); e.preventDefault(); return; }
+    if (k === ' ') { draw(); e.preventDefault(); return; }
+    if (C.keyIs(e, 'n')) { askNew(); e.preventDefault(); }
+  });
+
+  /* ------------------------------------------------------------- win */
+
+  // Windows Solitaire's win, as in FreeCell (#407): the cards leave the foundations,
+  // kings first, and bounce down the table leaving a trail. A tap ends it; it never
+  // runs more than five seconds before the result.
+  function win() {
+    S.done = true;
+    hint.style.display = 'none';
+    cascade(finish);
+  }
+  function cascade(done) {
+    if (C.ui.reduceMotion() || !L) { done(); return; }
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var cv = el('canvas', { class: 'kl-cascade' });
+    cv.width = Math.round(L.W * dpr); cv.height = Math.round(L.H * dpr);
+    board.appendChild(cv);
+    var g = cv.getContext('2d'), queue = [], flying = [], over = false, frames = 0, t0 = performance.now();
+    var cs = getComputedStyle(document.documentElement);
+    var T = { face: cs.getPropertyValue('--c-surface').trim() || '#FFFFFF', line: cs.getPropertyValue('--c-line').trim() || '#E7DACA',
+      text: cs.getPropertyValue('--c-text').trim() || '#2C2620', red: cs.getPropertyValue('--c-bad').trim() || '#C8574B',
+      font: getComputedStyle(document.body).fontFamily || 'system-ui, sans-serif' };
+    for (var r = 12; r >= 0; r--) for (var s = 0; s < 4; s++) queue.push({ c: r * 4 + s, x: colX(3 + s), y: L.ty });
+    var stop = function () {
+      if (over) return;
+      over = true;
+      cv.remove();
+      done();
+    };
+    cv.addEventListener('pointerdown', stop);
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    (function frame(t) {
+      if (over) return;
+      if (frames++ % 7 === 0 && queue.length) {
+        var f = queue.shift();
+        nodes[f.c].style.visibility = 'hidden';
+        f.vx = (Math.random() < 0.5 ? -1 : 1) * (2 + Math.random() * 4);
+        f.vy = -Math.random() * 6;
+        flying.push(f);
+      }
+      var floor = L.H - L.ch;
+      flying = flying.filter(function (f) {
+        f.vy += 0.6; f.x += f.vx; f.y += f.vy;
+        if (f.y > floor) { f.y = floor; f.vy *= -0.72; }
+        paintCard(g, T, f.c, f.x, f.y, L.cw);
+        return f.x > -L.cw && f.x < L.W;
+      });
+      if ((!queue.length && !flying.length) || t - t0 > 5000) { stop(); return; }
+      requestAnimationFrame(frame);
+    })(t0);
+  }
+  function paintCard(g, T, c, x, y, w) {
+    var h = w * 1.4;
+    g.fillStyle = T.face;
+    C.rrect(g, x, y, w, h, Math.max(3, w * 0.1));
+    g.fill();
+    g.lineWidth = 1; g.strokeStyle = T.line; g.stroke();
+    g.fillStyle = E.isRed(c) ? T.red : T.text;
+    g.textBaseline = 'top'; g.textAlign = 'left';
+    g.font = '800 ' + Math.round(w * 0.32) + 'px ' + T.font;
+    g.fillText(C.cards.rankText(E.rank(c)), x + w * 0.08, y + w * 0.06);
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = Math.round(w * 0.55) + 'px ' + T.font;
+    g.fillText(C.cards.GLYPH[E.suit(c)], x + w / 2, y + h * 0.62);
+  }
+
+  function finish() {
+    var ms = Date.now() - S.startedAt;
+    var clean = S.undos === 0, three = S.draw === 3;
+    var coins = 12 + (three ? 4 : 0) + (clean ? 2 : 0) + (S.daily ? 8 : 0);
+    var points = 48 + (three ? 16 : 0) + (S.daily ? 25 : 0);
+    C.achievements.unlock('kl-win');
+    if (three) C.achievements.unlock('kl-three');
+    if (ms < 5 * 60 * 1000) C.achievements.unlock('kl-fast');
+    C.stats.best('klondike', 'timeMs' + S.draw, ms, true);
+    C.stats.best('klondike', 'moves' + S.draw, S.hist.length, true);
+    if (S.daily) {
+      var first = C.stats.daily('klondike', S.daily, { label: C.t('movesN', { n: C.num(S.hist.length) }), win: true });
+      if (!first) { coins = Math.round(coins * 0.2); points = Math.round(points * 0.2); }
+    }
+    ctx.clearSave();
+    ctx.finish({
+      won: true,
+      title: C.t('won'),
+      timeMs: ms, coins: coins, points: points,
+      lines: [
+        { label: C.t('drawMode'), value: C.t(three ? 'draw3' : 'draw1') },
+        { label: C.t('moves'), value: C.num(S.hist.length) },
+        { label: C.t('time'), value: C.time(ms) }
+      ],
+      shareText: 'چوگان · سالیتر' + (S.daily ? ('\nروزانه ' + S.daily) : '') + '\n' + C.num(S.hist.length) + ' حرکت در ' + C.time(ms),
+      paint: cardPaint(),
+      onAgain: S.daily ? null : function () { start(null); }
+    });
+  }
+
+  // the four kings on their foundations, all that is left on the table at the end
+  function cardPaint() {
+    return function (g, W, H, col) {
+      var cw = Math.min(W / 4.8, H / 1.5), gap = cw * 0.2, x0 = (W - (cw * 4 + gap * 3)) / 2, y0 = (H - cw * 1.4) / 2;
+      var font = getComputedStyle(document.body).fontFamily || 'system-ui, sans-serif';
+      var red = getComputedStyle(document.documentElement).getPropertyValue('--c-bad').trim() || '#C8574B';
+      try { g.direction = 'ltr'; } catch (e) { /* older WebViews */ }
+      for (var s = 0; s < 4; s++) paintCard(g, { face: col.surface2, line: col.line || 'rgba(0,0,0,.15)', text: col.text, red: red, font: font }, 48 + s, x0 + s * (cw + gap), y0, cw);
+    };
+  }
+
+  /* ------------------------------------------------------------ save */
+
+  ctx.autosave(function () {
+    if (!S || S.done || !S.hist.length) return { inProgress: false };
+    return {
+      s: {
+        tab: S.tab, down: S.down, stock: S.stock, waste: S.waste, found: S.found, draw: S.draw,
+        hist: S.hist, undos: S.undos, passes: S.passes, daily: S.daily,
+        elapsed: (pausedAt || Date.now()) - S.startedAt
+      }
+    };
+  });
+  function save() { ctx.save(); }
+
+  // the clock only runs while the app is open
+  C.onPause(function () { if (!pausedAt) pausedAt = Date.now(); });
+  C.onResume(function () {
+    if (pausedAt && S) S.startedAt += Date.now() - pausedAt;
+    pausedAt = 0;
+  });
+
+  function askNew() {
+    if (document.querySelector('.ch-scrim')) return;
+    var started = S && !S.done && S.hist.length;
+    if (S && S.daily) {
+      var dd = S.daily;
+      if (!started) { start(dd); return; }
+      C.ui.confirm({ title: C.t('restartDaily'), body: C.t('resetWarn'), onOk: function () { start(dd); } });
+      return;
+    }
+    if (!started) { start(null); return; }
+    C.ui.confirm({ title: C.t('newDeal'), body: C.t('resetWarn'), onOk: function () { start(null); } });
+  }
+
+  function showSettings() {
+    var seg = C.ui.segmented([{ value: 1, label: C.t('draw1') }, { value: 3, label: C.t('draw3') }], prefs.draw, function (v) {
+      prefs.draw = v === 3 ? 3 : 1;
+      ctx.store.set('prefs', prefs);
+      // a deal that has not been played yet simply starts again with the new rule
+      if (S && !S.daily && !S.done && !S.hist.length) start(null);
+    });
+    C.ui.modal({
+      title: C.t('settings'),
+      body: [el('div', { class: 'ch-list' }, [
+        el('div', { class: 'ch-item' }, [el('div', { class: 'ch-item__label', text: C.t('drawRule') }), seg]),
+        C.cards.speedRow()
+      ]), el('p', { class: 'ch-dim', text: C.t('drawNote') })],
+      actions: [{ label: C.t('done'), kind: 'primary' }]
+    });
+  }
+
+  function showHelp() {
+    C.ui.modal({
+      title: C.t('help'),
+      body: [
+        el('p', { class: 'ch-dim', text: C.t('rules') }),
+        el('h3', { style: { 'margin-top': 'var(--s-4)' }, text: C.t('keyboard') }),
+        el('div', { class: 'ch-list' }, [
+          kb('← →', C.t('kbSpot')),
+          kb('Enter', C.t('kbAuto')),
+          kb('Space', C.t('kbDraw')),
+          kb('U / Ctrl+Z', C.t('undoMove')),
+          kb('N', C.t('kbNew'))
+        ])
+      ],
+      actions: [
+        { label: C.t('tutorial'), onClick: function () { ctx.showTutorial(TUT); } },
+        { label: C.t('done'), kind: 'primary' }
+      ]
+    });
+  }
+  function kb(k, what) {
+    return el('div', { class: 'ch-item' }, [el('div', { class: 'ch-item__label', text: what }), el('span', { class: 'ch-badge', text: k })]);
+  }
+
+  function svgCard(x, y, label, red, down) {
+    if (down) return '<rect x="' + x + '" y="' + y + '" width="34" height="48" rx="5" fill="#1F3A93" stroke="#FBF5E6" stroke-width="2"/>';
+    return '<rect x="' + x + '" y="' + y + '" width="34" height="48" rx="5" fill="var(--c-surface)" stroke="var(--c-line)"/>' +
+      '<text x="' + (x + 4) + '" y="' + (y + 15) + '" font-size="13" font-weight="800" fill="' + (red ? 'var(--c-bad)' : 'var(--c-text)') + '">' + label + '</text>';
+  }
+  var TUT = [
+    { title: C.t('tutTitle1'), text: C.t('tutText1'),
+      art: '<svg viewBox="0 0 200 110" width="100%" direction="ltr">' +
+        svgCard(20, 30, 'A♣︎', false) + svgCard(62, 30, 'A♦︎', true) + svgCard(104, 30, '2♥︎', true) + svgCard(146, 30, 'K♠︎', false) + '</svg>' },
+    { title: C.t('tutTitle2'), text: C.t('tutText2'),
+      art: '<svg viewBox="0 0 200 110" width="100%" direction="ltr">' +
+        svgCard(40, 6, '', false, true) + svgCard(40, 16, '', false, true) + svgCard(40, 26, '8♠︎', false) + svgCard(40, 50, '7♥︎', true) +
+        '<rect x="120" y="30" width="34" height="48" rx="5" fill="none" stroke="var(--game)" stroke-width="2" stroke-dasharray="4 3"/>' +
+        '<text x="137" y="60" font-size="16" font-weight="800" text-anchor="middle" fill="var(--game)">K</text></svg>' },
+    { title: C.t('tutTitle3'), text: C.t('tutText3'),
+      art: '<svg viewBox="0 0 200 110" width="100%" direction="ltr">' +
+        svgCard(30, 40, '5♦︎', true) + svgCard(130, 20, '6♠︎', false) +
+        '<path d="M70 62 C 100 62, 110 52, 128 50" stroke="var(--game)" stroke-width="4" fill="none" stroke-linecap="round"/>' +
+        '<path d="M120 42 l 9 8 -11 5" stroke="var(--game)" stroke-width="4" fill="none" stroke-linecap="round"/></svg>' }
+  ];
+
+  window.addEventListener('resize', function () { render(true); });
+  if (window.ResizeObserver) new ResizeObserver(function () { render(true); }).observe(board);
+  // the face font arriving can change the board's room; place the cards again then
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { render(true); });
+
+  /* ------------------------------------------------------------ start */
+
+  var saved = ctx.loadSave();
+  var sv = saved && E.validState(saved.s) ? saved.s : null;
+  if (dailyDate) {
+    // the daily page has its own save slot, so the same deal goes on
+    if (sv && sv.daily === dailyDate) resume(sv);
+    else start(dailyDate);
+    if (C.stats.dailyDone('klondike', dailyDate)) {
+      var rec = C.stats.dailyOf(dailyDate).klondike;
+      C.ui.toast({ icon: 'check', title: C.t('dailyDone'), sub: rec && rec.label });
+    }
+  } else if (sv && !sv.daily) {
+    resume(sv);
+  } else {
+    start(null);
+  }
+  ctx.tutorialIfNew(TUT);
+  requestAnimationFrame(function () { render(true); });
+})();
+</script>
+</body>
+</html>

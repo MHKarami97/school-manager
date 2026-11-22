@@ -1,0 +1,973 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#FBF6EF">
+<title>واکنش زنجیره‌ای — چوگان</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../lib/chogan.css">
+<script src="../../lib/early.js"></script>
+<style>
+  /* The four player colours are part of the rules (they tell whose cell is whose),
+     so they are the game's own tokens and stay the same in both themes. They differ
+     in lightness as well as hue, so they can be told apart with colour blindness. */
+  :root { --cr-p1: #E5484D; --cr-p2: #2F6FDE; --cr-p3: #23A26D; --cr-p4: #E8A317; --cr-cell: var(--c-surface); }
+  .cr-top { display: flex; gap: var(--s-2); flex-wrap: wrap; justify-content: center; width: 100%; max-width: 560px; }
+  .cr-players { width: 100%; max-width: 560px; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: var(--s-2); }
+  .cr-player {
+    display: flex; align-items: center; gap: 6px; min-width: 0;
+    background: var(--c-surface); border-radius: var(--r-md); padding: 6px 10px;
+    box-shadow: var(--sh-1); border: 2px solid transparent; min-height: 44px;
+    transition: border-color var(--t-mid) var(--ease), transform var(--t-mid) var(--ease), opacity var(--t-mid) var(--ease);
+  }
+  .cr-player--on { border-color: var(--pc); transform: translateY(-2px); box-shadow: var(--sh-2); }
+  .cr-player--out { opacity: .45; }
+  .cr-player--out .cr-player__name { text-decoration: line-through; }
+  .cr-player__dot { width: 16px; height: 16px; border-radius: 50%; flex: 0 0 16px; background: var(--pc); }
+  .cr-player__name { flex: 1; min-width: 0; font-weight: 700; font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cr-player__n { font-size: var(--fs-xs); color: var(--c-text-dim); font-variant-numeric: tabular-nums; }
+  /* Four seats left a 390px phone 25px for each name ("B…"); with three or four the
+     orb count drops to a second line and the name gets the whole width */
+  .cr-players--many .cr-player { display: grid; grid-template-columns: 14px minmax(0, 1fr); column-gap: 6px; padding: 5px 8px; }
+  .cr-players--many .cr-player__dot { width: 14px; height: 14px; }
+  .cr-players--many .cr-player__n { grid-column: 2; line-height: 1.1; }
+  .cr-thinking { animation: cr-blink 900ms infinite; }
+  @keyframes cr-blink { 50% { opacity: .55; } }
+  .ch-fit > .cr-boardbox { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
+  /* The game's settings summary; a tap opens the new-game window */
+  .cr-top .ch-tap { border: 0; font: inherit; font-size: var(--fs-sm); font-weight: 700; min-height: 44px; padding-inline: var(--s-4); cursor: pointer; }
+  .cr-canvas { display: block; touch-action: manipulation; cursor: pointer; border-radius: var(--r-md); box-shadow: var(--sh-2); }
+</style>
+</head>
+<body>
+<script src="../../version.js"></script>
+<script src="../../lib/chogan.js"></script>
+<script>
+/* ==== ENGINE START ==== */
+function ChainEngineFactory() {
+  'use strict';
+
+  // Board sizes as columns × rows; the taller one fills a phone screen
+  var SIZES = [{ id: 'small', cols: 5, rows: 7 }, { id: 'large', cols: 6, rows: 9 }];
+  var WIN = 1e7;
+  // A move whose bursts never settle (possible once one colour owns nearly the
+  // whole board) is cut off here; the board is decided long before.
+  var MAX_WAVES = 400;
+
+  function sizeOf(id) {
+    for (var k = 0; k < SIZES.length; k++) if (SIZES[k].id === id) return SIZES[k];
+    return null;
+  }
+
+  // Neighbours of every cell, worked out once per board shape. A cell bursts
+  // when it holds as many orbs as it has neighbours: 2 in a corner, 3 on an
+  // edge, 4 inside.
+  var NB = {};
+  function neighbours(cols, rows) {
+    var key = cols + 'x' + rows;
+    if (NB[key]) return NB[key];
+    var out = [];
+    for (var i = 0; i < cols * rows; i++) {
+      var r = (i / cols) | 0, c = i % cols, list = [];
+      if (r > 0) list.push(i - cols);
+      if (r < rows - 1) list.push(i + cols);
+      if (c > 0) list.push(i - 1);
+      if (c < cols - 1) list.push(i + 1);
+      out.push(list);
+    }
+    NB[key] = out;
+    return out;
+  }
+
+  // players: how many colours play (2 to 4); colour p is 1..players.
+  function newGame(cols, rows, players) {
+    var owner = [], orbs = [];
+    for (var i = 0; i < cols * rows; i++) { owner.push(0); orbs.push(0); }
+    var out = [];
+    for (var p = 0; p <= players; p++) out.push(false);
+    return { cols: cols, rows: rows, players: players, owner: owner, orbs: orbs, turn: 1, moves: 0, out: out, winner: 0 };
+  }
+
+  function copy(S) {
+    return {
+      cols: S.cols, rows: S.rows, players: S.players, owner: S.owner.slice(), orbs: S.orbs.slice(),
+      turn: S.turn, moves: S.moves, out: S.out.slice(), winner: S.winner
+    };
+  }
+
+  function legal(S, i) {
+    return !S.winner && i >= 0 && i < S.owner.length && (S.owner[i] === 0 || S.owner[i] === S.turn);
+  }
+
+  function legalMoves(S) {
+    var out = [];
+    for (var i = 0; i < S.owner.length; i++) if (legal(S, i)) out.push(i);
+    return out;
+  }
+
+  function cellsOf(S, p) {
+    var n = 0;
+    for (var i = 0; i < S.owner.length; i++) if (S.owner[i] === p) n++;
+    return n;
+  }
+
+  // Every colour has had its first turn once moves reaches the number of
+  // players; before that an empty board does not knock anyone out.
+  function allStarted(S) { return S.moves >= S.players; }
+
+  function soleOwner(S) {
+    var p = 0;
+    for (var i = 0; i < S.owner.length; i++) {
+      if (!S.owner[i]) continue;
+      if (p && S.owner[i] !== p) return 0;
+      p = S.owner[i];
+    }
+    return p;
+  }
+
+  // Adds an orb for the player to move and runs the bursts. Returns the new
+  // state plus the waves, for the page to animate: each wave lists the cells
+  // that burst together and the board after it. Bursts stop early once one
+  // colour owns every orb, because nothing can change the result any more.
+  function play(S, i) {
+    if (!legal(S, i)) return null;
+    var N = copy(S), nb = neighbours(N.cols, N.rows), p = N.turn, waves = [], total = 0;
+    N.owner[i] = p;
+    N.orbs[i]++;
+    N.moves++;
+    var ready = N.orbs[i] >= nb[i].length ? [i] : [];
+    while (ready.length && waves.length < MAX_WAVES) {
+      if (allStarted(N) && soleOwner(N)) break;
+      var next = [], seen = {};
+      for (var k = 0; k < ready.length; k++) {
+        var c = ready[k], cap = nb[c].length;
+        N.orbs[c] -= cap;
+        if (!N.orbs[c]) N.owner[c] = 0;
+      }
+      for (k = 0; k < ready.length; k++) {
+        var list = nb[ready[k]];
+        for (var j = 0; j < list.length; j++) {
+          var d = list[j];
+          N.orbs[d]++;
+          N.owner[d] = p;
+        }
+      }
+      for (k = 0; k < ready.length; k++) {
+        if (N.orbs[ready[k]] >= nb[ready[k]].length && !seen[ready[k]]) { seen[ready[k]] = 1; next.push(ready[k]); }
+        var l2 = nb[ready[k]];
+        for (j = 0; j < l2.length; j++) {
+          d = l2[j];
+          if (!seen[d] && N.orbs[d] >= nb[d].length) { seen[d] = 1; next.push(d); }
+        }
+      }
+      total += ready.length;
+      waves.push({ burst: ready, owner: N.owner.slice(), orbs: N.orbs.slice() });
+      ready = next;
+    }
+    // Knock out every colour that has played and owns nothing now
+    if (allStarted(N)) {
+      for (var q = 1; q <= N.players; q++) if (!N.out[q] && !cellsOf(N, q)) N.out[q] = true;
+      var left = [];
+      for (q = 1; q <= N.players; q++) if (!N.out[q]) left.push(q);
+      if (left.length === 1) N.winner = left[0];
+    }
+    if (!N.winner) N.turn = nextTurn(N, p);
+    return { state: N, waves: waves, bursts: total };
+  }
+
+  function nextTurn(S, p) {
+    for (var k = 1; k <= S.players; k++) {
+      var q = (p - 1 + k) % S.players + 1;
+      if (!S.out[q]) return q;
+    }
+    return p;
+  }
+
+  // How good the board is for colour p. Orbs count, and a cell one orb short of
+  // bursting is worth a lot unless an enemy cell next to it is also about to
+  // burst, because the enemy would then take it, and everything it chains into.
+  function evaluate(S, p) {
+    if (S.winner) return S.winner === p ? WIN : -WIN;
+    if (S.out[p]) return -WIN;
+    var nb = neighbours(S.cols, S.rows), score = 0, mine = 0, theirs = 0;
+    for (var i = 0; i < S.owner.length; i++) {
+      var o = S.owner[i];
+      if (!o) continue;
+      if (o !== p) { theirs += S.orbs[i]; continue; }
+      mine += S.orbs[i];
+      var cap = nb[i].length, threatened = false;
+      for (var j = 0; j < nb[i].length; j++) {
+        var d = nb[i][j];
+        if (S.owner[d] && S.owner[d] !== p && S.orbs[d] === nb[d].length - 1) { threatened = true; break; }
+      }
+      if (threatened) score -= 5 - cap;
+      else {
+        if (cap === 2) score += 3; else if (cap === 3) score += 2;
+        if (S.orbs[i] === cap - 1) score += 2;
+      }
+    }
+    return score + mine - theirs * 0.5;
+  }
+
+  function shuffled(list, rnd) {
+    var a = list.slice();
+    for (var k = a.length - 1; k > 0; k--) { var j = Math.floor(rnd() * (k + 1)), t = a[k]; a[k] = a[j]; a[j] = t; }
+    return a;
+  }
+
+  // Best single move for the side to move by the evaluation above; ties go to
+  // the shuffled order, so a bot does not play the same game every time.
+  function greedy(S, rnd) {
+    var p = S.turn, best = -1, bestV = -Infinity, list = shuffled(legalMoves(S), rnd);
+    for (var k = 0; k < list.length; k++) {
+      var r = play(S, list[k]);
+      var v = evaluate(r.state, p);
+      if (v > bestV) { bestV = v; best = list[k]; }
+    }
+    return best;
+  }
+
+  // easy: a random move, but it takes a move that wins outright.
+  // medium: the best move by the evaluation.
+  // hard: looks one reply ahead: for each move, the next colour's best answer
+  // by the same evaluation, and keeps the move that leaves it best off.
+  function think(S, level, rnd) {
+    rnd = rnd || Math.random;
+    var p = S.turn, list = shuffled(legalMoves(S), rnd);
+    if (!list.length) return -1;
+    for (var k = 0; k < list.length; k++) if (play(S, list[k]).state.winner === p) return list[k];
+    if (level === 'easy') return rnd() < 0.3 ? greedy(S, rnd) : list[0];
+    if (level !== 'hard') return greedy(S, rnd);
+    var best = list[0], bestV = -Infinity;
+    for (k = 0; k < list.length; k++) {
+      var a = play(S, list[k]).state;
+      var v;
+      if (a.winner) v = evaluate(a, p);
+      else {
+        var reply = greedy(a, rnd);
+        v = reply < 0 ? evaluate(a, p) : evaluate(play(a, reply).state, p);
+      }
+      if (v > bestV) { bestV = v; best = list[k]; }
+    }
+    return best;
+  }
+
+  // The daily board: two orbs for each side on cells picked from the day's
+  // seed, mirrored so neither side starts ahead. Both colours count as having
+  // moved, so the usual knock-out rule applies from the first move.
+  function dailyStart(rnd, cols, rows) {
+    var S = newGame(cols, rows, 2), n = cols * rows, placed = 0;
+    while (placed < 2) {
+      var i = Math.floor(rnd() * n), m = n - 1 - i;
+      if (i === m || S.owner[i] || S.owner[m]) continue;
+      S.owner[i] = 1; S.orbs[i] = 1;
+      S.owner[m] = 2; S.orbs[m] = 1;
+      placed++;
+    }
+    S.moves = 2;
+    return S;
+  }
+
+  var api = {
+    SIZES: SIZES, sizeOf: sizeOf, neighbours: neighbours, newGame: newGame, copy: copy, legal: legal,
+    legalMoves: legalMoves, cellsOf: cellsOf, play: play, evaluate: evaluate, think: think,
+    dailyStart: dailyStart, MAX_WAVES: MAX_WAVES
+  };
+  if (typeof self !== 'undefined') self.ChainEngine = api;
+  return api;
+}
+if (typeof module !== 'undefined' && module.exports) module.exports = ChainEngineFactory;
+/* ==== ENGINE END ==== */
+</script>
+
+<script>
+(function () {
+  'use strict';
+  var C = window.Chogan, el = C.el;
+  var E = ChainEngineFactory();
+
+  C.boot({});
+  var ctx = C.game({
+    id: 'chain',
+    name: { fa: 'واکنش زنجیره‌ای', en: 'Chain Reaction', zh: '连锁反应', de: 'Kettenreaktion', es: 'Reacción en cadena', pl: 'Reakcja łańcuchowa', fr: 'Réaction en chaîne', ar: 'التفاعل المتسلسل', hi: 'चेन रिएक्शन' },
+    accent: '#AE3A92',
+    mood: 'sudoku',
+    strings: {
+      fa: {
+        players: 'بازیکن', vsBots: 'با ربات', people: 'چند نفره', you: 'تو', playerN: 'بازیکن {n}', bot: 'ربات',
+        small: 'کوچک', large: 'بزرگ', playerWon: '{n} برد',
+        newMatch: 'دست تازه', undoMove: 'برگرداندن حرکت', resetWarn: 'دست فعلی تمام می‌شود. ادامه؟',
+        boardLabel: 'صفحه‌ی واکنش زنجیره‌ای', dailyChain: 'واکنش روزانه', vsMedium: 'مقابل ربات متوسط',
+        movesLabel: 'حرکت‌های تو', bestChain: 'بزرگ‌ترین زنجیره',
+        rules: 'به نوبت در یک خانه‌ی خالی یا خانه‌ی خودت گوی بگذارید. خانه‌ای که به اندازه‌ی همسایه‌هایش گوی بگیرد می‌ترکد: در گوشه با ۲، کنار با ۳ و وسط با ۴. هر ترکیدن یک گوی به هر همسایه می‌دهد و آن خانه‌ها را مال تو می‌کند، که شاید آن‌ها را هم بترکاند. کسی که بعد از اولین نوبتش گویی نداشته باشد بیرون است؛ آخرین رنگ روی صفحه برنده است.',
+        keyboard: 'صفحه‌کلید', moveCursor: 'جابه‌جایی نشانگر', place: 'گذاشتن گوی',
+        tutTitle1: 'گوی بگذار', tutText1: 'به نوبت در یک خانه‌ی خالی یا یکی از خانه‌های خودت یک گوی بگذارید.',
+        tutTitle2: 'پر شد، می‌ترکد', tutText2: 'خانه‌ای که به اندازه‌ی همسایه‌هایش گوی دارد می‌ترکد: گوشه با ۲، کنار با ۳، وسط با ۴. گوی‌ها به همسایه‌ها می‌روند و آن خانه‌ها رنگ تو می‌شوند.',
+        tutTitle3: 'زنجیره', tutText3: 'یک ترکیدن می‌تواند همسایه‌ی پر را هم بترکاند و همین‌طور ادامه دهد. هر کس رنگش از صفحه پاک شود بیرون است؛ آخرین رنگ می‌برد.'
+      },
+      en: {
+        players: 'players', vsBots: 'Versus bots', people: 'Pass and play', you: 'You', playerN: 'Player {n}', bot: 'Bot',
+        small: 'Small', large: 'Large', playerWon: '{n} wins',
+        newMatch: 'New game', undoMove: 'Undo move', resetWarn: 'This ends the current game. Continue?',
+        boardLabel: 'Chain Reaction board', dailyChain: 'Daily chain', vsMedium: 'against the medium bot',
+        movesLabel: 'Your moves', bestChain: 'Longest chain',
+        rules: 'Take turns adding an orb to an empty cell or one of your own. A cell that holds as many orbs as it has neighbours bursts: 2 in a corner, 3 on an edge, 4 in the middle. A burst sends one orb to each neighbour and makes those cells yours, which can make them burst too. Anyone with no orbs left after their first turn is out; the last colour on the board wins.',
+        keyboard: 'Keyboard', moveCursor: 'Move the cursor', place: 'Add an orb',
+        tutTitle1: 'Add an orb', tutText1: 'Take turns adding one orb to an empty cell or to one of your own cells.',
+        tutTitle2: 'Full cells burst', tutText2: 'A cell bursts when it holds as many orbs as it has neighbours: 2 in a corner, 3 on an edge, 4 in the middle. The orbs fly to the neighbours and those cells take your colour.',
+        tutTitle3: 'Chain reactions', tutText3: 'One burst can tip a full neighbour over, and so on across the board. A colour wiped off the board is out; the last colour left wins.'
+      },
+      pl: {
+        players: 'gracze', vsBots: 'Przeciwko botom', people: 'Podaj i graj', you: 'Ty', playerN: 'Gracz {n}', bot: 'Bot',
+        small: 'Mała', large: 'Duża', playerWon: '{n} wygrywa',
+        newMatch: 'Nowa gra', undoMove: 'Cofnij ruch', resetWarn: 'To zakończy bieżącą grę. Kontynuować?',
+        boardLabel: 'Plansza reakcji łańcuchowej', dailyChain: 'Codzienna reakcja', vsMedium: 'przeciwko botowi na średnim poziomie',
+        movesLabel: 'Twoje ruchy', bestChain: 'Najdłuższy łańcuch',
+        rules: 'Dodawajcie na zmianę po jednej kuli do pustego pola lub do pola z własną kulą. Pole, które zawiera tyle kul, ilu ma sąsiadów, wybucha – 2 w rogu, 3 na krawędzi, 4 na środku. Wybuch wysyła po jednej kuli do każdego sąsiada i przejmuje te pola na Twój kolor, co może wywołać ich kolejne wybuchy. Gracz, któremu po pierwszej turze nie zostanie żadna kula, odpada; wygrywa ostatni kolor na planszy.',
+        keyboard: 'Klawiatura', moveCursor: 'Ruch kursorem', place: 'Dodaj kulę',
+        tutTitle1: 'Dodaj kulę', tutText1: 'Dodawajcie na zmianę po jednej kuli do pustego pola lub do jednego ze swoich pól.',
+        tutTitle2: 'Pełne pola wybuchają', tutText2: 'Pole wybucha, gdy zawiera tyle kul, ilu ma sąsiadów: 2 w rogu, 3 na krawędzi, 4 na środku. Kule lecą do sąsiednich pól, a te pola przyjmują Twój kolor.',
+        tutTitle3: 'Reakcje łańcuchowe', tutText3: 'Jeden wybuch może doprowadzić do wybuchu pełnego sąsiada i tak dalej na całej planszy. Kolor całkowicie usunięty z planszy odpada; wygrywa ostatni pozostały kolor.'
+      },
+      fr: {
+        players: 'joueurs', vsBots: 'Contre les robots', people: 'Chacun son tour', you: 'Toi', playerN: 'Joueur {n}', bot: 'Robot',
+        small: 'Petit', large: 'Grand', playerWon: '{n} gagne',
+        newMatch: 'Nouvelle partie', undoMove: 'Annuler le coup', resetWarn: 'Cela met fin à la partie en cours. Continuer ?',
+        boardLabel: 'Plateau de Réaction en chaîne', dailyChain: 'Chaîne du jour', vsMedium: 'contre le robot moyen',
+        movesLabel: 'Tes coups', bestChain: 'Plus longue chaîne',
+        rules: 'Chacun son tour, ajoute une bille dans une case vide ou dans une des tiennes. Une case qui a autant de billes que de voisines explose : 2 dans un coin, 3 sur un bord, 4 au milieu. Une explosion envoie une bille à chaque voisine et te donne ces cases, qui peuvent exploser à leur tour. Qui n’a plus de bille après son premier tour est éliminé ; la dernière couleur sur le plateau gagne.',
+        keyboard: 'Clavier', moveCursor: 'Déplacer le curseur', place: 'Ajouter une bille',
+        tutTitle1: 'Ajoute une bille', tutText1: 'Chacun son tour, ajoute une bille dans une case vide ou dans une de tes cases.',
+        tutTitle2: 'Les cases pleines explosent', tutText2: 'Une case explose quand elle a autant de billes que de voisines : 2 dans un coin, 3 sur un bord, 4 au milieu. Les billes partent vers les voisines et ces cases prennent ta couleur.',
+        tutTitle3: 'Réactions en chaîne', tutText3: 'Une explosion peut faire déborder une voisine pleine, et ainsi de suite sur tout le plateau. Une couleur effacée du plateau est éliminée ; la dernière couleur restante gagne.'
+      },
+      ar: {
+        players: 'لاعبين', vsBots: 'ضد الروبوتات', people: 'بالتناوب', you: 'أنت', playerN: 'اللاعب {n}', bot: 'الروبوت',
+        small: 'صغيرة', large: 'كبيرة', playerWon: 'فاز {n}',
+        newMatch: 'لعبة جديدة', undoMove: 'تراجع', resetWarn: 'سينهي هذا اللعبة الحالية. هل تتابع؟',
+        boardLabel: 'لوحة التفاعل المتسلسل', dailyChain: 'السلسلة اليومية', vsMedium: 'ضد الروبوت المتوسط',
+        movesLabel: 'حركاتك', bestChain: 'أطول سلسلة',
+        rules: 'أضف كرة بالتناوب إلى خانة فارغة أو إلى إحدى خاناتك. الخانة التي تحمل عددًا من الكرات يساوي عدد جيرانها تنفجر: 2 في الزاوية، و3 على الحافة، و4 في الوسط. يرسل الانفجار كرة إلى كل جار ويجعل تلك الخانات لك، وقد تنفجر هي أيضًا. من لم يبقَ له أي كرات بعد دوره الأول يخرج، وآخر لون يبقى على اللوحة يفوز.',
+        keyboard: 'لوحة المفاتيح', moveCursor: 'حرّك المؤشر', place: 'أضف كرة',
+        tutTitle1: 'أضف كرة', tutText1: 'أضف كرة واحدة بالتناوب إلى خانة فارغة أو إلى إحدى خاناتك.',
+        tutTitle2: 'الخانات الممتلئة تنفجر', tutText2: 'تنفجر الخانة عندما تحمل عددًا من الكرات يساوي عدد جيرانها: 2 في الزاوية، و3 على الحافة، و4 في الوسط. تطير الكرات إلى الجيران وتأخذ تلك الخانات لونك.',
+        tutTitle3: 'تفاعلات متسلسلة', tutText3: 'قد يفجّر انفجار واحد جارًا ممتلئًا، وهكذا عبر اللوحة. اللون الذي يُمحى من اللوحة يخرج، وآخر لون يبقى يفوز.'
+      },
+      hi: {
+        players: 'खिलाड़ी', vsBots: 'बॉट से', people: 'बारी-बारी', you: 'आप', playerN: 'खिलाड़ी {n}', bot: 'बॉट',
+        small: 'छोटा', large: 'बड़ा', playerWon: '{n} जीत गए',
+        newMatch: 'नया खेल', undoMove: 'चाल वापस', resetWarn: 'इससे मौजूदा खेल ख़त्म हो जाएगा। जारी रखें?',
+        boardLabel: 'चेन रिएक्शन बोर्ड', dailyChain: 'रोज़ की चेन', vsMedium: 'मध्यम बॉट के ख़िलाफ़',
+        movesLabel: 'आपकी चालें', bestChain: 'सबसे लंबी चेन',
+        rules: 'बारी-बारी से किसी ख़ाली ख़ाने में या अपने ख़ाने में एक गोला जोड़ें। जिस ख़ाने में उतने गोले हो जाएँ जितने उसके पड़ोसी हैं, वह फट जाता है: कोने में 2, किनारे पर 3, बीच में 4। धमाका हर पड़ोसी को एक गोला भेजता है और वे ख़ाने आपके हो जाते हैं, जिससे वे भी फट सकते हैं। पहली बारी के बाद जिसके पास कोई गोला न बचे, वह बाहर; बोर्ड पर बचा आख़िरी रंग जीतता है।',
+        keyboard: 'कीबोर्ड', moveCursor: 'कर्सर हिलाएँ', place: 'गोला जोड़ें',
+        tutTitle1: 'गोला जोड़ें', tutText1: 'बारी-बारी से किसी ख़ाली ख़ाने में या अपने किसी ख़ाने में एक गोला जोड़ें।',
+        tutTitle2: 'भरे ख़ाने फटते हैं', tutText2: 'ख़ाना तब फटता है जब उसमें उतने गोले हों जितने उसके पड़ोसी हैं: कोने में 2, किनारे पर 3, बीच में 4। गोले पड़ोसियों में उड़ जाते हैं और वे ख़ाने आपके रंग के हो जाते हैं।',
+        tutTitle3: 'चेन रिएक्शन', tutText3: 'एक धमाका भरे पड़ोसी को भी फोड़ सकता है, और ऐसे ही पूरे बोर्ड पर। जो रंग बोर्ड से मिट जाए, वह बाहर; आख़िरी बचा रंग जीतता है।'
+      },
+      zh: {
+        players: '名玩家', vsBots: '对战电脑', people: '轮流对战', you: '你', playerN: '玩家{n}', bot: '电脑',
+        small: '小', large: '大', playerWon: '{n}获胜',
+        newMatch: '新一局', undoMove: '撤销', resetWarn: '将结束当前对局，是否继续？',
+        boardLabel: '连锁反应棋盘', dailyChain: '每日连锁', vsMedium: '对战中等电脑',
+        movesLabel: '你的步数', bestChain: '最长连锁',
+        rules: '轮流在空格或自己的格子里放一个球。格子里的球数等于相邻格数时就会爆开：角上2个，边上3个，中间4个。爆开时向每个相邻格送一个球，并把它们变成你的颜色，可能引发连锁。第一轮之后没有球的玩家出局，最后留在棋盘上的颜色获胜。',
+        keyboard: '键盘', moveCursor: '移动光标', place: '放球',
+        tutTitle1: '放一个球', tutText1: '轮流在空格或自己的格子里放一个球。',
+        tutTitle2: '满了就爆', tutText2: '格子里的球数等于相邻格数时爆开：角上2个，边上3个，中间4个。球飞向相邻格，那些格子变成你的颜色。',
+        tutTitle3: '连锁反应', tutText3: '一次爆开可以引爆相邻的满格，一路传下去。颜色从棋盘上消失的玩家出局，最后剩下的颜色获胜。'
+      },
+      de: {
+        players: 'Spieler', vsBots: 'Gegen Bots', people: 'Reihum', you: 'Du', playerN: 'Spieler {n}', bot: 'Bot',
+        small: 'Klein', large: 'Groß', playerWon: 'Sieg: {n}',
+        newMatch: 'Neue Partie', undoMove: 'Zug zurück', resetWarn: 'Die aktuelle Partie endet. Weiter?',
+        boardLabel: 'Kettenreaktion-Brett', dailyChain: 'Tägliche Kettenreaktion', vsMedium: 'gegen den mittleren Bot',
+        movesLabel: 'Deine Züge', bestChain: 'Längste Kette',
+        rules: 'Legt abwechselnd eine Kugel in ein leeres oder eigenes Feld. Ein Feld mit so vielen Kugeln wie Nachbarn platzt: 2 in der Ecke, 3 am Rand, 4 in der Mitte. Es schickt jedem Nachbarn eine Kugel und macht diese Felder zu deinen, die dadurch auch platzen können. Wer nach seinem ersten Zug keine Kugel mehr hat, ist raus; die letzte Farbe auf dem Brett gewinnt.',
+        keyboard: 'Tastatur', moveCursor: 'Cursor bewegen', place: 'Kugel legen',
+        tutTitle1: 'Kugel legen', tutText1: 'Legt abwechselnd eine Kugel in ein leeres Feld oder in eines eurer eigenen.',
+        tutTitle2: 'Volle Felder platzen', tutText2: 'Ein Feld platzt, wenn es so viele Kugeln hat wie Nachbarn: 2 in der Ecke, 3 am Rand, 4 in der Mitte. Die Kugeln fliegen zu den Nachbarn, und die nehmen deine Farbe an.',
+        tutTitle3: 'Kettenreaktion', tutText3: 'Ein Platzen kann ein volles Nachbarfeld mitreißen und so weiter über das Brett. Eine Farbe, die vom Brett verschwindet, ist raus; die letzte gewinnt.'
+      },
+      es: {
+        players: 'jugadores', vsBots: 'Contra bots', people: 'Por turnos', you: 'Tú', playerN: 'Jugador {n}', bot: 'Bot',
+        small: 'Pequeño', large: 'Grande', playerWon: 'Gana: {n}',
+        newMatch: 'Nueva partida', undoMove: 'Deshacer jugada', resetWarn: 'Esto termina la partida actual. ¿Seguir?',
+        boardLabel: 'Tablero de Reacción en cadena', dailyChain: 'Cadena diaria', vsMedium: 'contra el bot medio',
+        movesLabel: 'Tus jugadas', bestChain: 'Cadena más larga',
+        rules: 'Por turnos, añadid un orbe a una casilla vacía o a una vuestra. Una casilla con tantos orbes como vecinas estalla: 2 en una esquina, 3 en un borde, 4 en el centro. Manda un orbe a cada vecina y las vuelve tuyas, y eso puede hacerlas estallar también. Quien se quede sin orbes tras su primer turno queda fuera; gana el último color en el tablero.',
+        keyboard: 'Teclado', moveCursor: 'Mover el cursor', place: 'Añadir un orbe',
+        tutTitle1: 'Añade un orbe', tutText1: 'Por turnos, cada uno añade un orbe a una casilla vacía o a una de las suyas.',
+        tutTitle2: 'Las llenas estallan', tutText2: 'Una casilla estalla cuando tiene tantos orbes como vecinas: 2 en una esquina, 3 en un borde, 4 en el centro. Los orbes vuelan a las vecinas, que toman tu color.',
+        tutTitle3: 'Reacción en cadena', tutText3: 'Un estallido puede hacer estallar una vecina llena, y así por todo el tablero. El color que desaparece del tablero queda fuera; gana el último.'
+      }
+    }
+  });
+
+  var params = new URLSearchParams(location.search);
+  var dailyDate = params.get('daily');
+  var DAILY_SIZE = 'large', DAILY_LEVEL = 'medium';
+  var LEVELS = ['easy', 'medium', 'hard'];
+  var prefs = ctx.store.get('prefs', { players: 2, mode: 'bots', level: 'medium', size: 'large' });
+  if ([2, 3, 4].indexOf(prefs.players) < 0) prefs.players = 2;
+  if (prefs.mode !== 'bots' && prefs.mode !== 'people') prefs.mode = 'bots';
+  if (LEVELS.indexOf(prefs.level) < 0) prefs.level = 'medium';
+  if (!E.sizeOf(prefs.size)) prefs.size = 'large';
+
+  // G: the game. anim: the burst animation in progress, during which input waits.
+  var G = null, aiTimer = null, anim = null, kbOn = false, cur = { r: 0, c: 0 };
+
+  var cv = document.createElement('canvas');
+  cv.className = 'cr-canvas';
+  cv.setAttribute('role', 'img');
+  cv.setAttribute('aria-label', C.t('boardLabel'));
+  var boardBox = el('div', { class: 'cr-boardbox' }, [cv]);
+  var top = el('div', { class: 'cr-top ch-above' });
+  var playersRow = el('div', { class: 'cr-players ch-above' });
+  var wrap = el('div', { class: 'cr-wrap ch-split' }, [el('div', { class: 'ch-fit' }, [boardBox]), el('div', { class: 'ch-side' }, [top, playersRow])]);
+
+  ctx.button({ icon: 'help', label: C.t('help'), onClick: showHelp });
+  ctx.button({ icon: 'undo', label: C.t('undoMove'), onClick: undo });
+  ctx.button({ icon: 'refresh', label: C.t('newMatch'), onClick: askNew });
+  ctx.main.appendChild(wrap);
+  ctx.mount();
+
+  /* ------------------------------------------------------------ setup */
+
+  // Seat 1 is always the person holding the phone. Against bots every other seat
+  // is a bot of the chosen level; in pass-and-play they are people.
+  function newGame(o) {
+    stopAi();
+    anim = null;
+    var sz = E.sizeOf(o.daily ? DAILY_SIZE : o.size);
+    var players = o.daily ? 2 : o.players;
+    G = {
+      players: players, mode: o.daily ? 'bots' : o.mode, level: o.daily ? DAILY_LEVEL : o.level, size: sz.id,
+      daily: o.daily || null, s: E.newGame(sz.cols, sz.rows, players), history: [], myMoves: 0, longest: 0,
+      startedAt: Date.now(), done: false, last: -1
+    };
+    if (o.daily) G.s = E.dailyStart(C.daily('chain', o.daily).rng, sz.cols, sz.rows);
+    else {
+      prefs.players = o.players; prefs.mode = o.mode; prefs.level = o.level; prefs.size = o.size;
+      ctx.store.set('prefs', prefs);
+    }
+    cur = { r: (sz.rows / 2) | 0, c: (sz.cols / 2) | 0 };
+    render();
+    save();
+    maybeAi();
+  }
+  function fromPrefs() { return { players: prefs.players, mode: prefs.mode, level: prefs.level, size: prefs.size }; }
+  function current() { return { players: G.players, mode: G.mode, level: G.level, size: G.size }; }
+
+  function isBot(p) { return G.mode === 'bots' && p !== 1; }
+  function busy() { return !!anim || (G && !G.done && isBot(G.s.turn)); }
+  function stopAi() { if (aiTimer) { clearTimeout(aiTimer); aiTimer = null; } }
+
+  function maybeAi() {
+    if (!G || G.done || anim || !isBot(G.s.turn)) return;
+    drawPlayers();
+    aiTimer = setTimeout(function () {
+      aiTimer = null;
+      if (!G || G.done || anim || !isBot(G.s.turn)) return;
+      // The daily bot plays from the day's seed, so everyone meets the same opponent
+      var rnd = G.daily ? C.daily('chain', G.daily + '|' + G.s.moves).rng : Math.random;
+      move(E.think(G.s, G.level, rnd));
+    }, 380 + Math.random() * 220);
+  }
+
+  /* ------------------------------------------------------------- moves */
+
+  function move(i) {
+    if (!G || G.done || anim) return;
+    var who = G.s.turn, res = E.play(G.s, i);
+    if (!res) { C.feedback('bad'); return; }
+    // A short history is enough to undo; the whole game would bloat the save
+    G.history.push({ s: G.s, myMoves: G.myMoves, last: G.last });
+    if (G.history.length > 60) G.history.shift();
+    if (who === 1) G.myMoves++;
+    if (!isBot(who)) G.longest = Math.max(G.longest, res.bursts);
+    if (who === 1 && G.mode === 'bots' && res.bursts >= 20) C.achievements.unlock('cr-chain');
+    var before = E.copy(G.s);
+    before.owner[i] = who;
+    before.orbs[i]++;
+    G.s = res.state;
+    G.last = i;
+    C.feedback('place');
+    if (res.waves.length) startAnim(before, res.waves, who);
+    else afterMove();
+  }
+
+  function afterMove() {
+    if (G.s.winner) {
+      G.done = true;
+      render();
+      setTimeout(finish, 500);
+      return;
+    }
+    render();
+    save();
+    maybeAi();
+  }
+
+  // Against bots one undo takes you back to just before your own last move, the
+  // bots' replies with it; in pass-and-play it takes back one move.
+  function undo() {
+    if (!G || G.done || anim || !G.history.length) return;
+    stopAi();
+    var h;
+    if (G.mode === 'bots') {
+      var k = G.history.length - 1;
+      while (k >= 0 && G.history[k].s.turn !== 1) k--;
+      if (k < 0) return;
+      h = G.history[k];
+      G.history.length = k;
+    } else h = G.history.pop();
+    G.s = h.s; G.myMoves = h.myMoves; G.last = h.last;
+    C.feedback('select');
+    render();
+    save();
+    maybeAi();
+  }
+
+  /* ------------------------------------------------------------ result */
+
+  function finish() {
+    stopAi();
+    var vsBots = G.mode === 'bots', w = G.s.winner, won = vsBots ? w === 1 : true;
+    var base = vsBots ? ({ easy: 5, medium: 10, hard: 18 }[G.level] || 10) + (G.players - 2) * 3 : 8;
+    var coins = Math.max(2, Math.round(won && vsBots ? base : base * 0.35)) + (G.daily ? 8 : 0);
+    var points = Math.max(3, Math.round(won && vsBots ? base * 4 : base * 1.2)) + (G.daily ? 25 : 0);
+    if (vsBots && won) {
+      C.achievements.unlock('cr-win');
+      if (G.level === 'hard') C.achievements.unlock('cr-hard');
+      // Fewest of your own moves in a win against bots
+      C.stats.best('chain', 'moves', G.myMoves, true);
+    }
+    if (G.daily) {
+      var first = C.stats.daily('chain', G.daily, {
+        label: won ? C.t('won') + ' · ' + C.num(G.myMoves) : C.t('lost'),
+        win: won
+      });
+      if (!first) { coins = Math.round(coins * 0.2); points = Math.round(points * 0.2); }
+    }
+    ctx.clearSave();
+    ctx.finish({
+      won: vsBots ? won : null,
+      title: vsBots ? (won ? C.t('won') : C.t('lost')) : C.t('playerWon', { n: pname(w) }),
+      timeMs: Date.now() - G.startedAt, coins: coins, points: points,
+      lines: [
+        { label: C.t('movesLabel'), value: C.num(G.myMoves) },
+        { label: C.t('bestChain'), value: C.num(G.longest) }
+      ],
+      shareText: 'چوگان · واکنش زنجیره‌ای' + (G.daily ? ('\nروزانه ' + G.daily) : '') + '\n' + pname(w),
+      paint: cardPaint(),
+      onAgain: G.daily ? null : function () { newGame(current()); }
+    });
+  }
+
+  /* ------------------------------------------------------------- saves */
+
+  ctx.autosave(function () {
+    if (!G || G.done || !G.history.length) return { inProgress: false };
+    return {
+      g: {
+        players: G.players, mode: G.mode, level: G.level, size: G.size, daily: G.daily, s: G.s,
+        history: G.history.slice(-20), myMoves: G.myMoves, longest: G.longest, last: G.last,
+        elapsed: Date.now() - G.startedAt
+      },
+      prefs: prefs
+    };
+  });
+  function save() { ctx.save(); }
+
+  function validState(s, sz, players) {
+    return !!(s && s.cols === sz.cols && s.rows === sz.rows && s.players === players &&
+      Array.isArray(s.owner) && s.owner.length === sz.cols * sz.rows && Array.isArray(s.orbs) &&
+      s.orbs.length === s.owner.length && Array.isArray(s.out) && s.turn >= 1 && s.turn <= players && !s.winner);
+  }
+  function validSave(sv) {
+    var g = sv && sv.g, sz = g && E.sizeOf(g.size);
+    return !!(sz && [2, 3, 4].indexOf(g.players) >= 0 && (g.mode === 'bots' || g.mode === 'people') &&
+      LEVELS.indexOf(g.level) >= 0 && validState(g.s, sz, g.players) && Array.isArray(g.history));
+  }
+  function restore(g) {
+    G = {
+      players: g.players, mode: g.mode, level: g.level, size: g.size, daily: g.daily || null, s: g.s,
+      history: g.history, myMoves: g.myMoves || 0, longest: g.longest || 0,
+      last: typeof g.last === 'number' ? g.last : -1, startedAt: Date.now() - (g.elapsed || 0), done: false
+    };
+    cur = { r: (g.s.rows / 2) | 0, c: (g.s.cols / 2) | 0 };
+    render();
+    maybeAi();
+  }
+
+  function askNew() {
+    if (!G || !G.daily) { settings(); return; }
+    var dd = G.daily;
+    function go() { newGame({ daily: dd }); }
+    if (G.done || !G.history.length) { go(); return; }
+    C.ui.confirm({ title: C.t('newMatch'), body: C.t('resetWarn'), onOk: go });
+  }
+
+  /* --------------------------------------------------------------- draw */
+
+  function colors() {
+    var cs = getComputedStyle(document.documentElement);
+    var v = function (k, f) { return cs.getPropertyValue(k).trim() || f; };
+    return {
+      p: [null, v('--cr-p1', '#E5484D'), v('--cr-p2', '#2F6FDE'), v('--cr-p3', '#23A26D'), v('--cr-p4', '#E8A317')],
+      cell: v('--c-surface', '#FFFFFF'), cell2: v('--c-surface-2', '#F7F1E8'), line: v('--c-line', '#E6DDD0'),
+      text: v('--c-text', '#2B2118'), accent: v('--game', '#AE3A92')
+    };
+  }
+
+  // The board's size in CSS pixels: as wide as fits, and short enough that the
+  // whole board stays on a phone screen under the players row.
+  function boardSize(cols, rows) {
+    // The settings rows once pushed a 6×9 board's last row off a 390×844 phone; the
+    // height is now what is left under the board's top edge, less a margin.
+    // the slot the core sized for the board (#359); before, 520-560px wide at most and
+    // the window's height less a guess for the rows below
+    // the slot's shape follows the board's (6×9, 8×12…)
+    boardBox.parentNode.style.setProperty('--fit-ar', cols / rows);
+    var maxW = boardBox.clientWidth || 360, maxH = boardBox.clientHeight || maxW * rows / cols;
+    var cell = Math.floor(Math.min(maxW / cols, maxH / rows));
+    return { cell: cell, w: cell * cols, h: cell * rows };
+  }
+
+  // Where the k-th of n orbs sits in a cell, as a fraction of the cell. Three
+  // orbs make a triangle; a cell one short of bursting trembles a little.
+  function orbSpots(n) {
+    if (n <= 1) return [[0, 0]];
+    if (n === 2) return [[-0.16, 0], [0.16, 0]];
+    if (n === 3) return [[0, -0.15], [-0.16, 0.12], [0.16, 0.12]];
+    return [[-0.15, -0.15], [0.15, -0.15], [-0.15, 0.15], [0.15, 0.15]];
+  }
+
+  function paintOrb(g, x, y, r, color) {
+    g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2);
+    g.fillStyle = color; g.fill();
+    g.beginPath(); g.arc(x - r * 0.32, y - r * 0.34, r * 0.34, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(255,255,255,.45)'; g.fill();
+  }
+
+  // o: { s (owner, orbs, cols, rows, turn), cell, flying: [{from, to, p}], t (0..1),
+  //      skip: cells whose orbs are in the air, cursor, last, now }
+  function paintBoard(g, o, col) {
+    var s = o.s, cell = o.cell, nb = E.neighbours(s.cols, s.rows), W = cell * s.cols, H = cell * s.rows;
+    var tint = col.p[o.turn || s.turn] || col.accent;
+    g.fillStyle = col.cell2;
+    C.rrect(g, 0, 0, W, H, Math.round(cell * 0.18));
+    g.fill();
+    // The grid takes the colour of the player to move, so whose turn it is shows on the board
+    g.strokeStyle = tint;
+    g.globalAlpha = 0.55;
+    g.lineWidth = Math.max(1, cell / 40);
+    g.beginPath();
+    for (var c = 1; c < s.cols; c++) { g.moveTo(c * cell, 0); g.lineTo(c * cell, H); }
+    for (var r = 1; r < s.rows; r++) { g.moveTo(0, r * cell); g.lineTo(W, r * cell); }
+    g.stroke();
+    g.globalAlpha = 1;
+    var R = cell * 0.15, now = o.now || 0, still = C.ui.reduceMotion();
+    for (var i = 0; i < s.owner.length; i++) {
+      var n = s.orbs[i] - (o.skip && o.skip[i] ? nb[i].length : 0);
+      if (n <= 0 || !s.owner[i]) continue;
+      var cx = (i % s.cols + 0.5) * cell, cy = (((i / s.cols) | 0) + 0.5) * cell;
+      var critical = n >= nb[i].length - 1, spots = orbSpots(n);
+      var a = critical && !still ? Math.sin(now / 90 + i) * 0.06 : 0;
+      for (var k = 0; k < spots.length; k++) {
+        var dx = spots[k][0], dy = spots[k][1];
+        var rx = dx * Math.cos(a) - dy * Math.sin(a), ry = dx * Math.sin(a) + dy * Math.cos(a);
+        paintOrb(g, cx + rx * cell, cy + ry * cell, R, col.p[s.owner[i]]);
+      }
+    }
+    if (o.flying) {
+      var t = o.t, e = t * (2 - t);
+      o.flying.forEach(function (f) {
+        var x0 = (f.from % s.cols + 0.5) * cell, y0 = (((f.from / s.cols) | 0) + 0.5) * cell;
+        var x1 = (f.to % s.cols + 0.5) * cell, y1 = (((f.to / s.cols) | 0) + 0.5) * cell;
+        paintOrb(g, x0 + (x1 - x0) * e, y0 + (y1 - y0) * e, R, col.p[f.p]);
+      });
+    }
+    if (o.last >= 0 && !o.flying) {
+      g.strokeStyle = col.p[s.owner[o.last]] || tint;
+      g.globalAlpha = 0.5;
+      g.lineWidth = Math.max(1.5, cell / 28);
+      g.strokeRect((o.last % s.cols) * cell + 3, ((o.last / s.cols) | 0) * cell + 3, cell - 6, cell - 6);
+      g.globalAlpha = 1;
+    }
+    if (o.cursor) {
+      g.strokeStyle = tint;
+      g.lineWidth = Math.max(2, cell / 16);
+      g.strokeRect(o.cursor.c * cell + 2, o.cursor.r * cell + 2, cell - 4, cell - 4);
+    }
+  }
+
+  var raf = 0;
+  function draw() {
+    if (!G) return;
+    var s = anim ? anim.view : G.s, B = boardSize(s.cols, s.rows);
+    var dpr = Math.min(2, window.devicePixelRatio || 1);
+    if (cv.width !== B.w * dpr || cv.height !== B.h * dpr) { cv.width = B.w * dpr; cv.height = B.h * dpr; }
+    cv.style.width = B.w + 'px'; cv.style.height = B.h + 'px';
+    var g = cv.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, B.w, B.h);
+    var now = performance.now();
+    var o = { s: s, cell: B.cell, now: now, last: anim ? -1 : G.last, turn: anim ? anim.who : G.s.turn,
+      cursor: kbOn && !G.done && !busy() ? cur : null };
+    if (anim) { o.flying = anim.flying; o.t = anim.t; o.skip = anim.skip; }
+    paintBoard(g, o, colors());
+  }
+
+  // Redraws while something moves: a burst, or a cell one orb short of bursting
+  function hasCritical() {
+    if (!G || C.ui.reduceMotion()) return false;
+    var s = G.s, nb = E.neighbours(s.cols, s.rows);
+    for (var i = 0; i < s.owner.length; i++) if (s.orbs[i] && s.orbs[i] >= nb[i].length - 1) return true;
+    return false;
+  }
+  function loop() {
+    raf = 0;
+    if (anim) stepAnim();
+    draw();
+    if ((anim || hasCritical()) && !document.hidden) raf = requestAnimationFrame(loop);
+  }
+  function kick() { if (!raf) raf = requestAnimationFrame(loop); }
+
+  // Plays the waves one after another: in each, the orbs of the bursting cells fly
+  // to their neighbours, then the board shows the state after that wave. Long
+  // chains speed up so a big reaction does not keep everyone waiting.
+  function startAnim(before, waves, who) {
+    anim = { view: before, waves: waves, k: 0, who: who, t: 0, start: performance.now() };
+    prepWave();
+    drawPlayers();
+    kick();
+  }
+  function prepWave() {
+    var w = anim.waves[anim.k], s = anim.view, nb = E.neighbours(s.cols, s.rows), skip = {}, flying = [];
+    w.burst.forEach(function (c) {
+      skip[c] = true;
+      nb[c].forEach(function (d) { flying.push({ from: c, to: d, p: anim.who }); });
+    });
+    anim.skip = skip; anim.flying = flying; anim.t = 0; anim.start = performance.now();
+    anim.dur = C.ui.reduceMotion() ? 40 : (anim.waves.length > 14 ? 90 : 170);
+    if (anim.k < 6) C.feedback(anim.k ? 'clack' : 'flint');
+  }
+  function stepAnim() {
+    anim.t = Math.min(1, (performance.now() - anim.start) / anim.dur);
+    if (anim.t < 1) return;
+    var w = anim.waves[anim.k];
+    anim.view = { cols: anim.view.cols, rows: anim.view.rows, owner: w.owner, orbs: w.orbs, turn: anim.who };
+    anim.k++;
+    if (anim.k >= anim.waves.length) { anim = null; afterMove(); return; }
+    prepWave();
+  }
+
+  function cardPaint() {
+    var s = E.copy(G.s), last = G.last;
+    return function (g, W, H) {
+      var cell = Math.floor(Math.min(W / s.cols, H / s.rows));
+      g.translate((W - cell * s.cols) / 2, (H - cell * s.rows) / 2);
+      paintBoard(g, { s: s, cell: cell, last: last, now: 0 }, colors());
+    };
+  }
+
+  function pname(p) {
+    if (p === 1) return C.state.profile.name || C.t('you');
+    // With three or four seats "Bot · Medium" was cut to "B…"; the level is in the summary
+    if (isBot(p)) return G.players > 2 ? C.t('bot') + ' ' + C.num(p) : C.t('bot') + ' · ' + C.t(G.level);
+    return C.t('playerN', { n: C.num(p) });
+  }
+
+  function drawPlayers() {
+    playersRow.innerHTML = '';
+    playersRow.classList.toggle('cr-players--many', G.players > 2);
+    var turn = anim ? anim.who : G.s.turn;
+    for (var p = 1; p <= G.players; p++) {
+      var orbs = 0;
+      for (var i = 0; i < G.s.owner.length; i++) if (G.s.owner[i] === p) orbs += G.s.orbs[i];
+      var box = el('div', {
+        class: 'cr-player' + (turn === p && !G.done ? ' cr-player--on' : '') + (G.s.out[p] ? ' cr-player--out' : ''),
+        style: { '--pc': 'var(--cr-p' + p + ')' }
+      }, [
+        el('div', { class: 'cr-player__dot' }),
+        el('div', { class: 'cr-player__name', text: pname(p) }),
+        el('span', { class: 'cr-player__n', text: C.num(orbs) })
+      ]);
+      if (isBot(p) && turn === p && !G.done) box.classList.add('cr-thinking');
+      playersRow.appendChild(box);
+    }
+  }
+
+  function drawTop() {
+    top.innerHTML = '';
+    if (G.daily) {
+      top.appendChild(el('span', { class: 'ch-badge ch-badge--accent' },
+        [C.icon('calendar', 14), el('span', { text: C.t('dailyChain') + ' — ' + C.num(G.daily) })]));
+      top.appendChild(el('span', { class: 'ch-badge', text: C.t('vsMedium') }));
+      return;
+    }
+    top.appendChild(el('button', { class: 'ch-badge ch-tap', type: 'button', onclick: askNew, text: summary(current()) }));
+  }
+
+  function summary(o) {
+    var parts = [C.num(o.players) + ' ' + C.t('players'), o.mode === 'bots' ? C.t('vsBots') + ' · ' + C.t(o.level) : C.t('people')];
+    var z = E.sizeOf(o.size);
+    return parts.concat([C.num(z.cols) + '×' + C.num(z.rows)]).join(' · ');
+  }
+
+  // New game settings in one window: four rows of choices above the board pushed
+  // it off a phone screen. Nothing changes until Start, so it doubles as the
+  // "end this game?" question.
+  function settings() {
+    var o = current(), body = el('div', { class: 'ch-col', style: { gap: 'var(--s-3)', 'align-items': 'center' } });
+    function rows() {
+      body.innerHTML = '';
+      body.appendChild(C.ui.segmented([2, 3, 4].map(function (n) { return { value: n, label: C.num(n) + ' ' + C.t('players') }; }),
+        o.players, function (v) { o.players = v; }));
+      body.appendChild(C.ui.segmented([{ value: 'bots', label: C.t('vsBots') }, { value: 'people', label: C.t('people') }],
+        o.mode, function (v) { o.mode = v; rows(); }));
+      if (o.mode === 'bots') {
+        body.appendChild(C.ui.segmented(LEVELS.map(function (l) { return { value: l, label: C.t(l) }; }), o.level, function (v) { o.level = v; }));
+      }
+      body.appendChild(C.ui.segmented(E.SIZES.map(function (z) {
+        return { value: z.id, label: C.t(z.id) + ' ' + C.num(z.cols) + '×' + C.num(z.rows) };
+      }), o.size, function (v) { o.size = v; }));
+      if (G && G.history.length && !G.done) body.appendChild(el('p', { class: 'ch-xs ch-dim', text: C.t('resetWarn') }));
+    }
+    rows();
+    C.ui.modal({
+      title: C.t('newMatch'), closeButton: true, body: [body],
+      actions: [{ label: C.t('cancel') }, { label: C.t('start'), kind: 'primary', onClick: function () { newGame(o); } }]
+    });
+  }
+
+  function render() {
+    drawTop();
+    drawPlayers();
+    draw();
+    kick();
+  }
+
+  /* -------------------------------------------------------------- input */
+
+  function cellAt(x, y) {
+    var r = cv.getBoundingClientRect(), s = G.s;
+    var c = Math.floor((x - r.left) / (r.width / s.cols)), row = Math.floor((y - r.top) / (r.height / s.rows));
+    if (c < 0 || c >= s.cols || row < 0 || row >= s.rows) return -1;
+    return row * s.cols + c;
+  }
+
+  cv.addEventListener('pointerdown', function (e) {
+    if (!G || G.done || busy()) return;
+    var i = cellAt(e.clientX, e.clientY);
+    if (i < 0) return;
+    e.preventDefault();
+    kbOn = false;
+    if (!E.legal(G.s, i)) { C.feedback('bad'); C.ui.shake(cv); return; }
+    move(i);
+  });
+
+  window.addEventListener('keydown', function (e) {
+    if (!G || document.querySelector('.ch-scrim')) return;
+    if (C.undoKey(e)) { undo(); e.preventDefault(); return; }
+    if (G.done || busy()) return;
+    // The board is drawn left to right in every language; flipping the arrows
+    // in RTL made them run backwards in Persian (#338)
+    var k = e.key, d = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }[k];
+    if (d) {
+      e.preventDefault();
+      kbOn = true;
+      cur.r = Math.max(0, Math.min(G.s.rows - 1, cur.r + d[0]));
+      cur.c = Math.max(0, Math.min(G.s.cols - 1, cur.c + d[1]));
+      draw();
+      return;
+    }
+    if ((k === ' ' || k === 'Enter') && kbOn) {
+      e.preventDefault();
+      var i = cur.r * G.s.cols + cur.c;
+      if (E.legal(G.s, i)) move(i); else C.feedback('bad');
+    }
+  });
+
+  // the board follows its slot, which changes with the window and the side column (#359)
+  if (window.ResizeObserver) new ResizeObserver(function () { if (G) draw(); }).observe(boardBox);
+  else window.addEventListener('resize', function () { if (G) draw(); });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) kick(); });
+  if (window.matchMedia) {
+    var mq = window.matchMedia('(prefers-color-scheme: dark)');
+    if (mq.addEventListener) mq.addEventListener('change', function () { if (G) draw(); });
+  }
+  C.onPause(stopAi);
+  C.onResume(function () { if (G && !G.done) { maybeAi(); kick(); } });
+
+  /* --------------------------------------------------------------- help */
+
+  function kb(k, what) {
+    return el('div', { class: 'ch-item' }, [el('div', { class: 'ch-item__label', text: what }), el('span', { class: 'ch-badge', text: k })]);
+  }
+  function showHelp() {
+    C.ui.modal({
+      title: C.t('help'),
+      body: [
+        el('p', { class: 'ch-dim', text: C.t('rules') }),
+        el('h3', { style: { 'margin-top': 'var(--s-4)' }, text: C.t('keyboard') }),
+        el('div', { class: 'ch-list' }, [
+          kb('← ↑ → ↓', C.t('moveCursor')), kb('Space / Enter', C.t('place')), kb('U / Ctrl+Z', C.t('undoMove'))
+        ])
+      ],
+      actions: [
+        { label: C.t('tutorial'), onClick: function () { ctx.showTutorial(TUT); } },
+        { label: C.t('done'), kind: 'primary' }
+      ]
+    });
+  }
+
+  // A 3×3 corner of the board with orbs: cells as [col, row, orbs, player]
+  function art(cells, arrows) {
+    var s = '<svg viewBox="0 0 220 120" width="100%"><rect x="50" y="4" width="120" height="112" rx="10" fill="var(--c-surface-2)"/>' +
+      '<g stroke="var(--cr-p1)" stroke-opacity=".5" stroke-width="1.5"><path d="M90 4v112M130 4v112M50 41h120M50 79h120"/></g>';
+    var spots = { 1: [[0, 0]], 2: [[-7, 0], [7, 0]], 3: [[0, -6], [-7, 5], [7, 5]] };
+    cells.forEach(function (c) {
+      var x = 70 + c[0] * 40, y = 22 + c[1] * 38;
+      (spots[c[2]] || spots[1]).forEach(function (o) {
+        s += '<circle cx="' + (x + o[0]) + '" cy="' + (y + o[1]) + '" r="6.5" fill="var(--cr-p' + c[3] + ')"/>';
+      });
+    });
+    (arrows || []).forEach(function (a) {
+      s += '<path d="M' + a + '" stroke="var(--cr-p1)" stroke-width="2.5" stroke-linecap="round" fill="none" marker-end="url(#crA)"/>';
+    });
+    s += '<defs><marker id="crA" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--cr-p1)"/></marker></defs>';
+    return s + '</svg>';
+  }
+  var TUT = [
+    { title: C.t('tutTitle1'), text: C.t('tutText1'), art: art([[0, 0, 1, 1], [1, 1, 2, 1], [2, 2, 1, 2], [2, 0, 1, 2]]) },
+    { title: C.t('tutTitle2'), text: C.t('tutText2'), art: art([[0, 0, 1, 1], [1, 0, 2, 2], [0, 1, 1, 1], [1, 1, 3, 1]], ['76 22h26', '70 30v22']) },
+    { title: C.t('tutTitle3'), text: C.t('tutText3'), art: art([[0, 0, 1, 1], [1, 0, 1, 1], [0, 1, 1, 1], [1, 1, 3, 1], [2, 1, 2, 1], [1, 2, 1, 1]], ['118 60h24', '110 68v24']) }
+  ];
+
+  /* -------------------------------------------------------------- start */
+
+  var saved = ctx.loadSave();
+  if (dailyDate) {
+    // The daily game has its own save slot, so a half-played day continues
+    if (validSave(saved) && saved.g.daily === dailyDate) restore(saved.g);
+    else newGame({ daily: dailyDate });
+    if (C.stats.dailyDone('chain', dailyDate)) {
+      var rec = C.stats.dailyOf(dailyDate).chain;
+      C.ui.toast({ icon: 'check', title: C.t('dailyDone'), sub: rec.label });
+    }
+    ctx.tutorialIfNew(TUT);
+  } else if (validSave(saved) && !saved.g.daily) {
+    if (saved.prefs) prefs = saved.prefs;
+    restore(saved.g);
+  } else {
+    newGame(fromPrefs());
+    ctx.tutorialIfNew(TUT);
+  }
+})();
+</script>
+</body>
+</html>

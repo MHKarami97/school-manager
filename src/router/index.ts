@@ -24,6 +24,17 @@ const routes = [
     component: () => import("@/views/ExperimentsView.vue"),
   },
   {
+    path: "/games",
+    alias: ["/games-hub", "/chogan"],
+    name: "games-hub",
+    component: () => import("@/views/games/GamesHubView.vue"),
+  },
+  {
+    path: "/games/play/:id",
+    name: "game-play",
+    component: () => import("@/views/games/ChoganGameView.vue"),
+  },
+  {
     path: "/games/rocket",
     name: "game-rocket",
     component: () => import("@/views/games/RocketGameView.vue"),

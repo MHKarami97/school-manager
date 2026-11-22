@@ -1,0 +1,1059 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#FBF6EF">
+<title>عنکبوت — چوگان</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../lib/chogan.css">
+<script src="../../lib/early.js"></script>
+<style>
+  /* a card face in the dark theme is a step lighter than the surface, as in Klondike,
+     so long columns don't read as one dark block */
+  :root { --ch-pface: var(--c-surface); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --ch-pface: var(--c-surface-3); } }
+  :root[data-theme="dark"] { --ch-pface: var(--c-surface-3); }
+
+  .sp-wrap { flex: 1; min-height: 0; align-self: stretch; display: flex; flex-direction: column; align-items: center; gap: var(--s-2); }
+  .sp-top { display: flex; gap: var(--s-2); flex-wrap: wrap; justify-content: center; align-items: center; }
+  /* a table is a physical thing: stock on the left, finished runs on the right, in every language */
+  .sp-board { direction: ltr; position: relative; flex: 1; min-height: 0; width: 100%; touch-action: none; user-select: none; -webkit-user-select: none; }
+  .sp-slot {
+    position: absolute; left: 0; top: 0; width: var(--cw); aspect-ratio: 5 / 7; box-sizing: border-box; border-radius: 6px;
+    border: 2px dashed var(--c-line); display: grid; place-items: center; color: var(--c-text-faint); font-size: calc(var(--cw) * .42);
+  }
+  .sp-slot--stock { border-style: solid; }
+  .sp-card { position: absolute; left: 0; top: 0; width: var(--cw); aspect-ratio: 5 / 7; transition: transform var(--sp-move, 180ms) var(--ease); }
+  .sp-card > .ch-pcard { --pw: var(--cw); position: absolute; top: 0; right: 0; bottom: 0; left: 0; cursor: pointer; }
+  .sp-card > .ch-pback { position: absolute; top: 0; right: 0; bottom: 0; left: 0; width: var(--cw); }
+  .sp-card--down > .ch-pcard, .sp-card:not(.sp-card--down) > .ch-pback { display: none; }
+  .sp-card--still, .sp-card--drag { transition: none; }
+  .sp-card--drag > * { box-shadow: var(--sh-3, var(--sh-2)); }
+  /* a dragged card gets its own layer, so a move only shifts it: unpromoted, every move
+     re-rasterised the cards and their shadow, about 110 ms of raster work a move in a
+     Chrome trace, and a player felt the drag lag (#532) */
+  .sp-card--drag { will-change: transform; }
+  .sp-card--down > .ch-pback { cursor: default; }
+  /* a card turned face up opens like a page (#407) */
+  .sp-flip > .ch-pcard { animation: sp-flip 240ms var(--ease); }
+  @keyframes sp-flip { from { transform: scaleX(0); } }
+  .sp-hint { position: absolute; left: 0; top: 0; width: var(--cw); aspect-ratio: 5 / 7; border-radius: 6px; box-sizing: border-box;
+    border: 3px solid var(--game); pointer-events: none; display: none; }
+  .sp-ring { position: absolute; left: 0; top: 0; width: var(--cw); border-radius: 8px; box-sizing: border-box; pointer-events: none; z-index: 4400;
+    border: 3px solid var(--game); box-shadow: 0 0 0 4px color-mix(in srgb, var(--game) 30%, transparent); animation: sp-ring 1400ms ease-out both; }
+  /* on the dark table the accent itself is too dim for a ring; the core's lightened copy reads */
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .sp-ring { border-color: var(--game-text-dark, var(--game)); } }
+  :root[data-theme="dark"] .sp-ring { border-color: var(--game-text-dark, var(--game)); }
+  @keyframes sp-ring { 0% { opacity: 0; } 15% { opacity: 1; } 75% { opacity: 1; } 100% { opacity: 0; } }
+  .sp-ghost { pointer-events: none; transition: none; filter: drop-shadow(0 4px 8px rgba(0, 0, 0, .35)); }
+  .sp-cascade { position: absolute; top: 0; right: 0; bottom: 0; left: 0; width: 100%; height: 100%; z-index: 5000; }
+  .sp-gear .ch-icon { pointer-events: none; }
+  /* a short, wide window (a phone on its side): the badges stand beside the table, so
+     the ten columns get the height (#472: the row above left the cards 30 px wide) */
+  .sp-wrap--side { flex-direction: row; align-items: stretch; }
+  .sp-wrap--side .sp-top { flex-direction: column; flex-wrap: nowrap; justify-content: center; }
+  /* the corner rank is what a player reads in a stack; on ten narrow columns it was 9 px */
+  .sp-card .ch-pcard__r { font-size: calc(var(--pw) * .4); left: 3px; letter-spacing: -.04em; }
+  /* every card carries this corner suit (#966); the narrow insets keep it clear of a "10" */
+  .sp-card .ch-pcard__mini { font-size: calc(var(--pw) * .24); right: 3px; }
+</style>
+</head>
+<body>
+<script src="../../version.js"></script>
+<script src="../../lib/chogan.js"></script>
+<script>
+/* ==== ENGINE START ==== */
+function SpiderEngineFactory() {
+  'use strict';
+
+  // 104 cards: eight sets of ace to king. A card is an id 0..103; its rank is id % 13
+  // and its suit is its set's, so one suit is eight sets of spades, two suits four of
+  // hearts and four of spades, four suits two of each. face() is the Chogan.cards
+  // index, rank * 4 + suit (suits ♣ ♦ ♥ ♠).
+  var SUITS = { 1: [3], 2: [2, 3], 4: [0, 1, 2, 3] };
+  var COLS = 10, RUNS = 8;
+
+  function rank(c) { return c % 13; }
+  function suitOf(n, c) { var l = SUITS[n]; return l[Math.floor(c / 13) % l.length]; }
+  function face(S, c) { return rank(c) * 4 + suitOf(S.suits, c); }
+
+  function shuffled(rnd) {
+    var d = [];
+    for (var i = 0; i < 104; i++) d.push(i);
+    for (var j = 103; j > 0; j--) { var k = Math.floor(rnd() * (j + 1)), t = d[j]; d[j] = d[k]; d[k] = t; }
+    return d;
+  }
+
+  // S: tab — ten columns, bottom first; down[i] — how many of column i lie face down
+  // (always the first ones); stock — top is the last card, dealt ten at a time; found —
+  // the finished runs, each king first; hist — the moves, each exactly reversible.
+  function deal(rnd, suits) {
+    suits = SUITS[suits] ? suits : 1;
+    var d = shuffled(rnd), S = { suits: suits, tab: [], down: [], stock: [], found: [], hist: [], undos: 0 };
+    var k = 0;
+    for (var i = 0; i < COLS; i++) {
+      var n = i < 4 ? 6 : 5;
+      S.tab.push(d.slice(k, k + n)); S.down.push(n - 1); k += n;
+    }
+    S.stock = d.slice(k);
+    return S;
+  }
+
+  function clone(S) {
+    return { suits: S.suits, tab: S.tab.map(function (c) { return c.slice(); }), down: S.down.slice(), stock: S.stock.slice(),
+      found: S.found.map(function (r) { return r.slice(); }), hist: S.hist.slice(), undos: S.undos };
+  }
+
+  function same(S, a, b) { return suitOf(S.suits, a) === suitOf(S.suits, b); }
+
+  // The first card of the run on top of a column that moves as one: face up, one
+  // suit, each a rank lower than the one under it. -1 for an empty column.
+  function runStart(S, col) {
+    var t = S.tab[col];
+    if (!t.length) return -1;
+    var i = t.length - 1;
+    while (i > S.down[col] && rank(t[i - 1]) === rank(t[i]) + 1 && same(S, t[i - 1], t[i])) i--;
+    return i;
+  }
+  function movable(S, col, i) {
+    var t = S.tab[col];
+    return !!t && i >= 0 && i < t.length && i >= runStart(S, col);
+  }
+  // any card a rank higher takes a run, whatever its suit; an empty column takes anything
+  function canTab(S, c, col) {
+    var t = S.tab[col];
+    if (!t.length) return true;
+    return rank(t[t.length - 1]) === rank(c) + 1;
+  }
+  // src: { col, i } — the card at index i and everything on it
+  function legal(S, src, dst) {
+    if (!src || dst < 0 || dst >= COLS || src.col === dst || !movable(S, src.col, src.i)) return false;
+    return canTab(S, S.tab[src.col][src.i], dst);
+  }
+
+  // A column whose last thirteen cards run king to ace in one suit gives them up as a
+  // finished run; the card they uncover turns over. Returns what happened, for undo.
+  function complete(S, col) {
+    var t = S.tab[col], n = t.length;
+    if (n < 13 || n - 13 < S.down[col]) return null;
+    var k = t[n - 13];
+    if (rank(k) !== 12) return null;
+    for (var i = n - 12; i < n; i++) if (rank(t[i]) !== rank(t[i - 1]) - 1 || !same(S, t[i], k)) return null;
+    S.found.push(t.splice(n - 13, 13));
+    var flip = false;
+    if (t.length && S.down[col] >= t.length) { S.down[col] = t.length - 1; flip = true; }
+    return { col: col, flip: flip };
+  }
+  function uncomplete(S, d) {
+    if (d.flip) S.down[d.col] = S.tab[d.col].length;
+    var run = S.found.pop();
+    for (var i = 0; i < run.length; i++) S.tab[d.col].push(run[i]);
+  }
+
+  // Returns the move it made, or null
+  function move(S, src, dst) {
+    if (!legal(S, src, dst)) return null;
+    var cards = S.tab[src.col].splice(src.i);
+    for (var i = 0; i < cards.length; i++) S.tab[dst].push(cards[i]);
+    var flip = false, t = S.tab[src.col];
+    if (t.length && S.down[src.col] >= t.length) { S.down[src.col] = t.length - 1; flip = true; }
+    var h = { t: 'mv', from: src.col, to: dst, n: cards.length, flip: flip, done: complete(S, dst) };
+    S.hist.push(h);
+    return h;
+  }
+
+  // One tap on the stock lays a card on every column. As in Windows, not while a
+  // column is empty — unless there are fewer cards on the table than columns, when no
+  // move can fill them all: the rule left such a game stuck, and the player had to undo
+  // runs they had built (#487). Returns 'deal', 'empty' or null (no stock left).
+  function canDeal(S) {
+    var cards = 0, holes = 0;
+    for (var c = 0; c < COLS; c++) { cards += S.tab[c].length; if (!S.tab[c].length) holes++; }
+    return !holes || cards < COLS;
+  }
+  function dealRow(S) {
+    if (!S.stock.length) return null;
+    if (!canDeal(S)) return 'empty';
+    for (var d = 0; d < COLS; d++) S.tab[d].push(S.stock.pop());
+    var done = [];
+    for (var e = 0; e < COLS; e++) { var r = complete(S, e); if (r) done.push(r); }
+    S.hist.push({ t: 'deal', done: done });
+    return 'deal';
+  }
+
+  function undo(S) {
+    var h = S.hist.pop();
+    if (!h) return null;
+    S.undos++;
+    if (h.t === 'deal') {
+      for (var i = h.done.length - 1; i >= 0; i--) uncomplete(S, h.done[i]);
+      for (var c = COLS - 1; c >= 0; c--) S.stock.push(S.tab[c].pop());
+      return h;
+    }
+    if (h.done) uncomplete(S, h.done);
+    if (h.flip) S.down[h.from] = S.tab[h.from].length;
+    var cards = S.tab[h.to].splice(S.tab[h.to].length - h.n, h.n);
+    for (var j = 0; j < cards.length; j++) S.tab[h.from].push(cards[j]);
+    return h;
+  }
+
+  function won(S) { return S.found.length === RUNS; }
+
+  // Where a tap sends cards: onto the next rank in the same suit, else onto the next
+  // rank in any suit, else into an empty column. A whole column is not moved into
+  // another empty one; that changes nothing.
+  function autoTarget(S, src) {
+    if (!movable(S, src.col, src.i)) return null;
+    var c = S.tab[src.col][src.i], any = -1, empty = -1;
+    for (var col = 0; col < COLS; col++) {
+      if (col === src.col) continue;
+      var t = S.tab[col];
+      if (!t.length) { if (empty < 0 && src.i > 0) empty = col; continue; }
+      var top = t[t.length - 1];
+      if (rank(top) !== rank(c) + 1) continue;
+      if (same(S, top, c)) return col;
+      if (any < 0) any = col;
+    }
+    return any >= 0 ? any : (empty >= 0 ? empty : null);
+  }
+
+  // A hint: a move that does some good. Best first: one that builds a run in the same
+  // suit, then one that turns a card over; with none of those, the stock. Each of these
+  // gains something the next hint cannot take back, so following hints never goes round
+  // in circles. The stock can't be dealt onto an empty column, so then the hint fills it
+  // with the whole top run of the tallest column: a whole run breaks no suit, so a later
+  // hint never has a reason to move it back. Null when nothing helps.
+  function hint(S) {
+    var best = null, score = 0, col, t;
+    for (col = 0; col < COLS; col++) {
+      t = S.tab[col];
+      if (!t.length) continue;
+      for (var i = runStart(S, col); i < t.length; i++) {
+        for (var d = 0; d < COLS; d++) {
+          if (!legal(S, { col: col, i: i }, d) || !S.tab[d].length) continue;
+          var top = S.tab[d][S.tab[d].length - 1], v = 0;
+          var under = i > 0 ? t[i - 1] : -1;
+          // breaking a run that already sits on its own suit only moves the problem
+          var sitsWell = i > S.down[col] && under >= 0 && rank(under) === rank(t[i]) + 1;
+          if (same(S, top, t[i]) && !(sitsWell && same(S, under, t[i]))) v = 3;
+          if (i === S.down[col] && i > 0) v = Math.max(v, 2);
+          if (v > score) { score = v; best = { src: { col: col, i: i }, dst: d }; }
+        }
+      }
+    }
+    if (best) return best;
+    if (!S.stock.length) return null;
+    var hole = -1, tall = -1;
+    for (col = 0; col < COLS; col++) {
+      if (!S.tab[col].length) { if (hole < 0) hole = col; }
+      else if (runStart(S, col) > 0 && (tall < 0 || S.tab[col].length > S.tab[tall].length)) tall = col;
+    }
+    if (hole < 0 || canDeal(S)) return { deal: true };
+    return tall < 0 ? null : { src: { col: tall, i: runStart(S, tall) }, dst: hole };
+  }
+
+  function validState(v) {
+    if (!v || !SUITS[v.suits] || !Array.isArray(v.tab) || v.tab.length !== COLS || !Array.isArray(v.down) || !Array.isArray(v.stock) || !Array.isArray(v.found)) return false;
+    var seen = {}, n = 0;
+    var add = function (c) { if (typeof c !== 'number' || c < 0 || c > 103 || c % 1 || seen[c]) return false; seen[c] = 1; n++; return true; };
+    for (var i = 0; i < COLS; i++) {
+      if (!Array.isArray(v.tab[i]) || !(v.down[i] >= 0) || (v.tab[i].length && v.down[i] >= v.tab[i].length) || (!v.tab[i].length && v.down[i] !== 0)) return false;
+      for (var j = 0; j < v.tab[i].length; j++) if (!add(v.tab[i][j])) return false;
+    }
+    for (var a = 0; a < v.stock.length; a++) if (!add(v.stock[a])) return false;
+    if (v.found.length > RUNS) return false;
+    for (var f = 0; f < v.found.length; f++) {
+      if (!Array.isArray(v.found[f]) || v.found[f].length !== 13) return false;
+      for (var r = 0; r < 13; r++) if (!add(v.found[f][r])) return false;
+    }
+    return n === 104 && v.stock.length % COLS === 0;
+  }
+
+  return {
+    COLS: COLS, RUNS: RUNS, rank: rank, suitOf: suitOf, face: face, deal: deal, clone: clone, runStart: runStart, movable: movable,
+    canTab: canTab, legal: legal, move: move, dealRow: dealRow, undo: undo, won: won, autoTarget: autoTarget, hint: hint,
+    validState: validState, canDeal: canDeal
+  };
+}
+if (typeof module !== 'undefined' && module.exports) module.exports = SpiderEngineFactory;
+/* ==== ENGINE END ==== */
+</script>
+<script>
+(function () {
+  'use strict';
+  var C = window.Chogan, el = C.el;
+  var E = SpiderEngineFactory();
+
+  C.boot({});
+  var ctx = C.game({
+    id: 'spider',
+    name: { fa: 'عنکبوت', en: 'Spider', zh: '蜘蛛纸牌', de: 'Spider', es: 'Spider', pl: 'Pająk', fr: 'Araignée', ar: 'العنكبوت', hi: 'स्पाइडर' },
+    accent: '#55507A',
+    mood: 'sudoku',
+    cardSpeed: true,
+    strings: {
+      fa: {
+        table: 'میز ورق', moves: 'حرکت', movesN: '{n} حرکت', dailySp: 'عنکبوت روزانه', newDeal: 'دست تازه', restartDaily: 'از اول همین دست',
+        undoMove: 'برگرداندن حرکت', suitsRule: 'تعداد خال', suits1: 'یک خال', suits2: 'دو خال', suits4: 'چهار خال',
+        suitsNote: 'از دست بعد اعمال می‌شود. روزانه همیشه یک خال است.', suitsMode: 'خال‌ها', stock: 'دسته', runsN: '{n} از ۸ ردیف',
+        emptyCol: 'پیش از پخش کارت تازه، هر ستون باید دست‌کم یک کارت داشته باشد.', showHint: 'راهنمایی', noHint: 'حرکت مفیدی نمانده. برگرداندن را امتحان کن.',
+        kbSpot: 'رفتن بین دسته و ستون‌ها', kbAuto: 'فرستادن به بهترین جا', kbDeal: 'پخش یک ردیف از دسته', kbHint: 'راهنمایی', kbNew: 'دست تازه',
+        rules: 'هر خال را در ستون‌ها از شاه تا آس پشت سر هم بچین؛ ردیف کامل خودش از میز برداشته می‌شود و با برداشتن هر هشت ردیف می‌بری. هر کارت روی کارتی یک رتبه بالاتر می‌نشیند، از هر خالی، ولی فقط کارت‌های پشت سر هم از یک خال با هم جابه‌جا می‌شوند. ستون خالی هر کارتی را می‌گیرد. زدن دسته روی هر ستون یک کارت می‌گذارد، به شرطی که ستون خالی نباشد؛ مگر کارت‌های روی میز از تعداد ستون‌ها کمتر باشد. روزانه برای همه یک دست است و همیشه یک خال.',
+        tutTitle1: 'هدف', tutText1: 'هر خال را در ستون‌ها از شاه تا آس پشت سر هم بچین. ردیف کامل خودش برداشته می‌شود؛ هشت ردیف یعنی بُرد.',
+        tutTitle2: 'ستون‌ها', tutText2: 'کارت روی کارتی یک رتبه بالاتر می‌نشیند، از هر خالی. فقط کارت‌های پشت سر هم از یک خال با هم جابه‌جا می‌شوند.',
+        tutTitle3: 'دسته', tutText3: 'وقتی گیر کردی دسته را بزن: روی هر ستون یک کارت تازه می‌آید. برگرداندن بی‌حد است.'
+      },
+      en: {
+        table: 'Card table', moves: 'Moves', movesN: '{n} moves', dailySp: 'Daily Spider', newDeal: 'New deal', restartDaily: 'Restart this deal',
+        undoMove: 'Undo move', suitsRule: 'Suits', suits1: 'One suit', suits2: 'Two suits', suits4: 'Four suits',
+        suitsNote: 'Applies from the next deal. The daily deal is always one suit.', suitsMode: 'Suits', stock: 'Stock', runsN: '{n} of 8 runs',
+        emptyCol: 'Every column needs a card before you deal a new row.', showHint: 'Hint', noHint: 'No useful move left. Try undo.',
+        kbSpot: 'Move between the stock and the columns', kbAuto: 'Send to the best place', kbDeal: 'Deal a row from the stock', kbHint: 'Hint', kbNew: 'New deal',
+        rules: 'Build each suit down in the columns from king to ace; a full run leaves the table by itself, and clearing all eight wins. A card goes on one a rank higher of any suit, but only a run of one suit moves together. An empty column takes any card. A tap on the stock deals a card onto every column, as long as none is empty, unless there are fewer cards on the table than columns. The daily deal is the same for everyone and always one suit.',
+        tutTitle1: 'The goal', tutText1: 'Build each suit down in the columns from king to ace. A full run leaves by itself; eight runs win.',
+        tutTitle2: 'Columns', tutText2: 'A card goes on one a rank higher, of any suit. Only a run of one suit moves together.',
+        tutTitle3: 'The stock', tutText3: 'Stuck? Tap the stock: every column gets a new card. Undo as often as you like.'
+      },
+      pl: {
+        table: 'Stół karciany', moves: 'Ruchy', movesN: '{n} ruchów', dailySp: 'Codzienny pasjans Pająk', newDeal: 'Rozdaj nowe karty', restartDaily: 'Zacznij to rozdanie od nowa',
+        undoMove: 'Cofnij ruch', suitsRule: 'Kolory', suits1: 'Jedna barwa', suits2: 'Dwie barwy', suits4: 'Cztery barwy',
+        suitsNote: 'Obowiązuje od następnego rozdania. Codzienne rozdanie zawsze ma jedną barwę.', suitsMode: 'Kolory', stock: 'Stos główny', runsN: 'Sekwencje: {n} z 8',
+        emptyCol: 'Każda kolumna musi zawierać kartę, zanim będzie można rozdać nowy rząd.', showHint: 'Podpowiedź', noHint: 'Brak użytecznych ruchów. Spróbuj cofnąć ruch.',
+        kbSpot: 'Przemieść między stosem głównym a kolumnami', kbAuto: 'Wyślij w najlepsze miejsce', kbDeal: 'Rozdaj rząd ze stosu głównego', kbHint: 'Podpowiedź', kbNew: 'Rozdaj nowe karty',
+        rules: 'Układaj karty w kolumnach malejąco od króla do asa; pełna sekwencja automatycznie schodzi ze stołu, a wyczyszczenie wszystkich ośmiu oznacza wygraną. Kartę kładzie się na kartę o jeden stopień wyższą w dowolnym kolorze, ale tylko sekwencja w tej samej barwie może być przenoszona razem. Pusta kolumna przyjmuje dowolną kartę. Dotknięcie stosu głównego rozdaje po jednej karcie do każdej kolumny, o ile żadna z nich nie jest pusta (chyba że na stole znajduje się mniej kart niż jest kolumn). Codzienne rozdanie jest takie samo dla wszystkich i zawsze ma jedną barwę.',
+        tutTitle1: 'Cel gry', tutText1: 'Układaj karty w kolumnach malejąco od króla do asa. Pełna sekwencja automatycznie schodzi z planszy; ułożenie ośmiu oznacza wygraną.',
+        tutTitle2: 'Kolumny', tutText2: 'Kartę kładzie się na kartę o jeden stopień wyższą w dowolnym kolorze. Tylko sekwencja w tej samej barwie może być przenoszona razem.',
+        tutTitle3: 'Stos główny', tutText3: 'Utknąłeś? Dotknij stosu głównego: każda kolumna otrzyma nową kartę. Możesz cofać ruchy bez ograniczeń.'
+      },
+      fr: {
+        table: 'Table de jeu', moves: 'Coups', movesN: '{n} coups', dailySp: 'Araignée du jour', newDeal: 'Nouvelle donne', restartDaily: 'Recommencer cette donne',
+        undoMove: 'Annuler le coup', suitsRule: 'Couleurs', suits1: 'Une couleur', suits2: 'Deux couleurs', suits4: 'Quatre couleurs',
+        suitsNote: 'S’applique dès la prochaine donne. La donne du jour est toujours à une couleur.', suitsMode: 'Couleurs', stock: 'Talon', runsN: '{n} suites sur 8',
+        emptyCol: 'Chaque colonne doit avoir une carte avant de distribuer une nouvelle rangée.', showHint: 'Indice', noHint: 'Plus de coup utile. Essaie d’annuler.',
+        kbSpot: 'Passer du talon aux colonnes', kbAuto: 'Envoyer au meilleur endroit', kbDeal: 'Distribuer une rangée du talon', kbHint: 'Indice', kbNew: 'Nouvelle donne',
+        rules: 'Construis chaque couleur dans les colonnes en descendant, du roi à l’as ; une suite complète quitte la table toute seule, et en retirer huit fait gagner. Une carte va sur une carte d’un rang au-dessus, de n’importe quelle couleur, mais seule une suite d’une même couleur se déplace en bloc. Une colonne vide accepte n’importe quelle carte. Toucher le talon distribue une carte sur chaque colonne, si aucune n’est vide, sauf s’il y a moins de cartes sur la table que de colonnes. La donne du jour est la même pour tous et toujours à une couleur.',
+        tutTitle1: 'Le but', tutText1: 'Construis chaque couleur dans les colonnes, du roi à l’as. Une suite complète part toute seule ; huit suites font gagner.',
+        tutTitle2: 'Les colonnes', tutText2: 'Une carte va sur une carte d’un rang au-dessus, de n’importe quelle couleur. Seule une suite d’une même couleur se déplace en bloc.',
+        tutTitle3: 'Le talon', tutText3: 'Bloqué ? Touche le talon : chaque colonne reçoit une nouvelle carte. Annule autant que tu veux.'
+      },
+      ar: {
+        table: 'طاولة الورق', moves: 'الحركات', movesN: '{n} حركة', dailySp: 'العنكبوت اليومية', newDeal: 'توزيع جديد', restartDaily: 'أعد هذا التوزيع',
+        undoMove: 'تراجع', suitsRule: 'الأنواع', suits1: 'نوع واحد', suits2: 'نوعان', suits4: 'أربعة أنواع',
+        suitsNote: 'يسري من التوزيع التالي. التوزيع اليومي دائمًا بنوع واحد.', suitsMode: 'الأنواع', stock: 'الرصيد', runsN: '{n} من 8 سلاسل',
+        emptyCol: 'يجب أن يكون في كل عمود ورقة قبل توزيع صف جديد.', showHint: 'تلميح', noHint: 'لا حركة مفيدة متبقية. جرّب التراجع.',
+        kbSpot: 'تنقل بين الرصيد والأعمدة', kbAuto: 'أرسل إلى أفضل مكان', kbDeal: 'وزّع صفًا من الرصيد', kbHint: 'تلميح', kbNew: 'توزيع جديد',
+        rules: 'رتّب كل نوع تنازليًا في الأعمدة من الملك إلى الآس، والسلسلة الكاملة تغادر الطاولة وحدها، وإزالة السلاسل الثماني كلها تعني الفوز. توضع الورقة على ورقة أعلى منها بدرجة من أي نوع، لكن لا تتحرك معًا إلا سلسلة من نوع واحد. العمود الفارغ يقبل أي ورقة. النقر على الرصيد يوزع ورقة على كل عمود، بشرط ألا يكون أي عمود فارغًا، إلا إذا كانت الأوراق على الطاولة أقل من الأعمدة. التوزيع اليومي واحد للجميع ودائمًا بنوع واحد.',
+        tutTitle1: 'الهدف', tutText1: 'رتّب كل نوع تنازليًا في الأعمدة من الملك إلى الآس. السلسلة الكاملة تغادر وحدها، وثماني سلاسل تعني الفوز.',
+        tutTitle2: 'الأعمدة', tutText2: 'توضع الورقة على ورقة أعلى منها بدرجة، من أي نوع. لا تتحرك معًا إلا سلسلة من نوع واحد.',
+        tutTitle3: 'الرصيد', tutText3: 'علقت؟ انقر الرصيد: يحصل كل عمود على ورقة جديدة. تراجع كلما شئت.'
+      },
+      hi: {
+        table: 'ताश की मेज़', moves: 'चालें', movesN: '{n} चालें', dailySp: 'रोज़ का स्पाइडर', newDeal: 'नई बाज़ी', restartDaily: 'यही बाज़ी फिर से',
+        undoMove: 'चाल वापस', suitsRule: 'रंग', suits1: 'एक रंग', suits2: 'दो रंग', suits4: 'चार रंग',
+        suitsNote: 'अगली बाज़ी से लागू होगा। रोज़ की बाज़ी हमेशा एक रंग की होती है।', suitsMode: 'रंग', stock: 'गड्डी', runsN: '8 में से {n} क्रम',
+        emptyCol: 'नई पंक्ति बाँटने से पहले हर कतार में एक पत्ता होना चाहिए।', showHint: 'संकेत', noHint: 'कोई काम की चाल नहीं बची। वापस लेकर देखें।',
+        kbSpot: 'गड्डी और कतारों के बीच जाएँ', kbAuto: 'सबसे अच्छी जगह भेजें', kbDeal: 'गड्डी से एक पंक्ति बाँटें', kbHint: 'संकेत', kbNew: 'नई बाज़ी',
+        rules: 'कतारों में हर रंग को बादशाह से इक्के तक उतरते क्रम में जमाएँ; पूरा क्रम अपने आप मेज़ से हट जाता है, और आठों हटाने पर आप जीतते हैं। कोई पत्ता किसी भी रंग के एक दर्जा ऊँचे पत्ते पर रखा जा सकता है, पर साथ में सिर्फ़ एक ही रंग का क्रम खिसकता है। ख़ाली कतार में कोई भी पत्ता आ सकता है। गड्डी को छूने पर हर कतार पर एक पत्ता बँटता है, बशर्ते कोई कतार ख़ाली न हो, जब तक मेज़ पर कतारों से कम पत्ते न हों। रोज़ की बाज़ी सबके लिए एक जैसी और हमेशा एक रंग की होती है।',
+        tutTitle1: 'लक्ष्य', tutText1: 'कतारों में हर रंग को बादशाह से इक्के तक जमाएँ। पूरा क्रम अपने आप हट जाता है; आठ क्रम पर जीत।',
+        tutTitle2: 'कतारें', tutText2: 'पत्ता किसी भी रंग के एक दर्जा ऊँचे पत्ते पर जाता है। साथ में सिर्फ़ एक ही रंग का क्रम खिसकता है।',
+        tutTitle3: 'गड्डी', tutText3: 'अटक गए? गड्डी छुएँ: हर कतार को नया पत्ता मिलता है। जितनी बार चाहें वापस लें।'
+      },
+      zh: {
+        table: '牌桌', moves: '步数', movesN: '{n} 步', dailySp: '每日蜘蛛纸牌', newDeal: '新一局', restartDaily: '重开本局',
+        undoMove: '撤销', suitsRule: '花色', suits1: '单色', suits2: '双色', suits4: '四色',
+        suitsNote: '从下一局开始生效。每日挑战总是单色。', suitsMode: '花色', stock: '牌堆', runsN: '{n}/8 组',
+        emptyCol: '发新一行之前，每一列都要至少有一张牌。', showHint: '提示', noHint: '没有有用的走法了。试试撤销。',
+        kbSpot: '在牌堆和各列之间移动', kbAuto: '送到最佳位置', kbDeal: '从牌堆发一行', kbHint: '提示', kbNew: '新一局',
+        rules: '在各列中把每种花色从K到A依次排好；排满一组会自动移走，移走全部八组即获胜。牌可以放在大一点的任何花色的牌上，但只有同一花色的连续牌才能一起移动。空列可以放任何牌。点牌堆会给每一列发一张牌，前提是没有空列；但如果桌上的牌比列数还少，就可以直接发牌。每日挑战人人相同，并且总是单色。',
+        tutTitle1: '目标', tutText1: '在各列中把每种花色从K到A依次排好。排满一组自动移走；八组即获胜。',
+        tutTitle2: '各列', tutText2: '牌放在大一点的牌上，花色不限。只有同一花色的连续牌才能一起移动。',
+        tutTitle3: '牌堆', tutText3: '卡住了？点牌堆：每一列都会发一张新牌。撤销次数不限。'
+      },
+      de: {
+        table: 'Kartentisch', moves: 'Züge', movesN: '{n} Züge', dailySp: 'Tägliches Spider', newDeal: 'Neues Spiel', restartDaily: 'Dieses Spiel neu starten',
+        undoMove: 'Zug zurück', suitsRule: 'Farben', suits1: 'Eine Farbe', suits2: 'Zwei Farben', suits4: 'Vier Farben',
+        suitsNote: 'Gilt ab dem nächsten Spiel. Das Tagesspiel hat immer eine Farbe.', suitsMode: 'Farben', stock: 'Stapel', runsN: '{n} von 8 Reihen',
+        emptyCol: 'Jede Spalte braucht eine Karte, bevor du eine neue Reihe gibst.', showHint: 'Tipp', noHint: 'Kein nützlicher Zug mehr. Versuch es mit Zurück.',
+        kbSpot: 'Zwischen Stapel und Spalten wechseln', kbAuto: 'An den besten Platz legen', kbDeal: 'Eine Reihe vom Stapel geben', kbHint: 'Tipp', kbNew: 'Neues Spiel',
+        rules: 'Lege in den Spalten jede Farbe vom König bis zum Ass ab; eine volle Reihe verlässt den Tisch von selbst, und wer alle acht abräumt, gewinnt. Eine Karte kommt auf eine um eins höhere jeder Farbe, aber nur eine Reihe einer Farbe zieht zusammen. Eine leere Spalte nimmt jede Karte. Ein Tipp auf den Stapel gibt jeder Spalte eine Karte, solange keine leer ist, außer es liegen weniger Karten als Spalten auf dem Tisch. Das Tagesspiel ist für alle gleich und hat immer eine Farbe.',
+        tutTitle1: 'Das Ziel', tutText1: 'Lege in den Spalten jede Farbe vom König bis zum Ass ab. Eine volle Reihe geht von selbst; acht Reihen gewinnen.',
+        tutTitle2: 'Spalten', tutText2: 'Eine Karte kommt auf eine um eins höhere, egal welcher Farbe. Nur eine Reihe einer Farbe zieht zusammen.',
+        tutTitle3: 'Der Stapel', tutText3: 'Fest? Tippe auf den Stapel: Jede Spalte bekommt eine neue Karte. Zurücknehmen so oft du willst.'
+      },
+      es: {
+        table: 'Mesa de cartas', moves: 'Movimientos', movesN: '{n} movimientos', dailySp: 'Spider diario', newDeal: 'Nueva partida', restartDaily: 'Reiniciar esta partida',
+        undoMove: 'Deshacer', suitsRule: 'Palos', suits1: 'Un palo', suits2: 'Dos palos', suits4: 'Cuatro palos',
+        suitsNote: 'Se aplica desde la próxima partida. La diaria siempre es de un palo.', suitsMode: 'Palos', stock: 'Mazo', runsN: '{n} de 8 escaleras',
+        emptyCol: 'Cada columna necesita una carta antes de repartir una fila nueva.', showHint: 'Pista', noHint: 'No queda ningún movimiento útil. Prueba a deshacer.',
+        kbSpot: 'Moverse entre el mazo y las columnas', kbAuto: 'Enviar al mejor sitio', kbDeal: 'Repartir una fila del mazo', kbHint: 'Pista', kbNew: 'Nueva partida',
+        rules: 'Ordena cada palo en las columnas del rey al as; una escalera completa sale sola de la mesa, y al quitar las ocho ganas. Una carta va sobre otra un punto más alta de cualquier palo, pero solo una escalera de un mismo palo se mueve junta. Una columna vacía admite cualquier carta. Un toque en el mazo reparte una carta en cada columna, siempre que ninguna esté vacía, salvo que haya menos cartas en la mesa que columnas. La partida diaria es la misma para todos y siempre de un palo.',
+        tutTitle1: 'El objetivo', tutText1: 'Ordena cada palo en las columnas del rey al as. Una escalera completa sale sola; ocho escaleras ganan.',
+        tutTitle2: 'Columnas', tutText2: 'Una carta va sobre otra un punto más alta, de cualquier palo. Solo una escalera de un mismo palo se mueve junta.',
+        tutTitle3: 'El mazo', tutText3: '¿Atascado? Toca el mazo: cada columna recibe una carta nueva. Deshaz tantas veces como quieras.'
+      }
+    }
+  });
+
+  var params = new URLSearchParams(location.search);
+  var dailyDate = params.get('daily');
+  var prefs = ctx.store.get('prefs', { suits: 1 });
+  if ([1, 2, 4].indexOf(prefs.suits) < 0) prefs.suits = 1;
+
+  var S = null, L = null, nodes = {}, press = null, focus = -1, kbOn = false, pausedAt = 0, movesEl = null, runsEl = null;
+
+  var board = el('div', { class: 'sp-board', role: 'application', 'aria-label': C.t('table') });
+  var top = el('div', { class: 'sp-top' });
+  var wrap = el('div', { class: 'sp-wrap' }, [top, board]);
+  var slots = { stock: el('div', { class: 'sp-slot sp-slot--stock', 'aria-label': C.t('stock') }) };
+  for (var f0 = 0; f0 < E.RUNS; f0++) slots['f' + f0] = el('div', { class: 'sp-slot' });
+  for (var c0 = 0; c0 < E.COLS; c0++) slots['t' + c0] = el('div', { class: 'sp-slot' });
+  Object.keys(slots).forEach(function (k) { board.appendChild(slots[k]); });
+  var hintBox = el('div', { class: 'sp-hint' });
+  board.appendChild(hintBox);
+
+  ctx.button({ icon: 'help', label: C.t('help'), onClick: showHelp });
+  ctx.button({ icon: 'undo', label: C.t('undoMove'), onClick: undo });
+  ctx.button({ icon: 'refresh', label: C.t('newDeal'), onClick: askNew });
+  ctx.main.appendChild(wrap);
+  ctx.mount();
+
+  /* ------------------------------------------------------------ start */
+
+  function start(daily) {
+    S = E.deal(daily ? C.daily('spider', daily).rng : Math.random, daily ? 1 : prefs.suits);
+    S.daily = daily || null;
+    S.done = false;
+    S.startedAt = Date.now();
+    build();
+    dealIn();
+  }
+  function resume(v) {
+    S = { suits: v.suits, tab: v.tab, down: v.down, stock: v.stock, found: v.found, hist: v.hist || [], undos: v.undos || 0,
+      daily: v.daily || null, done: false, startedAt: Date.now() - (v.elapsed || 0) };
+    build();
+    render(true);
+  }
+
+  // One node per card for the whole game, so a move is a change of position that
+  // the browser animates, and a card is never redrawn from scratch
+  function build() {
+    Object.keys(nodes).forEach(function (k) { nodes[k].remove(); });
+    nodes = {};
+    for (var c = 0; c < 104; c++) {
+      var fc = E.face(S, c), face = C.cards.el(fc);
+      // A column shows only the top strip of each card, and number cards carried
+      // their suit only in the middle, so with four suits a 7 of clubs and a 7 of
+      // spades looked the same in a stack (#966). Every card shows its suit in the corner.
+      if (C.cards.rank(fc) < 10) face.insertBefore(el('span', { class: 'ch-pcard__mini', text: C.cards.GLYPH[C.cards.suit(fc)] }), face.children[1]);
+      var n = el('div', { class: 'sp-card sp-card--still' }, [face, C.cards.back()]);
+      n.firstChild.tabIndex = -1;
+      n._c = c;
+      nodes[c] = n;
+      board.appendChild(n);
+    }
+    renderTop();
+  }
+
+  function renderTop() {
+    top.innerHTML = '';
+    if (S.daily) {
+      top.appendChild(el('span', { class: 'ch-badge ch-badge--accent' },
+        [C.icon('calendar', 14), el('span', { text: C.t('dailySp') + ' — ' + C.num(S.daily) })]));
+    }
+    // the number of suits is behind the gear and on the result; a badge for it as well
+    // pushed the gear onto a line of its own on an English phone
+    movesEl = el('span', { class: 'ch-badge' });
+    runsEl = el('span', { class: 'ch-badge' });
+    top.appendChild(movesEl);
+    top.appendChild(runsEl);
+    var hb = el('button', { class: 'ch-iconbtn sp-gear', type: 'button', 'aria-label': C.t('showHint'), title: C.t('showHint') }, [C.icon('bulb', 20)]);
+    hb.addEventListener('click', showHint);
+    top.appendChild(hb);
+    top.appendChild(C.cards.backPicker());
+    // options live behind a gear in the top row: a fourth button in the game bar cut the title (#409)
+    var gear = el('button', { class: 'ch-iconbtn sp-gear', type: 'button', 'aria-label': C.t('settings'), title: C.t('settings') }, [C.icon('gear', 20)]);
+    gear.addEventListener('click', showSettings);
+    top.appendChild(gear);
+    setCounts();
+  }
+  function setCounts() {
+    if (movesEl) movesEl.textContent = C.t('movesN', { n: C.num(S.hist.length) });
+    if (runsEl) runsEl.textContent = C.t('runsN', { n: C.num(S.found.length) });
+  }
+
+  /* ----------------------------------------------------------- layout */
+
+  // A short, wide window puts the stock in a column of its own on the left and the
+  // finished runs on the right, both at the bottom as in Windows (#504: at the top they
+  // read as two more columns of the table), so the ten columns start at the top and get
+  // the whole height; otherwise both sit in a row above the columns.
+  function sideWanted() { return wrap.clientWidth > wrap.clientHeight * 1.9; }
+  function layout() {
+    var side = sideWanted();
+    wrap.classList.toggle('sp-wrap--side', side);
+    var W = board.clientWidth, H = board.clientHeight;
+    if (!W || !H) return null;
+    var n = side ? 12 : 10, wide = Math.min(W, side ? 1100 : 900);
+    var gap = Math.max(2, Math.round(wide * (side ? 0.008 : 0.006)));
+    var cw = Math.floor((wide - gap * (n + 1)) / n);
+    // the height has to fit too: in a row, the stock above and a column often five cards
+    // tall; beside, a column and the room for it to grow
+    cw = Math.max(24, Math.min(cw, 96, Math.floor(side ? (H - 2 * gap) / 1.4 / 2.4 : H / 5 / 1.4)));
+    var ch = Math.round(cw * 1.4), bw = cw * n + gap * (n - 1);
+    board.style.setProperty('--cw', cw + 'px');
+    board.style.setProperty('--sp-move', C.cards.pace(180) + 'ms');
+    return { W: W, H: H, gap: gap, cw: cw, ch: ch, x0: Math.round((W - bw) / 2), ty: gap, cy: side ? gap : gap * 3 + ch, side: side, off: side ? 1 : 0,
+      // ten narrow columns on a phone leave the room below empty, so a card shows more of
+      // itself than in Klondike; a long column closes up again in offsets()
+      up: Math.max(16, Math.round(ch * 0.4)), dn: Math.max(6, Math.round(ch * 0.14)) };
+  }
+  function colX(i) { return L.x0 + i * (L.cw + L.gap); }
+  function tabX(col) { return colX(col + L.off); }
+  // the bottom card's top in a column of its own beside the table
+  function bottomY() { return L.H - L.gap - L.ch; }
+  // the stock's empty slot, which the hint and the keyboard ring too
+  function stockSpot() { return { x: colX(0), y: L.side ? bottomY() : L.ty }; }
+  // the stock: one back per deal left, fanned right in a row, up from the bottom in a
+  // column of its own, so a deal takes the top back and the pile stays on the floor
+  function stockPos(g) {
+    var step = Math.max(4, Math.round(L.cw * 0.16));
+    return L.side ? { x: colX(0), y: bottomY() - g * step } : { x: colX(0) + g * step, y: L.ty };
+  }
+  // a long column closes up so its last card stays on the board
+  function offsets(col) {
+    var t = S.tab[col], d = S.down[col], up = L.up, dn = L.dn;
+    var need = d * dn + Math.max(0, t.length - d - 1) * up;
+    var room = L.H - L.cy - L.ch - 4;
+    if (need > room && need > 0) { var k = room / need; up = Math.max(8, up * k); dn = Math.max(2, dn * k); }
+    return { up: up, dn: dn };
+  }
+  // the finished runs fill the slots from the right, as in Windows; beside the table
+  // they pile up from the bottom of the right-hand column
+  function foundPos(k) { return L.side ? { x: colX(11), y: bottomY() - k * Math.round(L.ch * 0.16) } : { x: colX(E.COLS - 1 - k), y: L.ty }; }
+
+  // Where every card sits: { x, y, z, down, under }. The stock shows one back per deal
+  // left; a card under others on the same spot is hidden, so stacked shadows don't add up.
+  function positions() {
+    var P = {}, i, z = 1;
+    for (i = 0; i < S.stock.length; i++) {
+      var sp = stockPos(Math.floor(i / 10));
+      P[S.stock[i]] = { x: sp.x, y: sp.y, z: z++, down: true, under: i % 10 !== 9 };
+    }
+    for (var f = 0; f < S.found.length; f++) {
+      var run = S.found[f];
+      // the king lies on top, as the run was lifted king first
+      var fp = foundPos(f);
+      for (i = 0; i < 13; i++) P[run[i]] = { x: fp.x, y: fp.y, z: 100 + f * 20 + (13 - i), down: false, under: i > 1 };
+    }
+    for (var col = 0; col < E.COLS; col++) {
+      var t = S.tab[col], o = offsets(col), y = L.cy;
+      for (i = 0; i < t.length; i++) {
+        var dn = i < S.down[col];
+        P[t[i]] = { x: tabX(col), y: Math.round(y), z: 300 + i, down: dn };
+        y += dn ? o.dn : o.up;
+      }
+    }
+    return P;
+  }
+
+  // still: no animation (first paint, resize). stagger: cards that set off one after
+  // another (a dealt row), in the order given.
+  function render(still, stagger) {
+    L = layout();
+    if (!L || !S) return;
+    var ss = stockSpot();
+    slots.stock.style.transform = 'translate(' + ss.x + 'px,' + ss.y + 'px)';
+    slots.stock.style.opacity = S.stock.length ? 0 : 1;
+    // beside the table one empty slot stands for the pile of runs
+    for (var f = 0; f < E.RUNS; f++) { var fp = foundPos(f); slots['f' + f].style.transform = 'translate(' + fp.x + 'px,' + fp.y + 'px)'; slots['f' + f].style.visibility = L.side && f ? 'hidden' : ''; }
+    for (var c = 0; c < E.COLS; c++) slots['t' + c].style.transform = 'translate(' + tabX(c) + 'px,' + L.cy + 'px)';
+    var P = positions(), moved = [], order = {};
+    if (stagger) stagger.forEach(function (id, i) { order[id] = i; });
+    for (var k = 0; k < 104; k++) {
+      var n = nodes[k], p = P[k];
+      if (!p) continue;
+      // the browser keeps the value as "translate(Xpx, Ypx)"; compared without the
+      // space, every card looked moved (Klondike's lesson)
+      var t = 'translate(' + p.x + 'px, ' + p.y + 'px)';
+      if (n.style.transform !== t) moved.push(n);
+      n.classList.toggle('sp-card--still', !!still);
+      var wasDown = n.classList.contains('sp-card--down');
+      n.classList.toggle('sp-card--down', p.down);
+      var delay = !still && order[k] !== undefined ? C.cards.pace(order[k] * 40) : 0;
+      n.style.transitionDelay = delay ? delay + 'ms' : '';
+      if (wasDown && !p.down && !still && !C.ui.reduceMotion()) {
+        n.classList.remove('sp-flip'); void n.offsetWidth; n.classList.add('sp-flip');
+        n.firstChild.style.animationDelay = delay ? delay + 'ms' : '';
+      }
+      n.style.transform = t;
+      n.style.zIndex = p.z;
+      n.style.visibility = p.under ? 'hidden' : '';
+    }
+    // cards on the move fly above the rest, then take their places in the pile
+    if (!still) moved.forEach(function (n, i) { n.style.zIndex = 1000 + i; });
+    clearTimeout(render.zt);
+    render.zt = setTimeout(function () { if (!S) return; var P2 = positions(); for (var q in P2) nodes[q].style.zIndex = P2[q].z; },
+      C.cards.pace(220 + (stagger ? stagger.length * 40 : 0)));
+    setCounts();
+    showFocus();
+  }
+
+  // A new deal: the cards fly out of the stock to their columns one by one, and the
+  // ten top cards turn over as they land (#398's helper)
+  function dealIn() {
+    render(true);
+    if (C.ui.reduceMotion() || !L) return;
+    var from = slots.stock.getBoundingClientRect(), n = 0;
+    for (var row = 0; row < 6; row++) {
+      for (var col = 0; col < E.COLS; col++) {
+        var c = S.tab[col][row];
+        if (c === undefined) continue;
+        C.ui.fly(nodes[c], from, { ms: 200, delay: n++ * 18, flip: row === S.down[col] });
+      }
+    }
+  }
+
+  /* ------------------------------------------------------------ moves */
+
+  // where a card is: a source for the engine, or null
+  function sourceOf(c) {
+    for (var col = 0; col < E.COLS; col++) {
+      var i = S.tab[col].indexOf(c);
+      if (i >= 0) return { col: col, i: i };
+    }
+    return null;
+  }
+  function inStock(c) { return S.stock.indexOf(c) >= 0; }
+
+  function blocked() { return !S || S.done || !!document.querySelector('.ch-scrim'); }
+
+  function dealRow() {
+    if (blocked()) return;
+    var row = S.stock.slice(-10).reverse();
+    var r = E.dealRow(S);
+    if (r === 'empty') { C.feedback('bad'); C.ui.toast({ icon: 'info', title: C.t('emptyCol') }); return; }
+    if (!r) { C.feedback('bad'); return; }
+    C.audio.sfx('shuffle');
+    after(row);
+  }
+
+  function tap(src) {
+    var dst = E.autoTarget(S, src);
+    if (dst === null) {
+      C.feedback('bad');
+      C.ui.shake(nodes[S.tab[src.col][src.i]]);
+      return;
+    }
+    doMove(src, dst);
+  }
+
+  function doMove(src, dst) {
+    var h = E.move(S, src, dst);
+    if (!h) { C.feedback('bad'); render(); return false; }
+    C.audio.sfx('place');
+    C.haptic('tap');
+    after();
+    return true;
+  }
+
+  // a finished run leaves with a pop and a few sparks where it lands
+  function after(stagger) {
+    var before = after.runs || 0;
+    render(false, stagger);
+    if (S.found.length > before) {
+      C.audio.sfx('pop');
+      var k = S.found.length - 1;
+      setTimeout(function () { C.ui.burst(slots['f' + k]); }, C.cards.pace(200));
+    }
+    after.runs = S.found.length;
+    save();
+    if (E.won(S)) win();
+  }
+
+  function undo() {
+    if (blocked()) return;
+    if (!E.undo(S)) { C.feedback('bad'); return; }
+    C.feedback('tap');
+    after.runs = S.found.length;
+    render();
+    save();
+  }
+
+  // The hint shows its move: a faint copy of the cards glides from where they are to
+  // where they would go, and the game's ring marks both ends. A shake of two cards did
+  // not say which way the move went (#486). With reduced motion, just the rings.
+  var HINT_MS = 1400;
+  function ring(x, y, h) {
+    var r = el('div', { class: 'sp-ring' });
+    r.style.transform = 'translate(' + x + 'px,' + y + 'px)';
+    r.style.height = h + 'px';
+    board.appendChild(r);
+    setTimeout(function () { r.remove(); }, HINT_MS);
+  }
+  function showHint() {
+    if (blocked()) return;
+    var h = E.hint(S);
+    if (!h) { C.ui.toast({ icon: 'info', title: C.t('noHint') }); return; }
+    C.feedback('tap');
+    if (h.deal) { var ss = stockSpot(); ring(ss.x, ss.y, L.ch); return; }
+    var P = positions(), run = S.tab[h.src.col].slice(h.src.i), first = P[run[0]], last = P[run[run.length - 1]];
+    var d = S.tab[h.dst], o = offsets(h.dst);
+    var to = d.length ? { x: tabX(h.dst), y: Math.round(P[d[d.length - 1]].y + o.up) } : { x: tabX(h.dst), y: L.cy };
+    ring(first.x, first.y, last.y - first.y + L.ch);
+    ring(to.x, to.y, L.ch);
+    if (C.ui.reduceMotion()) return;
+    run.forEach(function (c, i) {
+      var g = nodes[c].cloneNode(true), p = P[c];
+      g.className = 'sp-card sp-ghost';
+      g.style.transform = 'translate(' + p.x + 'px, ' + p.y + 'px)';
+      g.style.zIndex = 4500 + i;
+      board.appendChild(g);
+      var dy = to.y - first.y;
+      var anim = g.animate([
+        { transform: 'translate(' + p.x + 'px, ' + p.y + 'px)', opacity: 0.85 },
+        { transform: 'translate(' + to.x + 'px, ' + (p.y + dy) + 'px)', opacity: 0.85, offset: 0.6 },
+        { transform: 'translate(' + to.x + 'px, ' + (p.y + dy) + 'px)', opacity: 0 }
+      ], { duration: HINT_MS, easing: 'ease-in-out' });
+      anim.onfinish = function () { g.remove(); };
+    });
+  }
+
+  /* ------------------------------------------------------------ input */
+
+  function boardPoint(e) { var r = board.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+
+  board.addEventListener('pointerdown', function (e) {
+    if (blocked() || press) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    kbOn = false; showFocus();
+    var n = e.target.closest ? e.target.closest('.sp-card') : null;
+    if ((n && inStock(n._c)) || e.target.closest('.sp-slot--stock')) { dealRow(); return; }
+    if (!n) return;
+    var src = sourceOf(n._c);
+    if (!src) return;
+    if (!E.movable(S, src.col, src.i)) {
+      // a card inside a mixed run can't be lifted; show it
+      if (src.i >= S.down[src.col]) { C.feedback('bad'); C.ui.shake(n); }
+      return;
+    }
+    var p0 = boardPoint(e);
+    press = { id: e.pointerId, src: src, cards: S.tab[src.col].slice(src.i), x0: p0.x, y0: p0.y, drag: false, base: positions() };
+    try { board.setPointerCapture(e.pointerId); } catch (err) { /* older WebViews */ }
+    e.preventDefault();
+  });
+  board.addEventListener('pointermove', function (e) {
+    if (!press || press.id !== e.pointerId) return;
+    var p = boardPoint(e), dx = p.x - press.x0, dy = p.y - press.y0;
+    if (!press.drag && Math.abs(dx) + Math.abs(dy) < 8) return;
+    press.drag = true;
+    press.cards.forEach(function (c, i) {
+      var n = nodes[c], b = press.base[c];
+      n.classList.add('sp-card--drag');
+      n.style.zIndex = 3000 + i;
+      n.style.transform = 'translate(' + (b.x + dx) + 'px,' + (b.y + dy) + 'px)';
+    });
+    press.dx = dx; press.dy = dy;
+  });
+  function endPress(e, cancelled) {
+    if (!press || press.id !== e.pointerId) return;
+    var pr = press;
+    press = null;
+    pr.cards.forEach(function (c) { nodes[c].classList.remove('sp-card--drag'); });
+    if (cancelled) { render(); return; }
+    if (!pr.drag) { tap(pr.src); return; }
+    // the dragged card's centre decides the column
+    var b = pr.base[pr.cards[0]], x = b.x + pr.dx + L.cw / 2;
+    var col = Math.floor((x - L.x0 + L.gap / 2) / (L.cw + L.gap)) - L.off;
+    if (col >= 0 && col < E.COLS && E.legal(S, pr.src, col)) doMove(pr.src, col);
+    else render();
+  }
+  board.addEventListener('pointerup', function (e) { endPress(e, false); });
+  board.addEventListener('pointercancel', function (e) { endPress(e, true); });
+
+  // Keyboard: ← → walk the stock and the ten columns; Enter sends the longest run there
+  // that has somewhere to go (or deals, on the stock)
+  var SPOTS = 11;
+  function spotBox(f) {
+    if (!L) return null;
+    if (f === 0) return stockSpot();
+    var col = f - 1, t = S.tab[col];
+    if (!t.length) return { x: tabX(col), y: L.cy };
+    return positions()[t[t.length - 1]];
+  }
+  function showFocus() {
+    var b = kbOn && focus >= 0 && S && !S.done ? spotBox(focus) : null;
+    hintBox.style.display = b ? 'block' : 'none';
+    if (b) { hintBox.style.transform = 'translate(' + b.x + 'px,' + b.y + 'px)'; hintBox.style.zIndex = 4000; }
+  }
+  function keySend() {
+    if (focus === 0) { dealRow(); return; }
+    var col = focus - 1, t = S.tab[col];
+    if (!t.length) { C.feedback('bad'); return; }
+    for (var i = E.runStart(S, col); i < t.length; i++) {
+      if (E.autoTarget(S, { col: col, i: i }) !== null) { tap({ col: col, i: i }); return; }
+    }
+    tap({ col: col, i: t.length - 1 });
+  }
+  window.addEventListener('keydown', function (e) {
+    if (blocked()) return;
+    var tg = e.target, tag = tg && tg.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (tg && tg.isContentEditable)) return;
+    if (tag === 'BUTTON' && (e.key === ' ' || e.key === 'Enter')) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) { if (C.undoKey(e)) { undo(); e.preventDefault(); } return; }
+    if (C.undoKey(e)) { undo(); e.preventDefault(); return; }
+    var k = e.key;
+    if (k === 'ArrowLeft' || k === 'ArrowRight') {
+      kbOn = true;
+      focus = focus < 0 ? 0 : (focus + (k === 'ArrowRight' ? 1 : SPOTS - 1)) % SPOTS;
+      showFocus();
+      e.preventDefault();
+      return;
+    }
+    if (k === 'Enter') { if (focus < 0) { kbOn = true; focus = 0; showFocus(); } else keySend(); e.preventDefault(); return; }
+    if (k === ' ') { dealRow(); e.preventDefault(); return; }
+    if (C.keyIs(e, 'h')) { showHint(); e.preventDefault(); return; }
+    if (C.keyIs(e, 'n')) { askNew(); e.preventDefault(); }
+  });
+
+  /* ------------------------------------------------------------- win */
+
+  // Windows Solitaire's win, as in Klondike (#407): the cards leave the finished runs,
+  // kings first, and bounce down the table leaving a trail. A tap ends it; it never
+  // runs more than five seconds before the result.
+  function win() {
+    S.done = true;
+    hintBox.style.display = 'none';
+    // let the last run land first
+    setTimeout(function () { cascade(finish); }, C.ui.reduceMotion() ? 0 : C.cards.pace(400));
+  }
+  function cascade(done) {
+    if (C.ui.reduceMotion() || !L) { done(); return; }
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var cv = el('canvas', { class: 'sp-cascade' });
+    cv.width = Math.round(L.W * dpr); cv.height = Math.round(L.H * dpr);
+    board.appendChild(cv);
+    var g = cv.getContext('2d'), queue = [], flying = [], over = false, frames = 0, t0 = performance.now();
+    var cs = getComputedStyle(document.documentElement);
+    var T = { face: cs.getPropertyValue('--c-surface').trim() || '#FFFFFF', line: cs.getPropertyValue('--c-line').trim() || '#E7DACA',
+      text: cs.getPropertyValue('--c-text').trim() || '#2C2620', red: cs.getPropertyValue('--c-bad').trim() || '#C8574B',
+      font: getComputedStyle(document.body).fontFamily || 'system-ui, sans-serif' };
+    for (var r = 0; r < 13; r++) for (var f = 0; f < S.found.length; f++) { var fp = foundPos(f); queue.push({ c: S.found[f][r], x: fp.x, y: fp.y }); }
+    var stop = function () {
+      if (over) return;
+      over = true;
+      cv.remove();
+      done();
+    };
+    cv.addEventListener('pointerdown', stop);
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    (function frame(t) {
+      if (over) return;
+      if (frames++ % 5 === 0 && queue.length) {
+        var q = queue.shift();
+        nodes[q.c].style.visibility = 'hidden';
+        q.vx = (Math.random() < 0.5 ? -1 : 1) * (2 + Math.random() * 4);
+        q.vy = -Math.random() * 6;
+        flying.push(q);
+      }
+      var floor = L.H - L.ch;
+      flying = flying.filter(function (q) {
+        q.vy += 0.6; q.x += q.vx; q.y += q.vy;
+        if (q.y > floor) { q.y = floor; q.vy *= -0.72; }
+        paintCard(g, T, E.face(S, q.c), q.x, q.y, L.cw);
+        return q.x > -L.cw && q.x < L.W;
+      });
+      if ((!queue.length && !flying.length) || t - t0 > 5000) { stop(); return; }
+      requestAnimationFrame(frame);
+    })(t0);
+  }
+  // fc: a Chogan.cards index (rank * 4 + suit)
+  function paintCard(g, T, fc, x, y, w) {
+    var h = w * 1.4, s = fc & 3;
+    g.fillStyle = T.face;
+    C.rrect(g, x, y, w, h, Math.max(3, w * 0.1));
+    g.fill();
+    g.lineWidth = 1; g.strokeStyle = T.line; g.stroke();
+    g.fillStyle = s === 1 || s === 2 ? T.red : T.text;
+    g.textBaseline = 'top'; g.textAlign = 'left';
+    g.font = '800 ' + Math.round(w * 0.32) + 'px ' + T.font;
+    g.fillText(C.cards.rankText(fc >> 2), x + w * 0.08, y + w * 0.06);
+    g.textAlign = 'right';
+    g.font = Math.round(w * 0.26) + 'px ' + T.font;
+    g.fillText(C.cards.GLYPH[s], x + w * 0.92, y + w * 0.08);
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = Math.round(w * 0.55) + 'px ' + T.font;
+    g.fillText(C.cards.GLYPH[s], x + w / 2, y + h * 0.62);
+  }
+
+  function finish() {
+    var ms = Date.now() - S.startedAt;
+    var clean = S.undos === 0, n = S.suits;
+    var coins = 12 + (n === 2 ? 6 : n === 4 ? 14 : 0) + (clean ? 2 : 0) + (S.daily ? 8 : 0);
+    var points = 48 + (n === 2 ? 24 : n === 4 ? 60 : 0) + (S.daily ? 25 : 0);
+    C.achievements.unlock('spi-win');
+    if (n >= 2) C.achievements.unlock('spi-two');
+    if (n === 4) C.achievements.unlock('spi-four');
+    C.stats.best('spider', 'timeMs' + n, ms, true);
+    C.stats.best('spider', 'moves' + n, S.hist.length, true);
+    if (S.daily) {
+      var first = C.stats.daily('spider', S.daily, { label: C.t('movesN', { n: C.num(S.hist.length) }), win: true });
+      if (!first) { coins = Math.round(coins * 0.2); points = Math.round(points * 0.2); }
+    }
+    ctx.clearSave();
+    ctx.finish({
+      won: true,
+      title: C.t('won'),
+      timeMs: ms, coins: coins, points: points,
+      lines: [
+        { label: C.t('suitsMode'), value: C.t('suits' + n) },
+        { label: C.t('moves'), value: C.num(S.hist.length) },
+        { label: C.t('time'), value: C.time(ms) }
+      ],
+      shareText: 'چوگان · عنکبوت' + (S.daily ? ('\nروزانه ' + S.daily) : '') + '\n' + C.num(S.hist.length) + ' حرکت در ' + C.time(ms),
+      paint: cardPaint(),
+      onAgain: S.daily ? null : function () { start(null); }
+    });
+  }
+
+  // the kings of the finished runs, all that is left on the table at the end
+  function cardPaint() {
+    var kings = S.found.slice(0, 4).map(function (r) { return E.face(S, r[0]); });
+    return function (g, W, H, col) {
+      var cw = Math.min(W / 4.8, H / 1.5), gap = cw * 0.2, x0 = (W - (cw * 4 + gap * 3)) / 2, y0 = (H - cw * 1.4) / 2;
+      var font = getComputedStyle(document.body).fontFamily || 'system-ui, sans-serif';
+      var red = getComputedStyle(document.documentElement).getPropertyValue('--c-bad').trim() || '#C8574B';
+      try { g.direction = 'ltr'; } catch (e) { /* older WebViews */ }
+      for (var s = 0; s < kings.length; s++) paintCard(g, { face: col.surface2, line: col.line || 'rgba(0,0,0,.15)', text: col.text, red: red, font: font }, kings[s], x0 + s * (cw + gap), y0, cw);
+    };
+  }
+
+  /* ------------------------------------------------------------ save */
+
+  ctx.autosave(function () {
+    if (!S || S.done || !S.hist.length) return { inProgress: false };
+    return {
+      s: {
+        suits: S.suits, tab: S.tab, down: S.down, stock: S.stock, found: S.found,
+        hist: S.hist, undos: S.undos, daily: S.daily,
+        elapsed: (pausedAt || Date.now()) - S.startedAt
+      }
+    };
+  });
+  function save() { ctx.save(); }
+
+  // the clock only runs while the app is open
+  C.onPause(function () { if (!pausedAt) pausedAt = Date.now(); });
+  C.onResume(function () {
+    if (pausedAt && S) S.startedAt += Date.now() - pausedAt;
+    pausedAt = 0;
+  });
+
+  function askNew() {
+    if (document.querySelector('.ch-scrim')) return;
+    var started = S && !S.done && S.hist.length;
+    if (S && S.daily) {
+      var dd = S.daily;
+      if (!started) { start(dd); return; }
+      C.ui.confirm({ title: C.t('restartDaily'), body: C.t('resetWarn'), onOk: function () { start(dd); } });
+      return;
+    }
+    if (!started) { start(null); return; }
+    C.ui.confirm({ title: C.t('newDeal'), body: C.t('resetWarn'), onOk: function () { start(null); } });
+  }
+
+  function showSettings() {
+    var seg = C.ui.segmented([{ value: 1, label: C.t('suits1') }, { value: 2, label: C.t('suits2') }, { value: 4, label: C.t('suits4') }], prefs.suits, function (v) {
+      prefs.suits = [1, 2, 4].indexOf(v) >= 0 ? v : 1;
+      ctx.store.set('prefs', prefs);
+      // a deal that has not been played yet simply starts again with the new rule
+      if (S && !S.daily && !S.done && !S.hist.length) start(null);
+    });
+    C.ui.modal({
+      title: C.t('settings'),
+      body: [el('div', { class: 'ch-list' }, [
+        el('div', { class: 'ch-item' }, [el('div', { class: 'ch-item__label', text: C.t('suitsRule') }), seg]),
+        C.cards.speedRow()
+      ]), el('p', { class: 'ch-dim', text: C.t('suitsNote') })],
+      actions: [{ label: C.t('done'), kind: 'primary' }]
+    });
+  }
+
+  function showHelp() {
+    C.ui.modal({
+      title: C.t('help'),
+      body: [
+        el('p', { class: 'ch-dim', text: C.t('rules') }),
+        el('h3', { style: { 'margin-top': 'var(--s-4)' }, text: C.t('keyboard') }),
+        el('div', { class: 'ch-list' }, [
+          kb('← →', C.t('kbSpot')),
+          kb('Enter', C.t('kbAuto')),
+          kb('Space', C.t('kbDeal')),
+          kb('H', C.t('kbHint')),
+          kb('U / Ctrl+Z', C.t('undoMove')),
+          kb('N', C.t('kbNew'))
+        ])
+      ],
+      actions: [
+        { label: C.t('tutorial'), onClick: function () { ctx.showTutorial(TUT); } },
+        { label: C.t('done'), kind: 'primary' }
+      ]
+    });
+  }
+  function kb(k, what) {
+    return el('div', { class: 'ch-item' }, [el('div', { class: 'ch-item__label', text: what }), el('span', { class: 'ch-badge', text: k })]);
+  }
+
+  function svgCard(x, y, label, red, down) {
+    if (down) return '<rect x="' + x + '" y="' + y + '" width="34" height="48" rx="5" fill="#1F3A93" stroke="#FBF5E6" stroke-width="2"/>';
+    return '<rect x="' + x + '" y="' + y + '" width="34" height="48" rx="5" fill="var(--c-surface)" stroke="var(--c-line)"/>' +
+      '<text x="' + (x + 4) + '" y="' + (y + 15) + '" font-size="13" font-weight="800" fill="' + (red ? 'var(--c-bad)' : 'var(--c-text)') + '">' + label + '</text>';
+  }
+  var TUT = [
+    { title: C.t('tutTitle1'), text: C.t('tutText1'),
+      art: '<svg viewBox="0 0 200 110" width="100%" direction="ltr">' +
+        svgCard(30, 4, 'K♠︎', false) + svgCard(30, 22, 'Q♠︎', false) + svgCard(30, 40, 'J♠︎', false) + svgCard(30, 58, '10♠︎', false) +
+        '<path d="M80 60 H 120" stroke="var(--game)" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M112 52 l 9 8 -9 8" stroke="var(--game)" stroke-width="4" fill="none" stroke-linecap="round"/>' +
+        svgCard(136, 34, 'K♠︎', false) + '</svg>' },
+    { title: C.t('tutTitle2'), text: C.t('tutText2'),
+      art: '<svg viewBox="0 0 200 110" width="100%" direction="ltr">' +
+        svgCard(40, 6, '', false, true) + svgCard(40, 16, '', false, true) + svgCard(40, 26, '8♥︎', true) + svgCard(40, 50, '7♠︎', false) +
+        svgCard(120, 30, '6♠︎', false) +
+        '<path d="M118 44 C 100 40, 96 70, 82 74" stroke="var(--game)" stroke-width="4" fill="none" stroke-linecap="round"/></svg>' },
+    { title: C.t('tutTitle3'), text: C.t('tutText3'),
+      art: '<svg viewBox="0 0 200 110" width="100%" direction="ltr">' +
+        svgCard(20, 30, '', false, true) + svgCard(26, 30, '', false, true) + svgCard(32, 30, '', false, true) +
+        svgCard(96, 50, '4♠︎', false) + svgCard(140, 50, 'J♠︎', false) +
+        '<path d="M70 40 C 90 20, 110 20, 112 44" stroke="var(--game)" stroke-width="4" fill="none" stroke-linecap="round"/>' +
+        '<path d="M74 44 C 110 6, 150 10, 156 44" stroke="var(--game)" stroke-width="4" fill="none" stroke-linecap="round"/></svg>' }
+  ];
+
+  window.addEventListener('resize', function () { render(true); });
+  if (window.ResizeObserver) new ResizeObserver(function () { render(true); }).observe(board);
+  // the face font arriving can change the board's room; place the cards again then
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { render(true); });
+
+  /* ------------------------------------------------------------ start */
+
+  var saved = ctx.loadSave();
+  var sv = saved && E.validState(saved.s) ? saved.s : null;
+  if (dailyDate) {
+    // the daily page has its own save slot, so the same deal goes on
+    if (sv && sv.daily === dailyDate) resume(sv);
+    else start(dailyDate);
+    if (C.stats.dailyDone('spider', dailyDate)) {
+      var rec = C.stats.dailyOf(dailyDate).spider;
+      C.ui.toast({ icon: 'check', title: C.t('dailyDone'), sub: rec && rec.label });
+    }
+  } else if (sv && !sv.daily) {
+    resume(sv);
+  } else {
+    start(null);
+  }
+  after.runs = S ? S.found.length : 0;
+  ctx.tutorialIfNew(TUT);
+  requestAnimationFrame(function () { render(true); });
+})();
+</script>
+</body>
+</html>

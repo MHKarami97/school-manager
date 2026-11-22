@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#FBF6EF">
+<title>بیست‌ویک — چوگان</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../lib/chogan.css">
+<script src="../../lib/early.js"></script>
+<style>
+  /* cards grow with the game area (#359); at 76px at most they were small on a tablet or laptop */
+  .bj-wrap { --cw: clamp(52px, min(16cqw, (100cqh - 260px) / 4), 130px); margin-block: auto; width: 100%; max-width: max(560px, calc(var(--cw) * 7.4)); display: flex; flex-direction: column; align-items: center; gap: var(--s-3); }
+  .bj-top { display: flex; flex-wrap: wrap; gap: var(--s-2); justify-content: center; align-items: center; }
+  .bj-side { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .bj-who { display: flex; align-items: center; gap: var(--s-2); font-weight: 700; color: var(--c-text-dim); font-size: var(--fs-sm); }
+  .bj-total { min-width: 34px; text-align: center; font-weight: 800; font-size: var(--fs-md); color: var(--c-text); background: var(--c-surface-2); border-radius: var(--r-pill); padding: 2px 10px; font-variant-numeric: tabular-nums; }
+  .bj-total--bust { color: var(--c-bad); }
+  .bj-total--bj { color: var(--c-gold); }
+  /* cards keep their real order left to right in every language */
+  .bj-hand { direction: ltr; display: flex; justify-content: center; min-height: calc(var(--cw) * 1.4); }
+  .bj-hand > * { --pw: var(--cw); margin-inline: -6px; }
+  .bj-hand > :first-child { margin-inline-start: 0; }
+  .bj-hand .ch-pcard { cursor: default; }
+  /* the shoe the cards are dealt from (#398): a short stack of backs */
+  .bj-shoe { width: calc(var(--cw) * .42); border-width: 1.5px; box-shadow: 2px 2px 0 -1px #FBF5E6, 3px 3px 0 -1px var(--c-line), 4px 4px 0 -1px #FBF5E6, 5px 5px 0 -1px var(--c-line); }
+  .bj-msg { min-height: 1.6em; font-weight: 800; font-size: var(--fs-md); text-align: center; }
+  .bj-msg--win { color: var(--c-good); }
+  .bj-msg--lose { color: var(--c-bad); }
+  .bj-actions { display: flex; gap: var(--s-2); justify-content: center; flex-wrap: wrap; }
+  .bj-actions .ch-btn { min-width: 112px; }
+  .bj-score { display: flex; gap: var(--s-3); font-size: var(--fs-sm); color: var(--c-text-dim); font-weight: 700; }
+  .bj-score b { color: var(--c-text); font-variant-numeric: tabular-nums; }
+  .bj-tip { font-size: var(--fs-sm); color: var(--c-text-dim); min-height: 1.4em; text-align: center; }
+</style>
+</head>
+<body>
+<script src="../../version.js"></script>
+<script src="../../lib/chogan.js"></script>
+<script>
+/* ==== ENGINE START ==== */
+/* Blackjack without betting (#226): you and the dealer, one fresh shuffled deck a
+   hand, a match of ten hands. A card is rank * 4 + suit, rank 0 = ace … 12 = king,
+   the same numbering as Chogan.cards.                                            */
+function BlackjackEngineFactory() {
+  'use strict';
+
+  var HANDS = 10;
+
+  function shuffled(rnd) {
+    var d = [];
+    for (var i = 0; i < 52; i++) d.push(i);
+    for (i = 51; i > 0; i--) { var j = Math.floor(rnd() * (i + 1)), t = d[i]; d[i] = d[j]; d[j] = t; }
+    return d;
+  }
+  function points(c) { var r = c >> 2; return r === 0 ? 1 : Math.min(10, r + 1); }
+
+  // Best total: aces count 11 when that does not bust, otherwise 1
+  function total(hand) {
+    var sum = 0, aces = 0;
+    for (var i = 0; i < hand.length; i++) { var p = points(hand[i]); sum += p; if (p === 1) aces++; }
+    var soft = aces > 0 && sum + 10 <= 21;
+    return { value: soft ? sum + 10 : sum, soft: soft };
+  }
+  function isBlackjack(hand) { return hand.length === 2 && total(hand).value === 21; }
+
+  // Player, dealer, player, dealer: the order a real table deals in
+  function deal(rnd) {
+    var deck = shuffled(rnd);
+    var H = { deck: deck, player: [deck.pop()], dealer: [deck.pop()], done: false, result: null };
+    H.player.push(deck.pop()); H.dealer.push(deck.pop());
+    // a natural on either side ends the hand at once; the dealer checks for one
+    if (isBlackjack(H.player) || isBlackjack(H.dealer)) settle(H);
+    return H;
+  }
+
+  function hit(H) {
+    if (H.done) return false;
+    H.player.push(H.deck.pop());
+    var v = total(H.player).value;
+    if (v > 21) settle(H);
+    else if (v === 21) stand(H);
+    return true;
+  }
+
+  // The dealer draws to 17 and stands on every 17, soft ones included
+  function stand(H) {
+    if (H.done) return false;
+    if (total(H.player).value <= 21) while (total(H.dealer).value < 17) H.dealer.push(H.deck.pop());
+    settle(H);
+    return true;
+  }
+
+  // win, lose or push; a natural blackjack is its own kind of win
+  function settle(H) {
+    var p = total(H.player).value, d = total(H.dealer).value, pb = isBlackjack(H.player), db = isBlackjack(H.dealer);
+    var r;
+    if (pb && db) r = 'push';
+    else if (pb) r = 'blackjack';
+    else if (db) r = 'lose';
+    else if (p > 21) r = 'bust';
+    else if (d > 21) r = 'win';
+    else r = p > d ? 'win' : (p < d ? 'lose' : 'push');
+    H.done = true;
+    H.result = r;
+    return r;
+  }
+  function won(r) { return r === 'win' || r === 'blackjack'; }
+  function lost(r) { return r === 'lose' || r === 'bust'; }
+
+  // Basic strategy for hit or stand only (no splits, no doubles), against the
+  // dealer's up card: the standard table every blackjack book prints.
+  function advice(hand, up) {
+    var t = total(hand), v = t.value, u = points(up) === 1 ? 11 : points(up);
+    if (v >= 21) return 'stand';
+    if (t.soft) return v >= 19 || (v === 18 && u <= 8) ? 'stand' : 'hit';
+    if (v >= 17) return 'stand';
+    if (v >= 13) return u <= 6 ? 'stand' : 'hit';
+    if (v === 12) return u >= 4 && u <= 6 ? 'stand' : 'hit';
+    return 'hit';
+  }
+
+  var api = { HANDS: HANDS, shuffled: shuffled, points: points, total: total, isBlackjack: isBlackjack,
+    deal: deal, hit: hit, stand: stand, settle: settle, won: won, lost: lost, advice: advice };
+  if (typeof self !== 'undefined') self.BlackjackEngine = api;
+  return api;
+}
+if (typeof module !== 'undefined' && module.exports) module.exports = BlackjackEngineFactory;
+/* ==== ENGINE END ==== */
+</script>
+
+<script>
+(function () {
+  'use strict';
+  var C = window.Chogan, el = C.el;
+  var E = BlackjackEngineFactory();
+
+  C.boot({});
+  var ctx = C.game({
+    id: 'blackjack',
+    name: { fa: 'بیست‌ویک', en: 'Blackjack', zh: '二十一点', de: 'Blackjack', es: 'Blackjack', pl: 'Oczko', fr: 'Vingt-et-un', ar: 'واحد وعشرون', hi: 'ब्लैकजैक' },
+    accent: '#2E7D5B',
+    mood: 'menu',
+    cardSpeed: true,
+    scroll: true,
+    strings: {
+      fa: {
+        dealer: 'دیلر', you: 'تو', hit: 'کارت بکش', stand: 'بمان', nextHand: 'دست بعد', handN: 'دست {n} از {m}',
+        wins: 'برد', losses: 'باخت', pushes: 'مساوی', advice: 'پیشنهاد', adviceHit: 'پیشنهاد: کارت بکش', adviceStand: 'پیشنهاد: بمان',
+        rWin: 'بردی!', rBlackjack: 'بلک‌جک! بیست‌ویک با دو کارت', rLose: 'دیلر برد', rBust: 'بیشتر از ۲۱ شد؛ باختی', rPush: 'مساوی', rDealerBust: 'دیلر از ۲۱ رد شد؛ بردی!',
+        dailyBj: 'بیست‌ویک روزانه', matchWon: 'مسابقه را بردی', matchLost: 'مسابقه را باختی', matchDraw: 'مسابقه مساوی شد',
+        rules: 'هدف این است که جمع کارت‌هایت به ۲۱ نزدیک‌تر از دیلر باشد، بدون اینکه از ۲۱ رد شوی. کارت‌های عددی همان عددشان، سرباز و بی‌بی و شاه ده، و آس یک یا یازده حساب می‌شود. هر وقت خواستی کارت بکش و هر وقت بس بود بمان. دیلر تا وقتی کمتر از ۱۷ دارد کارت می‌کشد و روی ۱۷ می‌ماند. آس و یک کارت ده‌امتیازی در دو کارت اول «بلک‌جک» است. هر مسابقه ده دست است و شرط‌بندی ندارد.',
+        keyboard: 'صفحه‌کلید',
+        tutTitle1: 'نزدیک به ۲۱', tutText1: 'جمع کارت‌هایت باید به ۲۱ نزدیک‌تر از دیلر باشد. اگر از ۲۱ رد شوی، دست را می‌بازی.',
+        tutTitle2: 'بکش یا بمان', tutText2: 'با «کارت بکش» یک کارت دیگر می‌گیری، با «بمان» نوبت دیلر می‌شود. دیلر تا ۱۷ کارت می‌کشد.',
+        tutTitle3: 'ده دست', tutText3: 'هر مسابقه ده دست است و شرط‌بندی ندارد. اگر مطمئن نیستی، دکمه‌ی پیشنهاد حرکت درست را می‌گوید.'
+      },
+      en: {
+        dealer: 'Dealer', you: 'You', hit: 'Hit', stand: 'Stand', nextHand: 'Next hand', handN: 'Hand {n} of {m}',
+        wins: 'Won', losses: 'Lost', pushes: 'Push', advice: 'Advice', adviceHit: 'Advice: hit', adviceStand: 'Advice: stand',
+        rWin: 'You win!', rBlackjack: 'Blackjack! 21 with two cards', rLose: 'The dealer wins', rBust: 'Over 21, you lose', rPush: 'Push', rDealerBust: 'The dealer went over 21, you win!',
+        dailyBj: 'Daily blackjack', matchWon: 'You won the match', matchLost: 'You lost the match', matchDraw: 'The match is a draw',
+        rules: 'Get closer to 21 than the dealer without going over. Number cards count their number, jacks, queens and kings count ten, and an ace counts one or eleven. Hit for another card as often as you like, and stand when you have enough. The dealer draws below 17 and stands on 17. An ace and a ten-point card as the first two cards are a blackjack. A match is ten hands, with no betting.',
+        keyboard: 'Keyboard',
+        tutTitle1: 'Close to 21', tutText1: 'Your cards should add up closer to 21 than the dealer\'s. Go over 21 and you lose the hand.',
+        tutTitle2: 'Hit or stand', tutText2: 'Hit takes another card; Stand passes to the dealer, who draws up to 17.',
+        tutTitle3: 'Ten hands', tutText3: 'A match is ten hands, with no betting. Not sure? The advice button tells you the right move.'
+      },
+      pl: {
+        dealer: 'Krupier', you: 'Ty', hit: 'Dobierz', stand: 'Pasuj', nextHand: 'Następne rozdanie', handN: 'Rozdanie {n} z {m}',
+        wins: 'Wygrane', losses: 'Przegrane', pushes: 'Remisy', advice: 'Porada', adviceHit: 'Porada: dobierz', adviceStand: 'Porada: pasuj',
+        rWin: 'Wygrywasz!', rBlackjack: 'Oczko! 21 w dwóch kartach', rLose: 'Krupier wygrywa', rBust: 'Powyżej 21 – przegrywasz', rPush: 'Remis', rDealerBust: 'Krupier przekroczył 21 – wygrywasz!',
+        dailyBj: 'Codzienne Oczko', matchWon: 'Wygrałeś mecz', matchLost: 'Przegrałeś mecz', matchDraw: 'Mecz zakończył się remisem',
+        rules: 'Zbliż się do 21 bardziej niż krupier, ale nie przekraczaj tej liczby. Karty z numerami mają wartość swojej cyfry, walety, damy i króle liczą się jako 10, a as liczy się jako 1 lub 11. Dobieraj kolejne karty tak często, jak chcesz, i pasuj, gdy masz wystarczająco. Krupier dobiera poniżej 17 punktów i pasuje przy 17. As i karta o wartości 10 punktów jako pierwsze dwie karty to oczko. Mecz składa się z dziesięciu rozdań bez zakładów.',
+        keyboard: 'Klawiatura',
+        tutTitle1: 'Blisko 21', tutText1: 'Suma Twoich kart powinna być bliższa 21 niż suma kart krupiera. Przekroczenie 21 oznacza przegraną rozdania.',
+        tutTitle2: 'Dobierz lub pasuj', tutText2: '„Dobierz” dodaje kolejną kartę; „Pasuj” oddaje ruch krupierowi, który dobiera karty do momentu uzyskania co najmniej 17 punktów.',
+        tutTitle3: 'Dziesięć rozdań', tutText3: 'Mecz składa się z dziesięciu rozdań bez obstawiania zakładów. Nie masz pewności? Przycisk porady podpowie Ci właściwy ruch.'
+      },
+      fr: {
+        dealer: 'Croupier', you: 'Toi', hit: 'Carte', stand: 'Rester', nextHand: 'Main suivante', handN: 'Main {n} sur {m}',
+        wins: 'Gagnées', losses: 'Perdues', pushes: 'Égalité', advice: 'Conseil', adviceHit: 'Conseil : carte', adviceStand: 'Conseil : reste',
+        rWin: 'Tu gagnes !', rBlackjack: 'Blackjack ! 21 avec deux cartes', rLose: 'Le croupier gagne', rBust: 'Plus de 21, tu perds', rPush: 'Égalité', rDealerBust: 'Le croupier a dépassé 21, tu gagnes !',
+        dailyBj: 'Vingt-et-un du jour', matchWon: 'Tu as gagné le match', matchLost: 'Tu as perdu le match', matchDraw: 'Le match est nul',
+        rules: 'Approche-toi plus de 21 que le croupier sans dépasser. Les cartes à chiffres valent leur chiffre, valets, dames et rois valent dix, et l’as vaut un ou onze. Demande une carte autant de fois que tu veux, et reste quand tu en as assez. Le croupier tire en dessous de 17 et reste à 17. Un as et une carte à dix points en deux premières cartes font un blackjack. Un match dure dix mains, sans mise.',
+        keyboard: 'Clavier',
+        tutTitle1: 'Près de 21', tutText1: 'Tes cartes doivent faire plus près de 21 que celles du croupier. Dépasse 21 et tu perds la main.',
+        tutTitle2: 'Carte ou rester', tutText2: 'Carte en prend une autre ; Rester passe la main au croupier, qui tire jusqu’à 17.',
+        tutTitle3: 'Dix mains', tutText3: 'Un match dure dix mains, sans mise. Un doute ? Le bouton Conseil te dit le bon coup.'
+      },
+      ar: {
+        dealer: 'الموزّع', you: 'أنت', hit: 'اسحب', stand: 'اكتفِ', nextHand: 'اليد التالية', handN: 'اليد {n} من {m}',
+        wins: 'فوز', losses: 'خسارة', pushes: 'تعادل', advice: 'نصيحة', adviceHit: 'نصيحة: اسحب', adviceStand: 'نصيحة: اكتفِ',
+        rWin: 'فزت!', rBlackjack: 'واحد وعشرون! 21 بورقتين', rLose: 'الموزّع يفوز', rBust: 'تجاوزت 21، خسرت', rPush: 'تعادل', rDealerBust: 'تجاوز الموزّع 21، فزت!',
+        dailyBj: 'واحد وعشرون اليومي', matchWon: 'فزت بالمباراة', matchLost: 'خسرت المباراة', matchDraw: 'انتهت المباراة بالتعادل',
+        rules: 'اقترب من 21 أكثر من الموزّع دون أن تتجاوزه. أوراق الأرقام تُحسب برقمها، والولد والملكة والملك بعشرة، والآس بواحد أو أحد عشر. اسحب ورقة أخرى كلما شئت، واكتفِ حين يكفيك ما معك. يسحب الموزّع ما دام دون 17 ويكتفي عند 17. الآس مع ورقة قيمتها عشرة في أول ورقتين هي «واحد وعشرون». المباراة عشر أيدٍ، بلا رهان.',
+        keyboard: 'لوحة المفاتيح',
+        tutTitle1: 'قريبًا من 21', tutText1: 'يجب أن يكون مجموع أوراقك أقرب إلى 21 من مجموع أوراق الموزّع. إن تجاوزت 21 خسرت اليد.',
+        tutTitle2: 'اسحب أو اكتفِ', tutText2: 'اسحب يعطيك ورقة أخرى؛ واكتفِ ينقل الدور إلى الموزّع، الذي يسحب حتى 17.',
+        tutTitle3: 'عشر أيدٍ', tutText3: 'المباراة عشر أيدٍ، بلا رهان. لست متأكدًا؟ زر النصيحة يخبرك بالحركة الصحيحة.'
+      },
+      hi: {
+        dealer: 'डीलर', you: 'आप', hit: 'पत्ता लें', stand: 'रुकें', nextHand: 'अगला हाथ', handN: 'हाथ {n} / {m}',
+        wins: 'जीते', losses: 'हारे', pushes: 'बराबरी', advice: 'सलाह', adviceHit: 'सलाह: पत्ता लें', adviceStand: 'सलाह: रुकें',
+        rWin: 'आप जीत गए!', rBlackjack: 'ब्लैकजैक! दो पत्तों में 21', rLose: 'डीलर जीत गया', rBust: '21 से ज़्यादा, आप हार गए', rPush: 'बराबरी', rDealerBust: 'डीलर 21 से ऊपर गया, आप जीत गए!',
+        dailyBj: 'रोज़ का ब्लैकजैक', matchWon: 'आप मुक़ाबला जीत गए', matchLost: 'आप मुक़ाबला हार गए', matchDraw: 'मुक़ाबला बराबरी पर रहा',
+        rules: 'डीलर से ज़्यादा 21 के क़रीब पहुँचें, पर 21 से ऊपर न जाएँ। अंक वाले पत्ते अपने अंक के बराबर गिने जाते हैं, ग़ुलाम, बेगम और बादशाह दस, और इक्का एक या ग्यारह। जितनी बार चाहें एक और पत्ता लें, और काफ़ी हो जाए तो रुकें। डीलर 17 से कम पर पत्ता उठाता है और 17 पर रुकता है। पहले दो पत्तों में इक्का और दस अंक का पत्ता ब्लैकजैक है। एक मुक़ाबला दस हाथों का होता है, बिना दाँव के।',
+        keyboard: 'कीबोर्ड',
+        tutTitle1: '21 के क़रीब', tutText1: 'आपके पत्तों का जोड़ डीलर से ज़्यादा 21 के क़रीब होना चाहिए। 21 से ऊपर गए तो वह हाथ हार जाएँगे।',
+        tutTitle2: 'लें या रुकें', tutText2: '«पत्ता लें» से एक और पत्ता मिलता है; «रुकें» से बारी डीलर की हो जाती है, जो 17 तक पत्ते उठाता है।',
+        tutTitle3: 'दस हाथ', tutText3: 'एक मुक़ाबला दस हाथों का होता है, बिना दाँव के। पक्का नहीं? सलाह बटन सही चाल बताता है।'
+      },
+      zh: {
+        dealer: '庄家', you: '你', hit: '要牌', stand: '停牌', nextHand: '下一手', handN: '第 {n} 手，共 {m} 手',
+        wins: '胜', losses: '负', pushes: '平', advice: '建议', adviceHit: '建议：要牌', adviceStand: '建议：停牌',
+        rWin: '你赢了！', rBlackjack: '黑杰克！两张牌凑成 21', rLose: '庄家赢', rBust: '超过 21，你输了', rPush: '平局', rDealerBust: '庄家爆牌，你赢了！',
+        dailyBj: '每日二十一点', matchWon: '你赢下了这场比赛', matchLost: '你输了这场比赛', matchDraw: '比赛打平',
+        rules: '让你的牌点数比庄家更接近 21，但不能超过。数字牌按数字计，J、Q、K 算十点，A 算一点或十一点。想要牌就要牌，够了就停牌。庄家点数小于 17 时继续要牌，到 17 停牌。前两张牌是 A 加一张十点牌就是黑杰克。每场比赛十手，没有下注。',
+        keyboard: '键盘',
+        tutTitle1: '接近 21', tutText1: '你的点数要比庄家更接近 21。超过 21 就输掉这一手。',
+        tutTitle2: '要牌或停牌', tutText2: '要牌再拿一张；停牌后轮到庄家，庄家会要到 17。',
+        tutTitle3: '十手', tutText3: '每场比赛十手，没有下注。拿不准时，建议按钮会告诉你该怎么做。'
+      },
+      de: {
+        dealer: 'Croupier', you: 'Du', hit: 'Karte', stand: 'Halten', nextHand: 'Nächste Hand', handN: 'Hand {n} von {m}',
+        wins: 'Sieg', losses: 'Niederlage', pushes: 'Gleich', advice: 'Rat', adviceHit: 'Rat: Karte nehmen', adviceStand: 'Rat: halten',
+        rWin: 'Gewonnen!', rBlackjack: 'Blackjack! 21 mit zwei Karten', rLose: 'Der Croupier gewinnt', rBust: 'Über 21 – verloren', rPush: 'Unentschieden', rDealerBust: 'Der Croupier ist über 21 – gewonnen!',
+        dailyBj: 'Tägliches Blackjack', matchWon: 'Partie gewonnen', matchLost: 'Partie verloren', matchDraw: 'Partie unentschieden',
+        rules: 'Komm näher an 21 als der Croupier, ohne darüber zu gehen. Zahlenkarten zählen ihre Zahl, Bube, Dame und König zehn, ein Ass eins oder elf. Nimm Karten, so oft du willst, und halte, wenn es reicht. Der Croupier zieht unter 17 und hält bei 17. Ass und eine Zehn als erste zwei Karten sind ein Blackjack. Eine Partie hat zehn Hände, ohne Einsätze.',
+        keyboard: 'Tastatur',
+        tutTitle1: 'Nah an 21', tutText1: 'Deine Karten sollen näher an 21 liegen als die des Croupiers. Über 21 verlierst du die Hand.',
+        tutTitle2: 'Karte oder halten', tutText2: 'Mit „Karte“ nimmst du eine weitere, mit „Halten“ ist der Croupier dran; er zieht bis 17.',
+        tutTitle3: 'Zehn Hände', tutText3: 'Eine Partie hat zehn Hände, ohne Einsätze. Unsicher? Der Rat-Knopf sagt dir den richtigen Zug.'
+      },
+      es: {
+        dealer: 'Crupier', you: 'Tú', hit: 'Pedir', stand: 'Plantarse', nextHand: 'Siguiente mano', handN: 'Mano {n} de {m}',
+        wins: 'Ganadas', losses: 'Perdidas', pushes: 'Empates', advice: 'Consejo', adviceHit: 'Consejo: pedir', adviceStand: 'Consejo: plantarse',
+        rWin: '¡Ganaste!', rBlackjack: '¡Blackjack! 21 con dos cartas', rLose: 'Gana el crupier', rBust: 'Más de 21, perdiste', rPush: 'Empate', rDealerBust: 'El crupier se pasó de 21, ¡ganaste!',
+        dailyBj: 'Blackjack diario', matchWon: 'Ganaste la partida', matchLost: 'Perdiste la partida', matchDraw: 'La partida termina en empate',
+        rules: 'Acércate más a 21 que el crupier sin pasarte. Las cartas numéricas valen su número, las jotas, reinas y reyes valen diez, y el as vale uno u once. Pide otra carta tantas veces como quieras y plántate cuando tengas suficiente. El crupier pide por debajo de 17 y se planta con 17. Un as y una carta de diez puntos como primeras dos cartas son un blackjack. Una partida son diez manos, sin apuestas.',
+        keyboard: 'Teclado',
+        tutTitle1: 'Cerca de 21', tutText1: 'Tus cartas deben sumar más cerca de 21 que las del crupier. Si te pasas de 21, pierdes la mano.',
+        tutTitle2: 'Pedir o plantarse', tutText2: 'Con «Pedir» recibes otra carta; con «Plantarse» le toca al crupier, que pide hasta 17.',
+        tutTitle3: 'Diez manos', tutText3: 'Una partida son diez manos, sin apuestas. ¿Dudas? El botón de consejo te dice la jugada correcta.'
+      }
+    }
+  });
+
+  var params = new URLSearchParams(location.search);
+  var dailyDate = params.get('daily');
+  var DEAL_MS = 380, STEP = 190;
+
+  // shown: dealer cards face up on the table; seenP: player cards already dealt
+  var S = null, shown = 0, seenP = 0, busy = false, tip = '', timer = 0;
+  var top = el('div', { class: 'bj-top' });
+  var dealerTotal = el('span', { class: 'bj-total' }), youTotal = el('span', { class: 'bj-total' });
+  var dealerHand = el('div', { class: 'bj-hand' }), youHand = el('div', { class: 'bj-hand' });
+  var msg = el('div', { class: 'bj-msg', 'aria-live': 'polite' });
+  var tipEl = el('div', { class: 'bj-tip' });
+  var actions = el('div', { class: 'bj-actions' });
+  var score = el('div', { class: 'bj-score' });
+  var wrap = el('div', { class: 'bj-wrap' }, [top,
+    el('div', { class: 'bj-side' }, [el('div', { class: 'bj-who' }, [el('span', { text: C.t('dealer') }), dealerTotal]), dealerHand]),
+    msg,
+    el('div', { class: 'bj-side' }, [youHand, el('div', { class: 'bj-who' }, [el('span', { text: C.state.profile.name || C.t('you') }), youTotal])]),
+    tipEl, actions, score]);
+
+  ctx.button({ icon: 'help', label: C.t('help'), onClick: showHelp });
+  ctx.button({ icon: 'refresh', label: C.t('newGame'), onClick: askNew });
+  ctx.main.appendChild(wrap);
+  ctx.mount();
+
+  /* ------------------------------------------------------------- match */
+
+  function newMatch(daily) {
+    S = { daily: daily || null, n: 0, H: null, wins: 0, losses: 0, pushes: 0, bjs: 0, startedAt: Date.now() };
+    nextHand();
+  }
+
+  // The daily deals the same ten hands to everyone: each hand has its own seed
+  function nextHand() {
+    S.n++;
+    var rnd = S.daily ? C.daily('blackjack', S.daily + '|' + S.n).rng : Math.random;
+    S.H = E.deal(rnd);
+    shown = 0; seenP = 0; tip = '';
+    if (S.H.done) count();
+    render(true);
+    save();
+  }
+
+  function count() {
+    var r = S.H.result;
+    if (E.won(r)) S.wins++; else if (E.lost(r)) S.losses++; else S.pushes++;
+    if (r === 'blackjack') { S.bjs++; C.achievements.unlock('bj-21'); }
+  }
+
+  function hit() {
+    if (!S || busy || S.H.done) return;
+    C.feedback('tap');
+    E.hit(S.H);
+    tip = '';
+    after();
+  }
+  function stand() {
+    if (!S || busy || S.H.done) return;
+    C.feedback('select');
+    E.stand(S.H);
+    tip = '';
+    after();
+  }
+  function after() {
+    if (S.H.done) count();
+    render(true);
+    save();
+  }
+
+  function showAdvice() {
+    if (!S || S.H.done) return;
+    tip = E.advice(S.H.player, S.H.dealer[0]) === 'hit' ? C.t('adviceHit') : C.t('adviceStand');
+    C.feedback('select');
+    tipEl.textContent = tip;
+  }
+
+  function next() {
+    if (!S || busy || !S.H.done) return;
+    if (S.n >= E.HANDS) { finish(); return; }
+    nextHand();
+  }
+
+  function finish() {
+    var won = S.wins > S.losses, draw = S.wins === S.losses;
+    var coins = 4 + S.wins * 2 + S.bjs * 2 + (S.daily ? 8 : 0);
+    var points = 10 + S.wins * 6 + S.bjs * 4 + (S.daily ? 25 : 0);
+    if (won) C.achievements.unlock('bj-win');
+    C.stats.best('blackjack', 'wins', S.wins, false);
+    if (S.daily) {
+      var first = C.stats.daily('blackjack', S.daily, { label: C.num(S.wins) + ' - ' + C.num(S.losses), win: won });
+      if (!first) { coins = Math.round(coins * 0.2); points = Math.round(points * 0.2); }
+    }
+    ctx.clearSave();
+    ctx.finish({
+      won: won, title: draw ? C.t('matchDraw') : (won ? C.t('matchWon') : C.t('matchLost')),
+      timeMs: Date.now() - S.startedAt, coins: coins, points: points,
+      lines: [
+        { label: C.t('wins'), value: C.num(S.wins) },
+        { label: C.t('losses'), value: C.num(S.losses) },
+        { label: C.t('pushes'), value: C.num(S.pushes) }
+      ],
+      shareText: 'چوگان · بیست‌ویک' + (S.daily ? ('\nروزانه ' + S.daily) : '') + '\n' + C.num(S.wins) + ' - ' + C.num(S.losses),
+      onAgain: S.daily ? null : function () { newMatch(null); }
+    });
+  }
+
+  /* ------------------------------------------------------------- draw */
+
+  function totalBadge(node, hand, hidden) {
+    if (hidden) { node.textContent = C.num(E.points(hand[0]) === 1 ? 11 : E.points(hand[0])) + ' + ?'; node.className = 'bj-total'; return; }
+    var t = E.total(hand);
+    node.textContent = C.num(t.value);
+    node.className = 'bj-total' + (t.value > 21 ? ' bj-total--bust' : (E.isBlackjack(hand) ? ' bj-total--bj' : ''));
+  }
+
+  // Cards are dealt from the shoe (#398): the opening four one by one, yours and
+  // the dealer's in turn, with the dealer's second card face down; each later
+  // card flies in and turns over. When a hand is over the hole card turns where
+  // it lies and the cards the dealer drew follow a beat apart. The state is
+  // already final; only the picture catches up, so a new tap is never held.
+  function render(animate) {
+    var H = S.H, hidden = !H.done, moving = animate && !C.ui.reduceMotion();
+    clearTimeout(timer);
+    busy = false;
+    top.innerHTML = '';
+    var shoe = C.cards.back('bj-shoe');
+    top.appendChild(shoe);
+    if (S.daily) top.appendChild(el('span', { class: 'ch-badge ch-badge--accent' }, [C.icon('calendar', 14), el('span', { text: C.t('dailyBj') + ' — ' + C.num(S.daily) })]));
+    top.appendChild(el('span', { class: 'ch-badge', text: C.t('handN', { n: C.num(S.n), m: C.num(E.HANDS) }) }));
+    top.appendChild(C.cards.backPicker());
+    top.appendChild(C.cards.speedGear());
+
+    var opening = moving && seenP === 0;
+    youHand.innerHTML = '';
+    H.player.forEach(function (c, i) {
+      var b = C.cards.el(c);
+      b.disabled = true;
+      youHand.appendChild(b);
+      if (moving && i >= seenP) C.ui.fly(b, shoe, { flip: true, delay: opening ? i * 2 * STEP : 0 });
+    });
+    seenP = H.player.length;
+    totalBadge(youTotal, H.player, false);
+
+    var drawDealer = function (k) {
+      var nodes = [];
+      dealerHand.innerHTML = '';
+      H.dealer.forEach(function (c, i) {
+        var b;
+        if (i < k) { b = C.cards.el(c); b.disabled = true; }
+        else if (hidden && i === 1) b = C.cards.back();
+        else return;
+        dealerHand.appendChild(b);
+        nodes.push(b);
+      });
+      totalBadge(dealerTotal, H.dealer.slice(0, Math.max(1, k)), hidden);
+      return nodes;
+    };
+    var target = hidden ? 1 : H.dealer.length;
+    var settle = function (ms) {
+      busy = true;
+      timer = setTimeout(function () { busy = false; paintEnd(true); }, C.cards.pace(ms));
+    };
+    if (!moving) {
+      drawDealer(target);
+      shown = target;
+      paintEnd(animate);
+      return;
+    }
+    if (opening) {
+      var last = 0;
+      drawDealer(target).forEach(function (b, i) {
+        last = (i < 2 ? i * 2 + 1 : i + 2) * STEP;
+        C.ui.fly(b, shoe, { flip: i < target, delay: last });
+      });
+      shown = target;
+      if (H.done) settle(last + DEAL_MS); else paintEnd(true);
+      return;
+    }
+    var k = Math.max(1, shown);
+    drawDealer(k);
+    if (k >= target) { shown = target; paintEnd(true); return; }
+    busy = true;
+    var step = function () {
+      k++;
+      var nodes = drawDealer(k), b = nodes[k - 1];
+      // the hole card turns in place; the rest come from the shoe
+      C.ui.fly(b, k === 2 ? b : shoe, { flip: true });
+      if (k < target) timer = setTimeout(step, C.cards.pace(DEAL_MS));
+      else { shown = target; settle(DEAL_MS * 0.8); }
+    };
+    timer = setTimeout(step, C.cards.pace(DEAL_MS / 2));
+  }
+
+  // sound only when a hand has just ended, not when a saved hand is drawn again
+  function paintEnd(fresh) {
+    var H = S.H;
+    msg.className = 'bj-msg';
+    msg.textContent = '';
+    if (H.done) {
+      var r = H.result, dv = E.total(H.dealer).value;
+      var key = r === 'win' && dv > 21 ? 'rDealerBust' : { win: 'rWin', blackjack: 'rBlackjack', lose: 'rLose', bust: 'rBust', push: 'rPush' }[r];
+      msg.textContent = C.t(key);
+      msg.classList.add(E.won(r) ? 'bj-msg--win' : (E.lost(r) ? 'bj-msg--lose' : 'bj-msg'));
+      if (fresh) C.feedback(E.won(r) ? 'good' : (E.lost(r) ? 'bad' : 'tap'));
+    }
+    tipEl.textContent = tip;
+    actions.innerHTML = '';
+    if (!H.done) {
+      actions.appendChild(el('button', { class: 'ch-btn ch-btn--primary', type: 'button', text: C.t('hit'), onclick: hit }));
+      actions.appendChild(el('button', { class: 'ch-btn ch-btn--soft', type: 'button', text: C.t('stand'), onclick: stand }));
+      actions.appendChild(el('button', { class: 'ch-btn ch-btn--soft ch-btn--sm', type: 'button', text: C.t('advice'), onclick: showAdvice }));
+    } else {
+      actions.appendChild(el('button', { class: 'ch-btn ch-btn--primary', type: 'button', text: S.n >= E.HANDS ? C.t('finished') : C.t('nextHand'), onclick: next }));
+    }
+    score.innerHTML = '';
+    [['wins', S.wins], ['losses', S.losses], ['pushes', S.pushes]].forEach(function (p) {
+      score.appendChild(el('span', {}, [el('span', { text: C.t(p[0]) + ' ' }), el('b', { text: C.num(p[1]) })]));
+    });
+  }
+
+  /* -------------------------------------------------------------- save */
+
+  ctx.autosave(function () {
+    if (!S || (S.n >= E.HANDS && S.H.done)) return { inProgress: false };
+    if (S.n === 1 && !S.H.done && S.H.player.length === 2) return { inProgress: false };
+    return { s: { daily: S.daily, n: S.n, H: S.H, wins: S.wins, losses: S.losses, pushes: S.pushes, bjs: S.bjs, elapsed: Date.now() - S.startedAt } };
+  });
+  function save() { ctx.save(); }
+  function validSave(v) {
+    return !!(v && v.s && v.s.H && Array.isArray(v.s.H.player) && Array.isArray(v.s.H.dealer) && Array.isArray(v.s.H.deck) &&
+      v.s.n >= 1 && v.s.n <= E.HANDS);
+  }
+
+  function askNew() {
+    var go = function () { newMatch(S ? S.daily : null); };
+    if (!S || S.n <= 1) { go(); return; }
+    C.ui.confirm({ title: C.t('newGame'), body: C.t('resetWarn'), onOk: go });
+  }
+
+  window.addEventListener('keydown', function (e) {
+    if (!S || document.querySelector('.ch-scrim') || e.ctrlKey || e.metaKey || e.altKey) return;
+    var k = e.key.toLowerCase();
+    if (C.keyIs(e, 'h')) { e.preventDefault(); hit(); }
+    else if (C.keyIs(e, 's')) { e.preventDefault(); stand(); }
+    else if (C.keyIs(e, 'a')) { e.preventDefault(); showAdvice(); }
+    else if (k === 'enter' && S.H.done) { e.preventDefault(); next(); }
+  });
+
+  /* -------------------------------------------------------------- help */
+
+  function kb(k, what) { return el('div', { class: 'ch-item' }, [el('div', { class: 'ch-item__label', text: what }), el('span', { class: 'ch-badge', text: k })]); }
+  function showHelp() {
+    C.ui.modal({
+      title: C.t('help'),
+      body: [el('p', { class: 'ch-dim', text: C.t('rules') }), el('h3', { style: { 'margin-top': 'var(--s-4)' }, text: C.t('keyboard') }),
+        el('div', { class: 'ch-list' }, [kb('H', C.t('hit')), kb('S', C.t('stand')), kb('A', C.t('advice')), kb('Enter', C.t('nextHand'))])],
+      actions: [{ label: C.t('tutorial'), onClick: function () { ctx.showTutorial(TUT); } }, { label: C.t('done'), kind: 'primary' }]
+    });
+  }
+  function art(cards, total, col) {
+    var s = '<svg viewBox="0 0 200 110" width="100%">';
+    cards.forEach(function (t, i) {
+      var x = 40 + i * 34;
+      s += '<rect x="' + x + '" y="18" width="44" height="62" rx="6" fill="var(--c-surface)" stroke="var(--c-line)"/>' +
+        '<text x="' + (x + 22) + '" y="56" text-anchor="middle" font-size="20" font-weight="800" fill="' + (/[♥♦]/.test(t) ? 'var(--c-bad)' : 'var(--c-text)') + '">' + t + '</text>';
+    });
+    return s + '<text x="100" y="102" text-anchor="middle" font-size="16" font-weight="800" fill="' + col + '">' + total + '</text></svg>';
+  }
+  var TUT = [
+    { title: C.t('tutTitle1'), text: C.t('tutText1'), art: art(['K♠', '9♥'], '19', 'var(--c-text)') },
+    { title: C.t('tutTitle2'), text: C.t('tutText2'), art: art(['7♣', '5♦', '9♠'], '21', 'var(--c-good)') },
+    { title: C.t('tutTitle3'), text: C.t('tutText3'), art: art(['A♥', 'Q♣'], '21', 'var(--c-gold)') }
+  ];
+
+  /* ------------------------------------------------------------- start */
+
+  var saved = ctx.loadSave();
+  if (validSave(saved) && (saved.s.daily || null) === (dailyDate || null)) {
+    var v = saved.s;
+    S = { daily: v.daily || null, n: v.n, H: v.H, wins: v.wins || 0, losses: v.losses || 0, pushes: v.pushes || 0, bjs: v.bjs || 0, startedAt: Date.now() - (v.elapsed || 0) };
+    shown = S.H.done ? S.H.dealer.length : 1;
+    seenP = S.H.player.length;
+    render(false);
+  } else {
+    newMatch(dailyDate || null);
+    if (dailyDate && C.stats.dailyDone('blackjack', dailyDate)) {
+      var rec = C.stats.dailyOf(dailyDate).blackjack;
+      C.ui.toast({ icon: 'check', title: C.t('dailyDone'), sub: rec.label });
+    }
+  }
+  ctx.tutorialIfNew(TUT);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1538 @@
+/* ===========================================================================
+   چوگان — سیستم طراحی مشترک
+   همه‌ی صفحه‌ها و بازی‌ها فقط از توکن‌های همین فایل استفاده می‌کنند.
+   هیچ رنگ یا اندازه‌ی خامی داخل بازی‌ها نوشته نمی‌شود.
+   =========================================================================== */
+
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('../fonts/vazirmatn-variable.woff2') format('woff2-variations'),
+       url('../fonts/vazirmatn-variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Latin letters from Nunito, under the same family name, so every `font: … Vazirmatn`
+   in a game's canvas gets it too (#670). The owner found Vazirmatn's Latin (Roboto) plain.
+   Declared after Vazirmatn, so it wins for the characters in its range. The range skips
+   U+200B-200F and U+2060-206F: ZWNJ, ZWJ and bidi marks from another font would split
+   a Persian word's run and break its joining. Its weight, style and stretch must match the
+   Vazirmatn face exactly: Chrome joins two faces into one unicode-range set only when those
+   descriptors are equal, and with Nunito's own `200 1000` it used Nunito alone, so every
+   Persian letter fell back to the system font (0.25.0, owner's phone). */
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('../fonts/nunito-latin.woff2') format('woff2-variations'),
+       url('../fonts/nunito-latin.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  /* Vazirmatn's own line metrics (2100/1100 of 2048), so a line of English is as tall as before */
+  ascent-override: 102.54%;
+  descent-override: 53.71%;
+  line-gap-override: 0%;
+  unicode-range: U+0020-007E, U+00A0-024F, U+1E00-1EFF, U+2010-205E, U+20AC, U+2122, U+2212;
+}
+
+/* Hindi (#856): neither Vazirmatn nor Nunito has Devanagari, and Linux and ChromeOS often
+   have no system font for it, so the basic Devanagari block of Noto Sans Devanagari
+   (OFL, weights 400-800, every conjunct of those letters kept) ships beside them. Same
+   family and the same descriptors as the faces above, for the reason given there. A page
+   loads it only when it shows Devanagari; the service worker keeps it for offline use.
+   Vazirmatn's line metrics again,
+   so a Hindi line is as tall as a Persian or English one. */
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('../fonts/noto-devanagari.woff2') format('woff2-variations'),
+       url('../fonts/noto-devanagari.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  ascent-override: 102.54%;
+  descent-override: 53.71%;
+  line-gap-override: 0%;
+  unicode-range: U+0900-097F, U+25CC;
+}
+
+/* --------------------------------------------------------------- توکن‌ها */
+:root {
+  color-scheme: light;
+
+  /* پالت پاستلی گرم */
+  --c-bg:          #FBF6EF;
+  --c-bg-tint:     #F4EADD;
+  --c-surface:     #FFFFFF;
+  --c-surface-2:   #F7F1E8;
+  --c-surface-3:   #EFE6D9;
+  --c-line:        #E7DACA;
+  --c-text:        #2C2620;
+  /* dim and faint darkened a step in #875: secondary text read 4.3:1 on the cards, under
+     WCAG's 4.5:1, and the faint icons 2.4:1, under 3:1 (tools/tests/palettes.js) */
+  --c-text-dim:    #766A5D;
+  --c-text-faint:  #958878;
+
+  --c-accent:      #E07A5F;
+  --c-accent-soft: #FBE7DF;
+  --c-accent-ink:  #FFFFFF;
+
+  --c-good:        #5C9A6B;
+  --c-good-soft:   #E1F0E4;
+  --c-warn:        #C8912F;
+  --c-warn-soft:   #F8EDD6;
+  --c-bad:         #C8574B;
+  --c-bad-soft:    #FAE3E0;
+  --c-gold:        #D9A441;
+
+  /* رده‌های لیگ */
+  --c-tier-1: #B08050;
+  --c-tier-2: #9AA3AB;
+  --c-tier-3: #D9A441;
+  --c-tier-4: #6BB6C4;
+  --c-tier-5: #A57BD1;
+
+  /* شعاع */
+  --r-xs: 8px;
+  --r-sm: 12px;
+  --r-md: 18px;
+  --r-lg: 24px;
+  --r-xl: 32px;
+  --r-pill: 999px;
+
+  /* فاصله */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 48px;
+
+  /* سایه‌ی نرم و گرم */
+  --sh-1: 0 1px 2px rgba(78, 58, 38, .06), 0 2px 6px rgba(78, 58, 38, .05);
+  --sh-2: 0 2px 6px rgba(78, 58, 38, .07), 0 8px 20px rgba(78, 58, 38, .07);
+  --sh-3: 0 6px 14px rgba(78, 58, 38, .09), 0 18px 40px rgba(78, 58, 38, .10);
+  --sh-inset: inset 0 1px 0 rgba(255, 255, 255, .6);
+
+  /* تایپوگرافی */
+  --f: 'Vazirmatn', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --fs-xs: 12px;
+  --fs-sm: 14px;
+  --fs-md: 16px;
+  --fs-lg: 19px;
+  --fs-xl: 24px;
+  --fs-2xl: 32px;
+  --fs-3xl: 42px;
+
+  /* حرکت */
+  --t-fast: 120ms;
+  --t-mid: 220ms;
+  --t-slow: 360ms;
+  --ease: cubic-bezier(.2, .8, .3, 1);
+  --ease-back: cubic-bezier(.34, 1.56, .64, 1);
+
+  /* چیدمان */
+  --w-page: 560px;
+  --w-wide: 900px;
+  --nav-h: 72px;
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+}
+
+:root[data-theme="dark"],
+:root:not([data-theme="light"]) {
+  /* پیش‌فرض روشن است؛ تاریک فقط زیر مدیا یا با انتخاب دستی */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --c-bg:          #15120E;
+    --c-bg-tint:     #1D1913;
+    --c-surface:     #211C16;
+    --c-surface-2:   #2A241C;
+    --c-surface-3:   #342C22;
+    --c-line:        #3A3128;
+    --c-text:        #F4EEE4;
+    --c-text-dim:    #A99C8B;
+    --c-text-faint:  #7C7162;
+    --c-accent:      #E8917A;
+    --c-accent-soft: #3A2620;
+    --c-accent-ink:  var(--game-ink-dark, #201410);
+    --c-good:        #7ABE8A;
+    --c-good-soft:   #24301F;
+    --c-warn:        #DFB45E;
+    --c-warn-soft:   #33291A;
+    --c-bad:         #E0796C;
+    --c-bad-soft:    #362020;
+    --sh-1: 0 1px 2px rgba(0, 0, 0, .3), 0 2px 6px rgba(0, 0, 0, .25);
+    --sh-2: 0 2px 6px rgba(0, 0, 0, .35), 0 8px 20px rgba(0, 0, 0, .3);
+    --sh-3: 0 6px 14px rgba(0, 0, 0, .4), 0 18px 40px rgba(0, 0, 0, .38);
+    --sh-inset: inset 0 1px 0 rgba(255, 255, 255, .05);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --c-bg:          #15120E;
+  --c-bg-tint:     #1D1913;
+  --c-surface:     #211C16;
+  --c-surface-2:   #2A241C;
+  --c-surface-3:   #342C22;
+  --c-line:        #3A3128;
+  --c-text:        #F4EEE4;
+  --c-text-dim:    #A99C8B;
+  --c-text-faint:  #7C7162;
+  --c-accent:      #E8917A;
+  --c-accent-soft: #3A2620;
+  --c-accent-ink:  var(--game-ink-dark, #201410);
+  --c-good:        #7ABE8A;
+  --c-good-soft:   #24301F;
+  --c-warn:        #DFB45E;
+  --c-warn-soft:   #33291A;
+  --c-bad:         #E0796C;
+  --c-bad-soft:    #362020;
+  --sh-1: 0 1px 2px rgba(0, 0, 0, .3), 0 2px 6px rgba(0, 0, 0, .25);
+  --sh-2: 0 2px 6px rgba(0, 0, 0, .35), 0 8px 20px rgba(0, 0, 0, .3);
+  --sh-3: 0 6px 14px rgba(0, 0, 0, .4), 0 18px 40px rgba(0, 0, 0, .38);
+  --sh-inset: inset 0 1px 0 rgba(255, 255, 255, .05);
+}
+
+/* ---------------------------------------------------- colour themes (#875)
+   One palette for the whole app, picked in the Profile and saved as the setting
+   `colors`; lib/early.js puts it on <html> as data-colors before the first paint.
+   A palette swaps only the neutral tokens. Accents stay the menu's and each game's,
+   so every surface stays inside the range the accents were checked against
+   (tools/tests/palettes.js). Each palette is written three times: light, system dark
+   and chosen dark; the dark selectors carry one more attribute so they beat the light
+   one, and the light one beats the default dark by coming later.
+   The .ch-swatch selectors let the Profile draw each choice in its own colours. */
+.ch-swatch[data-colors="default"] {
+  --c-bg: #FBF6EF; --c-bg-tint: #F4EADD; --c-surface: #FFFFFF; --c-surface-2: #F7F1E8; --c-surface-3: #EFE6D9;
+  --c-line: #E7DACA; --c-text: #2C2620; --c-text-dim: #766A5D; --c-text-faint: #958878;
+}
+:root[data-colors="paper"],
+.ch-swatch[data-colors="paper"] {
+  --c-bg: #F8F1E1; --c-bg-tint: #EFE4CB; --c-surface: #FDF9EF; --c-surface-2: #F5EDDB; --c-surface-3: #EADDC2;
+  --c-line: #DFD0B0; --c-text: #2E271A; --c-text-dim: #695C45; --c-text-faint: #8E7F63;
+}
+:root[data-colors="slate"],
+.ch-swatch[data-colors="slate"] {
+  --c-bg: #F2F5F8; --c-bg-tint: #E6ECF2; --c-surface: #FFFFFF; --c-surface-2: #F0F3F7; --c-surface-3: #E3E9F0;
+  --c-line: #D3DCE6; --c-text: #1E2630; --c-text-dim: #566273; --c-text-faint: #7D8896;
+}
+:root[data-colors="forest"],
+.ch-swatch[data-colors="forest"] {
+  --c-bg: #F1F5EE; --c-bg-tint: #E4ECDF; --c-surface: #FFFFFF; --c-surface-2: #EEF3EA; --c-surface-3: #E1EADB;
+  --c-line: #CFDCC8; --c-text: #1F2A1F; --c-text-dim: #556654; --c-text-faint: #7A8A78;
+}
+:root[data-colors="rose"],
+.ch-swatch[data-colors="rose"] {
+  --c-bg: #FBF2F4; --c-bg-tint: #F4E3E8; --c-surface: #FFFFFF; --c-surface-2: #F9EEF1; --c-surface-3: #F0E0E6;
+  --c-line: #E8D3DB; --c-text: #2E2026; --c-text-dim: #735C66; --c-text-faint: #9A8590;
+}
+/* for low vision: black text, and edges and icons that stand out (7:1, 4.5:1, 3:1) */
+:root[data-colors="contrast"],
+.ch-swatch[data-colors="contrast"] {
+  --c-bg: #FFFFFF; --c-bg-tint: #F2F2F2; --c-surface: #FFFFFF; --c-surface-2: #F5F5F5; --c-surface-3: #EBEBEB;
+  --c-line: #6B6B6B; --c-text: #000000; --c-text-dim: #333333; --c-text-faint: #555555;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .ch-swatch[data-colors="default"] {
+    --c-bg: #15120E; --c-bg-tint: #1D1913; --c-surface: #211C16; --c-surface-2: #2A241C; --c-surface-3: #342C22;
+    --c-line: #3A3128; --c-text: #F4EEE4; --c-text-dim: #A99C8B; --c-text-faint: #7C7162;
+  }
+  :root[data-colors="paper"]:not([data-theme="light"]),
+  :root:not([data-theme="light"]) .ch-swatch[data-colors="paper"] {
+    --c-bg: #1A1812; --c-bg-tint: #211E16; --c-surface: #25221A; --c-surface-2: #2D2920; --c-surface-3: #302C23;
+    --c-line: #423C30; --c-text: #EFE8D6; --c-text-dim: #ADA48F; --c-text-faint: #857D6A;
+  }
+  :root[data-colors="slate"]:not([data-theme="light"]),
+  :root:not([data-theme="light"]) .ch-swatch[data-colors="slate"] {
+    --c-bg: #0F141A; --c-bg-tint: #151B23; --c-surface: #19202A; --c-surface-2: #212A35; --c-surface-3: #262E37;
+    --c-line: #34404E; --c-text: #E8EEF5; --c-text-dim: #9DAABA; --c-text-faint: #758397;
+  }
+  :root[data-colors="forest"]:not([data-theme="light"]),
+  :root:not([data-theme="light"]) .ch-swatch[data-colors="forest"] {
+    --c-bg: #0F1510; --c-bg-tint: #141C15; --c-surface: #18211A; --c-surface-2: #1F2A21; --c-surface-3: #232E27;
+    --c-line: #324035; --c-text: #E8F0E6; --c-text-dim: #9FB09C; --c-text-faint: #778A75;
+  }
+  :root[data-colors="rose"]:not([data-theme="light"]),
+  :root:not([data-theme="light"]) .ch-swatch[data-colors="rose"] {
+    --c-bg: #1A1215; --c-bg-tint: #22181C; --c-surface: #271B20; --c-surface-2: #302228; --c-surface-3: #352A2F;
+    --c-line: #45333B; --c-text: #F6ECEF; --c-text-dim: #B7A1AA; --c-text-faint: #8E7A83;
+  }
+  :root[data-colors="contrast"]:not([data-theme="light"]),
+  :root:not([data-theme="light"]) .ch-swatch[data-colors="contrast"] {
+    --c-bg: #000000; --c-bg-tint: #0A0A0A; --c-surface: #111111; --c-surface-2: #1A1A1A; --c-surface-3: #242424;
+    --c-line: #8A8A8A; --c-text: #FFFFFF; --c-text-dim: #D6D6D6; --c-text-faint: #ABABAB;
+  }
+}
+
+:root[data-theme="dark"] .ch-swatch[data-colors="default"] {
+  --c-bg: #15120E; --c-bg-tint: #1D1913; --c-surface: #211C16; --c-surface-2: #2A241C; --c-surface-3: #342C22;
+  --c-line: #3A3128; --c-text: #F4EEE4; --c-text-dim: #A99C8B; --c-text-faint: #7C7162;
+}
+:root[data-colors="paper"][data-theme="dark"],
+:root[data-theme="dark"] .ch-swatch[data-colors="paper"] {
+  --c-bg: #1A1812; --c-bg-tint: #211E16; --c-surface: #25221A; --c-surface-2: #2D2920; --c-surface-3: #302C23;
+  --c-line: #423C30; --c-text: #EFE8D6; --c-text-dim: #ADA48F; --c-text-faint: #857D6A;
+}
+:root[data-colors="slate"][data-theme="dark"],
+:root[data-theme="dark"] .ch-swatch[data-colors="slate"] {
+  --c-bg: #0F141A; --c-bg-tint: #151B23; --c-surface: #19202A; --c-surface-2: #212A35; --c-surface-3: #262E37;
+  --c-line: #34404E; --c-text: #E8EEF5; --c-text-dim: #9DAABA; --c-text-faint: #758397;
+}
+:root[data-colors="forest"][data-theme="dark"],
+:root[data-theme="dark"] .ch-swatch[data-colors="forest"] {
+  --c-bg: #0F1510; --c-bg-tint: #141C15; --c-surface: #18211A; --c-surface-2: #1F2A21; --c-surface-3: #232E27;
+  --c-line: #324035; --c-text: #E8F0E6; --c-text-dim: #9FB09C; --c-text-faint: #778A75;
+}
+:root[data-colors="rose"][data-theme="dark"],
+:root[data-theme="dark"] .ch-swatch[data-colors="rose"] {
+  --c-bg: #1A1215; --c-bg-tint: #22181C; --c-surface: #271B20; --c-surface-2: #302228; --c-surface-3: #352A2F;
+  --c-line: #45333B; --c-text: #F6ECEF; --c-text-dim: #B7A1AA; --c-text-faint: #8E7A83;
+}
+:root[data-colors="contrast"][data-theme="dark"],
+:root[data-theme="dark"] .ch-swatch[data-colors="contrast"] {
+  --c-bg: #000000; --c-bg-tint: #0A0A0A; --c-surface: #111111; --c-surface-2: #1A1A1A; --c-surface-3: #242424;
+  --c-line: #8A8A8A; --c-text: #FFFFFF; --c-text-dim: #D6D6D6; --c-text-faint: #ABABAB;
+}
+
+/* ------------------------------------------------------------------ پایه */
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  background: var(--c-bg);
+  color: var(--c-text);
+  font-family: var(--f);
+  font-size: var(--fs-md);
+  line-height: 1.7;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior-y: none;
+}
+
+body.ch-noscroll {
+  overflow: hidden;
+  position: fixed;
+  top: 0; right: 0; bottom: 0; left: 0;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* In the installed app a drag or Ctrl+A painted the menu's titles and the
+   bottom bar selection-blue, which no native app does (#208). Fields stay
+   selectable so a name can still be edited and pasted. */
+body.ch-menu { -webkit-user-select: none; user-select: none; }
+/* A faint pattern behind the menu only (#883); games stay plain. Each pattern is one image
+   and one tile size in custom properties, so the menu and the Profile's swatches draw the
+   same thing. The ink is the palette's own text colour, so every colour theme and dark
+   mode get a matching pattern. The default (no data-pattern) is dots. */
+:root, :root[data-pattern="dots"] .ch-patsw[data-pat="dots"], .ch-patsw[data-pat="dots"] {
+  --pat-img: radial-gradient(var(--pat-ink) 1.2px, transparent 1.7px);
+  --pat-size: 18px 18px;
+}
+:root { --pat-ink: color-mix(in srgb, var(--c-text) 5%, transparent); }
+:root[data-pattern="none"], .ch-patsw[data-pat="none"] { --pat-img: none; --pat-size: auto; }
+:root[data-pattern="stripes"], .ch-patsw[data-pat="stripes"] { --pat-img: repeating-linear-gradient(135deg, transparent 0 10px, var(--pat-ink) 10px 14px); --pat-size: auto; }
+:root[data-pattern="lattice"], .ch-patsw[data-pat="lattice"] {
+  --pat-img: repeating-linear-gradient(45deg, transparent 0 21px, var(--pat-ink) 21px 22px), repeating-linear-gradient(-45deg, transparent 0 21px, var(--pat-ink) 21px 22px);
+  --pat-size: auto, auto;
+}
+:root[data-pattern="grid"], .ch-patsw[data-pat="grid"] {
+  --pat-img: linear-gradient(var(--pat-ink) 1px, transparent 1px), linear-gradient(90deg, var(--pat-ink) 1px, transparent 1px);
+  --pat-size: 24px 24px, 24px 24px;
+}
+:root[data-pattern="waves"], .ch-patsw[data-pat="waves"] {
+  --pat-img: radial-gradient(circle at 50% 100%, transparent 8px, var(--pat-ink) 8px 9.5px, transparent 9.5px);
+  --pat-size: 20px 12px;
+}
+:root[data-pattern="rings"], .ch-patsw[data-pat="rings"] {
+  --pat-img: radial-gradient(circle at 50% 50%, transparent 6px, var(--pat-ink) 6px 7.5px, transparent 7.5px);
+  --pat-size: 26px 26px;
+}
+.ch-patsw { --pat-ink: color-mix(in srgb, var(--c-text) 22%, transparent); }
+.ch-patsw .ch-patsw__chip { background-color: var(--c-surface); background-image: var(--pat-img); background-size: var(--pat-size); min-height: 44px; }
+body.ch-menu { background-image: var(--pat-img); background-size: var(--pat-size); }
+
+body.ch-menu input, body.ch-menu textarea, body.ch-menu [contenteditable="true"] { -webkit-user-select: text; user-select: text; }
+
+h1, h2, h3 { margin: 0; font-weight: 800; line-height: 1.35; letter-spacing: -.01em; }
+h1 { font-size: var(--fs-2xl); }
+h2 { font-size: var(--fs-xl); }
+h3 { font-size: var(--fs-lg); }
+p  { margin: 0; }
+a  { color: var(--c-accent); text-decoration: none; }
+
+:focus-visible {
+  outline: 3px solid var(--c-accent);
+  outline-offset: 2px;
+  border-radius: var(--r-xs);
+}
+
+.ch-dim   { color: var(--c-text-dim); }
+.ch-faint { color: var(--c-text-faint); }
+.ch-sm    { font-size: var(--fs-sm); }
+.ch-xs    { font-size: var(--fs-xs); }
+.ch-bold  { font-weight: 800; }
+.ch-num   { font-variant-numeric: tabular-nums; font-feature-settings: 'tnum'; }
+.ch-center { text-align: center; }
+.ch-hidden { display: none !important; }
+.ch-row   { display: flex; align-items: center; gap: var(--s-3); }
+.ch-col   { display: flex; flex-direction: column; gap: var(--s-3); }
+.ch-grow  { flex: 1; min-width: 0; }
+.ch-wrap  { flex-wrap: wrap; }
+
+/* --------------------------------------------------------------- چیدمان */
+.ch-page {
+  max-width: var(--w-page);
+  margin: 0 auto;
+  padding:
+    calc(var(--s-4) + var(--safe-t))
+    calc(var(--s-4) + var(--safe-r))
+    calc(var(--nav-h) + var(--s-7) + var(--safe-b))
+    calc(var(--s-4) + var(--safe-l));
+}
+.ch-page--wide { max-width: var(--w-wide); }
+/* On a desktop screen the menu stayed 560px wide, so 90-odd games sat four to a row
+   with empty space either side (#974); a wide window gives the menu the wide page. */
+@media (min-width: 1000px) and (min-height: 500px) { .ch-page--home { max-width: var(--w-wide); } }
+.ch-page--flat { padding-bottom: calc(var(--s-6) + var(--safe-b)); }
+
+.ch-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-bottom: var(--s-5);
+}
+/* دکمه‌ی تمام‌صفحه کنار سکه‌ها، فقط جایی که مرورگر پشتیبانی می‌کند */
+.ch-head .ch-iconbtn { flex: none; }
+.ch-head__title { flex: 1; min-width: 0; }
+.ch-head h1 { font-size: var(--fs-2xl); }
+.ch-head p { color: var(--c-text-dim); font-size: var(--fs-sm); }
+
+.ch-section { margin-bottom: var(--s-6); }
+.ch-section__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+  margin-bottom: var(--s-3);
+}
+.ch-section__head h2 { font-size: var(--fs-lg); }
+/* Category chips over the menu's games, and the heading of each category in All (#283) */
+.ch-cats { margin-bottom: var(--s-4); }
+/* five chips: with the default padding the Spanish row broke onto a second line at 390px and
+   360px. Two classes, so it wins over .ch-seg button further down. 6px since Nunito's wider
+   Latin letters (#670) put the English players row and the Polish categories on two lines
+   (#674); the chips grow to fill the row, so a row that fits looks the same as before. */
+.ch-seg.ch-cats button { padding-inline: 6px; }
+.ch-cat__head { font-size: var(--fs-md); color: var(--c-text-dim); margin: var(--s-5) 0 var(--s-3); }
+.ch-cats + .ch-cat__head { margin-top: 0; }
+/* the players row (#561) sits close under the categories, as one filter block */
+.ch-cats + .ch-people { margin-top: calc(var(--s-2) - var(--s-4)); }
+/* Search by name above the chips (#521). 16px text, or iOS zooms the page on focus;
+   while a search is on, the chips step back because the results ignore them. */
+.ch-search {
+  display: flex; align-items: center; gap: var(--s-2);
+  background: var(--c-surface); border: 1px solid var(--c-line); border-radius: var(--r-pill);
+  padding: 0 6px 0 14px; margin-bottom: var(--s-3); color: var(--c-text-dim);
+  box-shadow: var(--sh-1);
+}
+.ch-search:focus-within { border-color: var(--c-accent); }
+.ch-search > svg { flex: none; }
+.ch-search__input {
+  flex: 1; min-width: 0; min-height: 44px; border: 0; background: none; outline: none;
+  font: inherit; font-size: var(--fs-md); color: var(--c-text);
+}
+.ch-search__input::placeholder { color: var(--c-text-dim); opacity: 1; }
+.ch-search__input::-webkit-search-cancel-button { display: none; }
+.ch-search__clear {
+  flex: none; width: 36px; height: 36px; border: 0; border-radius: 50%; background: var(--c-surface-2);
+  color: var(--c-text-dim); display: grid; place-items: center; cursor: pointer;
+}
+.ch-search__clear[hidden] { display: none; }
+.ch-cats--off { opacity: .45; }
+.ch-search__none { color: var(--c-text-dim); text-align: center; padding: var(--s-6) 0; }
+
+/* ------------------------------------------------------- playing cards */
+/* Shared by the card games (#178). --pw is the card's width; a game sets it, or
+   it falls back to the game's --cw. Cards are physical objects: same face in
+   both themes except the frame colour. */
+.ch-pcard {
+  --pw: var(--cw, 56px);
+  width: var(--pw); aspect-ratio: 5 / 7; border-radius: 8px; border: 1px solid var(--c-line);
+  background: var(--ch-pface, var(--c-surface)); color: var(--c-text); font: inherit; padding: 0; cursor: pointer;
+  position: relative; box-shadow: var(--sh-1); touch-action: manipulation;
+  transition: transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+.ch-pcard[disabled] { cursor: default; }
+.ch-pcard--red { color: var(--c-bad); }
+/* In the dark theme a card's edge is light: a dark face with a dark line ran into the
+   next card in a stack, and Spider's columns read as one block (#485) */
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .ch-pcard { border-color: rgba(255, 255, 255, .42); } }
+:root[data-theme="dark"] .ch-pcard { border-color: rgba(255, 255, 255, .42); }
+.ch-pcard__r { position: absolute; top: 3px; left: 5px; font-weight: 800; font-size: calc(var(--pw) * .3); line-height: 1; }
+.ch-pcard__s { position: absolute; left: 0; right: 0; bottom: 8%; text-align: center; font-size: calc(var(--pw) * .5); line-height: 1; }
+.ch-pcard__mini { position: absolute; top: 3px; right: 5px; font-size: calc(var(--pw) * .24); line-height: 1; }
+.ch-pcard__face { position: absolute; left: 6%; right: 6%; bottom: 4%; height: 68%; pointer-events: none; }
+.ch-pcard__face svg { width: 100%; height: 100%; display: block; }
+/* Card back: one of two Persian pictures (carpet, termeh) chosen by the player; the
+   picture itself is set by Chogan.cards.applyBack so it is built once in JS (#181) */
+.ch-pback {
+  width: calc(var(--cw, 56px) * .62); aspect-ratio: 5 / 7; border-radius: 6px; box-sizing: border-box;
+  border: 2px solid #FBF5E6;   /* the white margin of a printed card keeps stacked backs apart */
+  background: #1F3A93 center / 100% 100% no-repeat; box-shadow: var(--sh-1);
+}
+.ch-pbackbtn .ch-pback { width: 20px; border-width: 1px; border-radius: 3px; box-shadow: none; }
+
+/* ----------------------------------------------------------------- کارت */
+.ch-card {
+  background: var(--c-surface);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-2);
+  padding: var(--s-4);
+  border: 1px solid transparent;
+}
+/* The profile's palette and character cards are buttons, which take the browser's own
+   font, so their names fell to a system font; with no system Devanagari they would show
+   boxes in Hindi (#856) */
+button.ch-card { font-family: inherit; }
+.ch-card--flat { box-shadow: var(--sh-1); }
+.ch-card--tint { background: var(--c-surface-2); box-shadow: none; border-color: var(--c-line); }
+
+.ch-tap {
+  cursor: pointer;
+  transition: transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+  -webkit-user-select: none;
+  user-select: none;
+}
+.ch-tap:active { transform: scale(.975); box-shadow: var(--sh-1); }
+
+/* کارت بازی */
+.ch-games { display: grid; gap: var(--s-3); }
+@media (min-width: 620px) { .ch-games { grid-template-columns: 1fr 1fr; } }
+
+.ch-game {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  padding: var(--s-4);
+  position: relative;
+  overflow: hidden;
+}
+.ch-game__icon {
+  width: 62px; height: 62px;
+  flex: 0 0 62px;
+  border-radius: var(--r-md);
+  background: var(--game-soft, var(--c-surface-2));
+  display: grid; place-items: center;
+  overflow: hidden;
+}
+.ch-game__icon svg, .ch-game__icon img { width: 100%; height: 100%; display: block; }
+.ch-game__body { flex: 1; min-width: 0; }
+.ch-game__name { font-weight: 800; font-size: var(--fs-lg); }
+.ch-game__sum {
+  color: var(--c-text-dim);
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ch-game__meta { display: flex; gap: var(--s-2); margin-top: var(--s-1); flex-wrap: wrap; }
+
+/* Square tiles, the menu's default (#149). Since #687 the icon fills its tile at
+   every width: a friend could not find games among 42px icons in framed cards. With
+   no frame, no corner pin and no "new" badge, a 390px phone shows three 113px icons
+   a row with the name below; a wide screen fits as many ~120px icons as it can, so
+   phone and desktop read as one app. Only a saved game is marked, in the icon's top
+   corner. A word too long for the tile is hyphenated by the language
+   («Wassersortierung»). */
+.ch-games--grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 10px; }
+@media (min-width: 620px) { .ch-games--grid { grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 18px 14px; } }
+.ch-games--grid .ch-game {
+  flex-direction: column; justify-content: flex-start; text-align: center;
+  padding: 0; gap: 6px; background: transparent; border: 0; box-shadow: none; overflow: visible;
+}
+.ch-games--grid .ch-game__icon { width: 100%; height: auto; aspect-ratio: 1; flex: none; border-radius: 24%; }
+.ch-games--grid .ch-game__body { flex: 0 0 auto; width: 100%; }
+.ch-games--grid .ch-game__name { font-size: 14px; line-height: 1.25; overflow-wrap: anywhere; hyphens: auto; }
+.ch-games--grid .ch-game__meta {
+  position: absolute; top: 4px; inset-inline-start: 4px; margin: 0; max-width: calc(100% - 8px);
+}
+.ch-games--grid .ch-game__meta:empty { display: none; }
+/* The tile has no box now, so hover and press lift the icon, not an invisible card
+   (a shadow on the tile drew a ghost frame around icon and name). */
+.ch-games--grid .ch-game.ch-tap:hover, .ch-games--grid .ch-game.ch-tap:active { box-shadow: none; }
+.ch-games--grid .ch-game__icon { transition: box-shadow .15s ease; }
+.ch-games--grid .ch-game:active .ch-game__icon { box-shadow: var(--sh-1); }
+@media (hover: hover) { .ch-games--grid .ch-game:hover .ch-game__icon { box-shadow: var(--sh-3); } }
+.ch-games--grid .ch-game__meta .ch-badge {
+  font-size: 10px; line-height: 1.3; padding: 1px 6px; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; box-shadow: var(--sh-1);
+}
+/* A tile is held to pin it (#687): the hold must not select its name or open the
+   phone's image menu. */
+.ch-game { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.ch-game img { -webkit-user-drag: none; }
+.ch-section__tools { gap: var(--s-2); align-items: center; }
+.ch-sort {
+  font: inherit; font-size: var(--fs-sm); font-weight: 700; color: var(--c-text-dim);
+  background: transparent; border: 1px solid var(--c-line); border-radius: 999px;
+  padding: 4px 10px; min-height: 32px; max-width: 15em; min-width: 0; cursor: pointer;
+}
+/* 9.5em cut "Recently updated" and the longer German and Polish labels (#738);
+   15em fits the longest at 390px, and min-width 0 lets it give way on a narrower phone. */
+.ch-sort:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 2px; }
+/* Profile game list (#292): one list instead of "Per game" plus a second list
+   under "Erase data". It scrolls inside the card so the page stays short; the
+   height cuts a row in half, which shows that there is more to scroll. */
+.ch-pergame { max-height: 330px; overflow-y: auto; overscroll-behavior: contain; padding-block: 0; }
+.ch-pergame__row {
+  width: 100%; border: 0; background: none; font: inherit; color: inherit; text-align: start;
+  cursor: pointer; touch-action: manipulation;
+}
+.ch-pergame__row:hover, .ch-pergame__row:focus-visible { background: var(--c-surface-2); }
+.ch-pergame__icon { width: 30px; height: 30px; flex: 0 0 30px; border-radius: 9px; overflow: hidden; }
+.ch-sheet__head { align-items: center; margin-bottom: var(--s-3); }
+.ch-sheet__head .ch-game__icon { width: 56px; height: 56px; flex: 0 0 56px; }
+.ch-sheet__head p { margin: 0; }
+.ch-sheet__stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-2); margin-bottom: var(--s-3); }
+.ch-sheet__stats .ch-stat b { font-size: var(--fs-md); overflow-wrap: anywhere; }
+.ch-sheet__erase { border-top: 1px solid var(--c-line); padding-top: var(--s-3); margin-bottom: var(--s-2); }
+.ch-sheet__erase p { margin: 0 0 var(--s-2); }
+
+/* --------------------------------------------------------------- نشان‌ها */
+.ch-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border-radius: var(--r-pill);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  background: var(--c-surface-3);
+  color: var(--c-text-dim);
+  line-height: 1.8;
+  white-space: nowrap;
+}
+.ch-badge--accent { background: var(--game-soft, var(--c-accent-soft)); color: var(--game, var(--c-accent)); }
+.ch-badge--good   { background: var(--c-good-soft); color: var(--c-good); }
+.ch-badge--warn   { background: var(--c-warn-soft); color: var(--c-warn); }
+.ch-badge--bad    { background: var(--c-bad-soft); color: var(--c-bad); }
+.ch-badge--gold   { background: var(--c-warn-soft); color: var(--c-gold); }
+/* Chogan Plus: a game that plays across two phones (#706) */
+.ch-badge--link   { background: var(--c-accent-soft); color: var(--c-accent); }
+
+/* ----------------------------------------------------------------- دکمه */
+.ch-btn {
+  font: inherit;
+  font-weight: 700;
+  border: 0;
+  border-radius: var(--r-pill);
+  padding: 0 var(--s-5);
+  min-height: 48px;
+  min-width: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  cursor: pointer;
+  background: var(--c-surface-2);
+  color: var(--c-text);
+  transition: transform var(--t-fast) var(--ease), filter var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+.ch-btn:active { transform: scale(.96); }
+.ch-btn:disabled { opacity: .45; cursor: default; transform: none; }
+.ch-btn--primary {
+  background: var(--game, var(--c-accent));
+  color: var(--c-accent-ink);
+  box-shadow: var(--sh-2);
+}
+.ch-btn--ghost { background: transparent; color: var(--c-text-dim); }
+.ch-btn--soft  { background: var(--game-soft, var(--c-accent-soft)); color: var(--game, var(--c-accent)); }
+.ch-btn--danger { background: var(--c-bad-soft); color: var(--c-bad); }
+.ch-btn--sm { min-height: 38px; padding: 0 var(--s-4); font-size: var(--fs-sm); }
+.ch-btn--block { width: 100%; }
+.ch-btn--icon { padding: 0; width: 48px; height: 48px; border-radius: var(--r-md); }
+
+.ch-btn__ripple { position: relative; overflow: hidden; }
+
+/* --------------------------------------------------------- نوار ناوبری */
+/* A floating, rounded bar with room around it (#559): edge to edge it stretched
+   across a whole tablet. It is centred by its physical left, so it sits in the
+   middle in both reading directions. */
+.ch-nav {
+  position: fixed;
+  left: 50%;
+  bottom: calc(12px + var(--safe-b));
+  transform: translateX(-50%);
+  width: min(calc(100% - 24px - var(--safe-l) - var(--safe-r)), 480px);
+  z-index: 40;
+  display: flex;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px 8px;
+  background: var(--c-surface);
+  background: color-mix(in srgb, var(--c-surface) 88%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--c-line);
+  border-radius: 24px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .18), 0 2px 6px rgba(0, 0, 0, .08);
+}
+.ch-nav__in { display: flex; width: 100%; max-width: var(--w-page); }
+.ch-nav__item {
+  flex: 1;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--c-text-faint);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px 2px;
+  min-height: 48px;
+  border-radius: 18px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  transition: color var(--t-fast) var(--ease);
+  touch-action: manipulation;
+}
+.ch-nav__item svg { width: 24px; height: 24px; display: block; transition: transform var(--t-mid) var(--ease-back); }
+.ch-nav__item[aria-selected="true"] { color: var(--c-accent); background: color-mix(in srgb, var(--c-accent) 14%, transparent); }
+.ch-nav__item[aria-selected="true"] svg { transform: translateY(-2px) scale(1.08); }
+.ch-nav__item:active svg { transform: scale(.9); }
+/* A phone turned sideways (#538): the bottom bar took 62px of a ~360px tall
+   screen, so the menu showed barely two rows. In a short landscape window the
+   bar becomes a rail on the reading side (right in Persian, left in English). */
+@media (orientation: landscape) and (max-height: 540px) {
+  :root { --nav-w: 76px; }
+  .ch-nav {
+    left: auto; right: auto;
+    inset-inline-start: 0;
+    top: 0;
+    bottom: 0;
+    transform: none;
+    width: var(--nav-w);
+    flex-direction: column;
+    padding: calc(6px + var(--safe-t)) 6px calc(6px + var(--safe-b));
+    border: 0;
+    border-inline-end: 1px solid var(--c-line);
+    border-radius: 0;
+    box-shadow: none;
+  }
+  /* the notch side of a turned phone is a physical side, not a reading one */
+  [dir="ltr"] .ch-nav { width: calc(var(--nav-w) + var(--safe-l)); padding-left: calc(6px + var(--safe-l)); }
+  [dir="rtl"] .ch-nav { width: calc(var(--nav-w) + var(--safe-r)); padding-right: calc(6px + var(--safe-r)); }
+  .ch-nav__in { flex-direction: column; justify-content: center; height: 100%; max-width: none; gap: 2px; }
+  .ch-nav__item { flex: 0 1 64px; min-height: 0; }
+  /* the body makes room for the rail, so the page keeps its own width and
+     centres in what is left */
+  [dir="ltr"] body.ch-menu { padding-left: calc(var(--nav-w) + var(--safe-l)); }
+  [dir="rtl"] body.ch-menu { padding-right: calc(var(--nav-w) + var(--safe-r)); }
+  .ch-page { padding-bottom: calc(var(--s-7) + var(--safe-b)); }
+  [dir="ltr"] .ch-page { padding-left: var(--s-4); }
+  [dir="rtl"] .ch-page { padding-right: var(--s-4); }
+  .ch-update { bottom: calc(var(--s-3) + var(--safe-b)); inset-inline-start: calc(var(--nav-w) + var(--s-3) + max(var(--safe-l), var(--safe-r))); }
+}
+
+/* ------------------------------------------------- سربرگ داخل بازی‌ها */
+.ch-gamebar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding:
+    calc(var(--s-2) + var(--safe-t))
+    calc(var(--s-3) + var(--safe-r))
+    var(--s-2)
+    calc(var(--s-3) + var(--safe-l));
+  background: var(--c-surface);
+  border-bottom: 1px solid var(--c-line);
+  flex: 0 0 auto;
+  z-index: 10;
+}
+/* Installed desktop app with the title bar hidden (#344). The browser's
+   title bar took a strip of the window, so the manifest asks for the window
+   controls overlay; the minimise/maximise/close buttons then float over the
+   page's top corner, on the left or the right depending on the OS. Everything
+   that clears the top edge (menu, welcome, toasts) clears the controls' strip
+   instead, and the game bar moves up into it, padded away from the controls on
+   both sides. Its empty part drags the window, its buttons stay clickable.
+   Scoped to the display mode, so phones, the Android app and browsers without
+   the overlay are untouched. --tb-* exist so a test can stand in for env(). */
+@media (display-mode: window-controls-overlay) {
+  :root {
+    --tb-h: env(titlebar-area-height, 0px);
+    --tb-l: env(titlebar-area-x, 0px);
+    --tb-r: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw));
+  }
+  :root, body { --safe-t: max(env(safe-area-inset-top, 0px), var(--tb-h)); }
+  body.ch-menu::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: var(--tb-h);
+    background: var(--c-bg);
+    z-index: 30;
+    -webkit-app-region: drag;
+    app-region: drag;
+  }
+  .ch-gamebar {
+    padding:
+      var(--s-2)
+      calc(var(--s-3) + max(var(--safe-r), var(--tb-r)))
+      var(--s-2)
+      calc(var(--s-3) + max(var(--safe-l), var(--tb-l)));
+    /* the controls are painted in theme-color, which is --c-bg */
+    background: var(--c-bg);
+    -webkit-app-region: drag;
+    app-region: drag;
+  }
+  .ch-gamebar button, .ch-gamebar a, .ch-gamebar input, .ch-gamebar select {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+  }
+}
+.ch-gamebar__title {
+  font-weight: 800;
+  font-size: var(--fs-md);
+  /* بدون این، نام بازی روی عددهای سربرگ سرریز می‌کرد */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ch-gamebar__stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.2;
+  min-width: 52px;
+}
+.ch-gamebar__stat b { font-size: var(--fs-lg); font-variant-numeric: tabular-nums; }
+.ch-gamebar__stat span { font-size: 10px; color: var(--c-text-faint); font-weight: 700; }
+
+.ch-iconbtn {
+  border: 0;
+  background: var(--c-surface-2);
+  color: var(--c-text);
+  width: 44px; height: 44px;
+  border-radius: var(--r-md);
+  display: grid; place-items: center;
+  cursor: pointer;
+  flex: 0 0 auto;
+  transition: transform var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+  touch-action: manipulation;
+}
+.ch-iconbtn:active { transform: scale(.92); }
+.ch-iconbtn svg { width: 22px; height: 22px; }
+.ch-iconbtn--plain { background: transparent; }
+.ch-iconbtn--gold { background: var(--c-warn-soft); color: var(--c-gold); }
+/* After the result window is closed with X (#306): the result and the next round,
+   floating over the bottom of the finished board */
+.ch-afterbar {
+  position: fixed; z-index: 20; left: 0; right: 0; margin-inline: auto; width: max-content; max-width: calc(100% - 32px);
+  bottom: calc(var(--s-4) + env(safe-area-inset-bottom, 0px)); display: flex; gap: var(--s-2);
+  padding: var(--s-2); border-radius: var(--r-pill); background: var(--c-surface); box-shadow: var(--sh-3, var(--sh-2));
+  animation: ch-rise var(--t-mid) var(--ease) both;
+}
+.ch-afterbar .ch-btn { gap: 6px; }
+/* "See the board" in the result window (#315) */
+.ch-seeboard { display: flex; gap: 6px; margin: var(--s-3) auto 0; }
+/* کلاس‌های خودمان display می‌گذارند و بر [hidden] مرورگر می‌چربند */
+[hidden] { display: none !important; }
+.ch-iconbtn[aria-pressed="true"] { background: var(--game-soft, var(--c-accent-soft)); color: var(--game, var(--c-accent)); }
+
+/* روی صفحه‌های باریک، سربرگ بازی جا کم می‌آورد: دکمه‌ی بازگشت، نام بازی،
+   دو سه عدد و دو سه دکمه. اول فضا را از عددها و فاصله‌ها می‌گیریم، و زیر
+   ۳۶۰ پیکسل نام بازی کلاً کنار می‌رود — بریدنش به «س…» از نشان ندادنش بدتر
+   است، و کاربر همین الان از منو آمده و می‌داند کدام بازی را باز کرده. */
+@media (max-width: 420px) {
+  .ch-gamebar { gap: 6px; }
+  .ch-gamebar__stat { min-width: 44px; }
+}
+@media (max-width: 360px) {
+  .ch-gamebar__title { display: none; }
+  .ch-gamebar__stat { min-width: 40px; }
+  .ch-iconbtn { width: 40px; height: 40px; }
+}
+
+/* پوسته‌ی صفحه‌ی بازی */
+/* top/right/bottom/left, never the inset shorthand: WebViews older than Chrome 87 drop
+   it, so this box shrank to its content and every board came out tiny or off to one
+   side (#790, Android 8.1). The same holds in every game's CSS. */
+.ch-gameroot {
+  position: fixed;
+  top: 0; right: 0; bottom: 0; left: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--c-bg);
+}
+.ch-gamemain {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s-3) calc(var(--s-3) + var(--safe-r)) calc(var(--s-3) + var(--safe-b)) calc(var(--s-3) + var(--safe-l));
+  gap: var(--s-3);
+  overflow: hidden;
+}
+.ch-gamemain--scroll { justify-content: flex-start; overflow-y: auto; overscroll-behavior: contain; }
+.ch-board { max-width: min(100%, 620px); width: 100%; }
+/* Boards fill the screen they are on (#359). Most games stopped their board at a
+   fixed 400-620px, so a 7-inch phone, a tablet or a laptop showed it in a third to
+   a half of the screen. The game area is a size container named game, so a game
+   can lay itself out by the room it really has (@container game, cqw/cqh), and
+   .ch-fit is a slot that takes whatever height the game's other rows leave and
+   holds the largest board of aspect --fit-ar (width / height) that fits there. */
+.ch-gamemain { container: game / size; }
+.ch-fit {
+  flex: 1 1 0; min-height: 0; min-width: 0; align-self: stretch;
+  container-type: size; display: grid; place-items: center;
+  /* the one cell is the slot's own size, never its content's: an auto row grew to the
+     canvas a game had drawn, and games that size their canvas by its box read that
+     size back, so turning a phone kept the upright board and it ran off the screen
+     (#474: Gorillas, Darts, Ludo, Snakes and Ladders, Chain Reaction, Bowling) */
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  /* never taller than the board it holds, so in a tall window the other rows stay
+     next to the board instead of being pushed to the edges */
+  max-height: calc(100cqw / var(--fit-ar, 1));
+}
+.ch-fit > * { width: min(100cqw, 100cqh * var(--fit-ar, 1)); max-width: none; }
+/* A game laid out around one board: its other rows stacked above and below the
+   board in a tall window, and in a column beside it in a wide one, where the board
+   can then use the full height. Children: the .ch-fit slot and a .ch-side with the
+   other rows; a row marked .ch-above sits above the board when stacked. If the
+   side column is ever taller than the window, it scrolls; the board never does. */
+.ch-split {
+  --side-w: clamp(240px, 28cqw, 380px);
+  width: 100%; height: 100%; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: var(--s-3);
+}
+.ch-split > .ch-side { display: contents; }
+.ch-split > .ch-side > * { width: 100%; max-width: 560px; }
+.ch-split .ch-above { order: -1; }
+@container game (min-aspect-ratio: 5 / 4) {
+  .ch-split { flex-direction: row; }
+  .ch-split > .ch-fit {
+    flex: 0 1 auto; height: 100%; max-height: none;
+    width: min(100cqh * var(--fit-ar, 1), 100cqw - var(--side-w) - var(--s-3));
+  }
+  .ch-split > .ch-side {
+    display: flex; flex-direction: column; justify-content: center; gap: var(--s-3);
+    width: var(--side-w); max-height: 100%; overflow-y: auto; overscroll-behavior: contain;
+  }
+  .ch-split .ch-above { order: 0; }
+}
+/* The same wide layout where container queries are missing (#610): Chogan.ui.fitFallback
+   marks the page .ch-nocq, the game area .ch-wide, and sets the widths in pixels */
+.ch-nocq .ch-gamemain.ch-wide .ch-split { flex-direction: row; }
+.ch-nocq .ch-gamemain.ch-wide .ch-split > .ch-fit { flex: 0 1 auto; height: 100%; }
+.ch-nocq .ch-gamemain.ch-wide .ch-split > .ch-side {
+  display: flex; flex-direction: column; justify-content: center; gap: var(--s-3);
+  max-height: 100%; overflow-y: auto; overscroll-behavior: contain;
+}
+.ch-nocq .ch-gamemain.ch-wide .ch-split .ch-above { order: 0; }
+
+/* ---------------------------------------------------------------- سکه */
+.ch-coin {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--c-gold);
+  background: var(--c-warn-soft);
+  border-radius: var(--r-pill);
+  padding: 4px 12px 4px 8px;
+  font-size: var(--fs-sm);
+}
+[dir="rtl"] .ch-coin { padding: 4px 8px 4px 12px; }
+.ch-coin svg { width: 18px; height: 18px; }
+
+/* --------------------------------------------------------------- سوییچ */
+.ch-switch {
+  position: relative;
+  width: 52px; height: 32px;
+  flex: 0 0 52px;
+  border-radius: var(--r-pill);
+  background: var(--c-surface-3);
+  border: 0;
+  cursor: pointer;
+  transition: background var(--t-mid) var(--ease);
+  padding: 0;
+}
+.ch-switch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  inset-inline-start: 3px;
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: var(--sh-1);
+  transition: transform var(--t-mid) var(--ease-back);
+}
+.ch-switch[aria-checked="true"] { background: var(--c-good); }
+.ch-switch[aria-checked="true"]::after { transform: translateX(20px); }
+[dir="rtl"] .ch-switch[aria-checked="true"]::after { transform: translateX(-20px); }
+
+/* ---------------------------------------------------------- arrow pad */
+/* Chogan.ui.arrowPad (#745, #854): only where a mouse is the main pointer; a finger swipes
+   or taps the board and needs the room. ltr because a grid under dir="rtl" would swap the
+   left and right arrows, and the boards it drives are not mirrored either. */
+.ch-pad { display: none; direction: ltr; justify-content: center; grid-template: repeat(3, 56px) / repeat(3, 56px); gap: var(--s-1);
+  grid-template-areas: ". up ." "left . right" ". down ."; }
+@media (hover: hover) and (pointer: fine) { .ch-pad { display: grid; } }
+.ch-pad__btn { display: grid; place-items: center; border: 0; border-radius: var(--r-md, 14px); background: var(--c-surface);
+  box-shadow: var(--sh-1); color: var(--c-text); cursor: pointer; }
+.ch-pad__btn:hover { background: var(--game-soft, var(--c-accent-soft)); }
+.ch-pad__btn:active { transform: scale(.94); }
+.ch-pad__btn--up { grid-area: up; }
+.ch-pad__btn--down { grid-area: down; }
+.ch-pad__btn--left { grid-area: left; }
+.ch-pad__btn--right { grid-area: right; }
+.ch-pad__btn--down svg { transform: rotate(180deg); }
+.ch-pad__btn--left svg { transform: rotate(-90deg); }
+.ch-pad__btn--right svg { transform: rotate(90deg); }
+
+/* -------------------------------------------------------------- فهرست */
+.ch-list { display: flex; flex-direction: column; }
+.ch-item {
+  display: flex;
+  align-items: center;
+  /* کنترل سه‌گزینه‌ای روی صفحه‌ی ۳۲۰ پیکسلی از کارت بیرون می‌زد و برچسب را می‌برید */
+  flex-wrap: wrap;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-1);
+  min-height: 52px;
+  border-bottom: 1px solid var(--c-line);
+}
+.ch-item:last-child { border-bottom: 0; }
+/* حداقل عرض برچسب، وگرنه به جای شکستن خط، برچسب له می‌شود */
+.ch-item__label { flex: 1 1 auto; min-width: 5em; font-weight: 600; }
+.ch-item > .ch-seg { flex: 0 0 auto; margin-inline-start: auto; max-width: 100%; }
+.ch-item__hint { font-size: var(--fs-xs); color: var(--c-text-faint); font-weight: 400; }
+.ch-version { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.ch-version__build, .ch-version__age { font-size: var(--fs-xs); }
+.ch-version__hash { font-family: ui-monospace, monospace; letter-spacing: .02em; unicode-bidi: isolate; color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.ch-version__link { text-decoration: none; }
+/* the update status under the version (#788); the result reads like the report note */
+.ch-upd__note { font-weight: 400; }
+.ch-upd__btns { gap: var(--s-2); flex-wrap: wrap; }
+.ch-version__link:hover, .ch-version__link:focus-visible { text-decoration: underline; text-underline-offset: 2px; }
+
+.ch-seg {
+  display: inline-flex;
+  background: var(--c-surface-2);
+  border-radius: var(--r-pill);
+  padding: 3px;
+  gap: 2px;
+}
+.ch-seg button {
+  border: 0;
+  background: none;
+  font: inherit;
+  /* با سه زبان، برچسب داخل دکمه وسط کلمه می‌شکست */
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--c-text-dim);
+  padding: 7px 16px;
+  min-height: 38px;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+  touch-action: manipulation;
+}
+.ch-seg button[aria-selected="true"] {
+  background: var(--c-surface);
+  color: var(--game, var(--c-accent));
+  box-shadow: var(--sh-1);
+}
+/* In the dark theme, text in the game's colour takes a lightened copy of it
+   (--game-text-dark, set with --game) that reads at 4.5:1; deep accents were
+   at 2.2:1 (#396). Fills keep the accent. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .ch-badge--accent,
+  :root:not([data-theme="light"]) .ch-btn--soft,
+  :root:not([data-theme="light"]) .ch-iconbtn[aria-pressed="true"],
+  :root:not([data-theme="light"]) .ch-seg button[aria-selected="true"] { color: var(--game-text-dark, var(--game, var(--c-accent))); }
+}
+:root[data-theme="dark"] .ch-badge--accent,
+:root[data-theme="dark"] .ch-btn--soft,
+:root[data-theme="dark"] .ch-iconbtn[aria-pressed="true"],
+:root[data-theme="dark"] .ch-seg button[aria-selected="true"] { color: var(--game-text-dark, var(--game, var(--c-accent))); }
+/* با چهار زبان، انتخاب زبان در ۳۲۰ پیکسل از کارت بیرون می‌زد و «Deutsch» بریده
+   می‌شد (#121). فقط روی صفحه‌ی خیلی باریک فاصله‌ی داخل دکمه کم می‌شود. */
+@media (max-width: 360px) {
+  .ch-seg button { padding-inline: 9px; }
+}
+/* With five languages the picker ran past the card at 390px and the whole page
+   scrolled sideways (#256). The language picker wraps onto a second row instead,
+   with the buttons sharing each row, so a sixth language needs no new rule. */
+.ch-seg--wrap {
+  display: flex;
+  flex-wrap: wrap;
+  width: 100%;
+  border-radius: 22px;
+}
+.ch-seg--wrap button { flex: 1 1 auto; }
+/* Five languages still wrapped at every phone width with the 16px side padding,
+   leaving Español alone on a second row (#291). Narrow padding kept them on one
+   row; the sixth, Polski, then sat alone below (#542), so a phone shows two even
+   rows of three and a wider window one row of six. With Arabic and Hindi, the eighth
+   and ninth, a phone shows two rows of five (#855, #856). */
+.ch-seg.ch-langs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; }
+.ch-seg.ch-langs button { padding-inline: 6px; }
+@media (min-width: 600px) { .ch-seg.ch-langs { grid-template-columns: repeat(9, 1fr); } }
+
+/* the colour-theme row in the Profile (#875): each button is drawn in its own palette by
+   the .ch-swatch[data-colors] token blocks near the top of this file */
+.ch-swatches { flex: 1 0 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-2); }
+@media (min-width: 600px) { .ch-swatches { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+.ch-swatch {
+  min-height: 44px; min-width: 44px;
+  display: flex; flex-direction: column; align-items: stretch; gap: 6px;
+  padding: 6px; border-radius: var(--r-sm);
+  border: 1px solid var(--c-line); background: var(--c-bg); color: var(--c-text);
+  font: inherit; font-size: var(--fs-xs); font-weight: 700; cursor: pointer;
+}
+.ch-swatch__chip {
+  display: flex; align-items: center; justify-content: space-between; gap: 4px;
+  padding: 6px 8px; border-radius: var(--r-xs);
+  background: var(--c-surface); border: 1px solid var(--c-line);
+}
+.ch-swatch__aa { font-size: var(--fs-md); line-height: 1; color: var(--c-text); }
+.ch-swatch__dots { display: flex; gap: 3px; }
+.ch-swatch__dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--c-text-dim); }
+.ch-swatch__dots i + i { background: var(--c-text-faint); }
+.ch-swatch__name { text-align: center; line-height: 1.25; overflow-wrap: anywhere; }
+.ch-swatch[aria-pressed="true"] { border-color: var(--c-accent); box-shadow: 0 0 0 2px var(--c-accent); }
+.ch-swatch:focus-visible { outline: 3px solid var(--c-accent); outline-offset: 2px; }
+
+/* ------------------------------------------------------------ پیمایه */
+.ch-bar {
+  height: 10px;
+  border-radius: var(--r-pill);
+  background: var(--c-surface-3);
+  overflow: hidden;
+}
+.ch-bar__fill {
+  height: 100%;
+  border-radius: var(--r-pill);
+  background: var(--game, var(--c-accent));
+  transition: width var(--t-slow) var(--ease);
+}
+
+/* ------------------------------------------------------- پنجره و شیت */
+.ch-scrim {
+  position: fixed;
+  top: 0; right: 0; bottom: 0; left: 0;
+  z-index: 60;
+  background: rgba(24, 18, 12, .48);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  display: grid;
+  place-items: center;
+  padding: var(--s-4);
+  animation: ch-fade var(--t-mid) var(--ease);
+}
+.ch-modal {
+  width: min(100%, 420px);
+  max-height: calc(100dvh - var(--s-7));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--c-surface);
+  border-radius: var(--r-xl);
+  box-shadow: var(--sh-3);
+  padding: var(--s-5);
+  animation: ch-pop var(--t-slow) var(--ease-back);
+}
+.ch-card__img { display: block; width: 100%; height: auto; border-radius: var(--r-md); box-shadow: var(--sh-2); }
+.ch-modal__head { display: flex; align-items: flex-start; gap: var(--s-2); margin-bottom: var(--s-2); }
+.ch-modal__head h2 { flex: 1; margin: 0; min-width: 0; }
+.ch-modal__head .ch-iconbtn { flex: none; width: 34px; height: 34px; margin-block-start: -2px; }
+.ch-modal__head .ch-iconbtn svg { width: 20px; height: 20px; }
+.ch-modal h2 { margin-bottom: var(--s-2); }
+/* Equal-width buttons broke longer labels in two («مرحله‌ی / بعد», #242): a label stays
+   on one line, buttons grow to share a row, and wrap to a new row when they do not fit */
+.ch-modal__actions { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-5); }
+.ch-modal__actions .ch-btn { flex: 1 1 auto; white-space: nowrap; padding-inline: var(--s-4); }
+
+/* ------------------------------------------------------------- اعلان */
+/* نوار آپدیت، بالای نوار پایین صفحه */
+.ch-update {
+  position: fixed;
+  left: var(--s-3); right: var(--s-3);
+  bottom: calc(var(--nav-h) + var(--s-3) + var(--safe-b));
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  /* as wide as the floating bar below it (#559) */
+  max-width: 480px;
+  margin-inline: auto;
+  padding: 8px 8px 8px var(--s-3);
+  background: var(--c-surface);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-3);
+  animation: ch-rise var(--t-mid) var(--ease);
+}
+.ch-update__t { flex: 1; min-width: 0; font-weight: 700; font-size: var(--fs-sm); line-height: 1.4; }
+.ch-update .ch-iconbtn { width: 34px; height: 34px; flex: none; }
+.ch-update .ch-iconbtn svg { width: 18px; height: 18px; }
+.ch-toasts {
+  position: fixed;
+  top: calc(var(--s-3) + var(--safe-t));
+  left: 0; right: 0;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-2);
+  pointer-events: none;
+  padding: 0 var(--s-4);
+}
+.ch-toast {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  background: var(--c-surface);
+  border-radius: var(--r-pill);
+  box-shadow: var(--sh-3);
+  padding: 8px 18px 8px 8px;
+  max-width: min(100%, 400px);
+  animation: ch-drop var(--t-slow) var(--ease-back);
+  border: 1px solid var(--c-line);
+  /* the host lets taps through to the page; the notice itself can be held or closed (#234) */
+  pointer-events: auto;
+  cursor: pointer;
+}
+[dir="rtl"] .ch-toast { padding: 8px 8px 8px 18px; }
+.ch-toast--out { animation: ch-lift var(--t-mid) var(--ease) forwards; }
+.ch-toast__icon {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: var(--c-warn-soft);
+  display: grid; place-items: center;
+  flex: 0 0 40px;
+}
+.ch-toast__icon svg { width: 26px; height: 26px; }
+.ch-toast__t { font-weight: 800; font-size: var(--fs-sm); line-height: 1.4; }
+.ch-toast__s { font-size: var(--fs-xs); color: var(--c-text-dim); line-height: 1.4; }
+
+/* ----------------------------------------------------------- کانفتی */
+.ch-confetti {
+  position: fixed;
+  top: 0; right: 0; bottom: 0; left: 0;
+  z-index: 70;
+  pointer-events: none;
+}
+/* the shared particle layer of Chogan.ui.burst (#398): above the board, below dialogs */
+.ch-fx { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 50; pointer-events: none; }
+
+/* ------------------------------------------------------------ حرکت */
+@keyframes ch-fade { from { opacity: 0; } }
+@keyframes ch-pop  { from { opacity: 0; transform: scale(.9) translateY(12px); } }
+@keyframes ch-drop { from { opacity: 0; transform: translateY(-18px); } }
+@keyframes ch-lift { to { opacity: 0; transform: translateY(-14px); } }
+@keyframes ch-rise { from { opacity: 0; transform: translateY(14px); } }
+/* translate, not transform: cards placed by an inline transform (Spider) jumped to the
+   board's corner beside the stock and back while they shook (#950) */
+@keyframes ch-shake {
+  10%, 90% { translate: -2px 0; }
+  20%, 80% { translate: 4px 0; }
+  30%, 50%, 70% { translate: -7px 0; }
+  40%, 60% { translate: 7px 0; }
+}
+@keyframes ch-pulse { 50% { transform: scale(1.14); } }
+/* a piece set down on a board: falls a little, overshoots, settles (#398) */
+@keyframes ch-dropin {
+  0% { transform: translateY(-40%) scale(1.5); opacity: 0; }
+  55% { transform: translateY(0) scale(.88); opacity: 1; }
+  78% { transform: scale(1.08); }
+}
+/* the back that covers a card while Chogan.ui.fly turns it face up: it shows for
+   the first half of the turn, while the card is narrowing, then is gone */
+@keyframes ch-turnback { 0%, 49.9% { opacity: 1; } 50%, 100% { opacity: 0; } }
+
+.ch-enter { animation: ch-rise var(--t-slow) var(--ease) backwards; }
+.ch-shake { animation: ch-shake 500ms var(--ease); }
+.ch-pulse { animation: ch-pulse var(--t-slow) var(--ease-back); }
+.ch-dropin { animation: ch-dropin 340ms var(--ease) backwards; }
+.ch-turnback { position: absolute; top: -1px; right: -1px; bottom: -1px; left: -1px; width: auto; border-radius: inherit; pointer-events: none;
+  animation: ch-turnback var(--turn-ms, 360ms) linear forwards; }
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="on"]) *, :root:not([data-motion="on"]) *::before, :root:not([data-motion="on"]) *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+:root[data-motion="off"] *, :root[data-motion="off"] *::before, :root[data-motion="off"] *::after {
+  animation-duration: .001ms !important;
+  transition-duration: .001ms !important;
+}
+
+/* ------------------------------------------------------------- تقویم */
+/* minmax(0, …): با پانزده بازی، ردیف نقطه‌های هر روز ستون را تا ۱۱۵ پیکسل پهن
+   می‌کرد و تقویم در گوشی ۳۹۰ پیکسلی ۸۷۴ پیکسل می‌شد (#123). */
+.ch-cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.ch-cal__dow {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--c-text-faint);
+  padding-bottom: var(--s-1);
+}
+.ch-day {
+  aspect-ratio: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: var(--c-surface-2);
+  border-radius: var(--r-sm);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--c-text);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  cursor: pointer;
+  position: relative;
+  transition: transform var(--t-fast) var(--ease);
+  touch-action: manipulation;
+}
+.ch-day:active { transform: scale(.92); }
+.ch-day--empty { background: none; cursor: default; }
+.ch-day--future { opacity: .35; cursor: default; }
+.ch-day--today { box-shadow: inset 0 0 0 2px var(--c-accent); }
+.ch-day--done { background: var(--c-good-soft); color: var(--c-good); }
+/* پنج ستون ثابت: پانزده بازی سه ردیف مرتب می‌شود و در ۳۲۰ پیکسل هم در خانه جا دارد */
+.ch-day__dots { display: grid; grid-template-columns: repeat(5, 4px); justify-content: center; gap: 2px; max-width: 100%; }
+.ch-day__dot { width: 4px; height: 4px; border-radius: 50%; background: var(--c-text-faint); opacity: .35; }
+.ch-day__dot--on { opacity: 1; }
+
+/* --------------------------------------------------------------- لیگ */
+.ch-tier {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  padding: var(--s-4);
+  border-radius: var(--r-lg);
+  background: var(--tier-c, var(--c-accent));
+  background: linear-gradient(135deg, var(--tier-c, var(--c-accent)) 0%, color-mix(in srgb, var(--tier-c, var(--c-accent)) 60%, #fff) 100%);
+  color: #fff;
+  box-shadow: var(--sh-2);
+}
+.ch-tier__medal { width: 66px; height: 66px; flex: 0 0 66px; }
+.ch-star-off { color: var(--c-text-faint); opacity: .45; }
+.ch-rank {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-2);
+  border-radius: var(--r-md);
+  border-bottom: 1px solid var(--c-line);
+}
+.ch-rank--me { background: var(--c-accent-soft); border-bottom-color: transparent; }
+.ch-rank__n {
+  width: 30px;
+  text-align: center;
+  font-weight: 800;
+  color: var(--c-text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.ch-rank__name { flex: 1; min-width: 0; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ch-rank__pts { font-weight: 800; font-variant-numeric: tabular-nums; }
+/* the player's own row under Play's top ten (chogan-plus#20) */
+.ch-rank--gap { justify-content: center; padding-block: var(--s-1); color: var(--c-text-faint); }
+
+/* --------------------------------------------------------- دستاوردها */
+.ch-achs { display: grid; grid-template-columns: repeat(auto-fill, minmax(94px, 1fr)); gap: var(--s-3); }
+.ch-ach {
+  text-align: center;
+  padding: var(--s-3) var(--s-2);
+  border-radius: var(--r-md);
+  background: var(--c-surface-2);
+  cursor: pointer;
+  transition: transform var(--t-fast) var(--ease);
+}
+.ch-ach:active { transform: scale(.94); }
+.ch-ach--locked { opacity: .42; filter: grayscale(1); }
+.ch-ach svg { width: 48px; height: 48px; }
+.ch-ach__n { font-size: 11px; font-weight: 700; line-height: 1.4; margin-top: 4px; }
+/* Awards by game (#821): the game's icon in a tile's top corner, a name chip in the list,
+   a heading per game in the By game sort. Physical sides with an RTL twin: old WebViews
+   drop the logical inset properties. */
+.ch-achtools { justify-content: flex-end; margin-bottom: var(--s-4); }
+.ch-achgroup { margin-bottom: var(--s-5); }
+.ch-achgroup__head { align-items: center; }
+.ch-achgroup__head h2 { gap: var(--s-2); min-width: 0; }
+.ch-achgroup__head h2 .ch-ach__gicon { border-radius: 8px; flex: none; }
+.ch-achgroup__head .ch-badge { flex: none; }
+.ch-ach { position: relative; }
+.ch-ach > .ch-ach__gicon { position: absolute; top: 6px; right: 6px; border-radius: 6px; }
+[dir="rtl"] .ch-ach > .ch-ach__gicon { right: auto; left: 6px; }
+.ch-ach__gicon { display: block; object-fit: cover; -webkit-user-drag: none; }
+.ch-ach__chip { gap: 5px; padding-inline-start: 4px; max-width: 100%; }
+.ch-ach__chip span { overflow: hidden; text-overflow: ellipsis; }
+.ch-ach__chip .ch-ach__gicon { border-radius: 4px; flex: none; }
+.ch-achs--list { grid-template-columns: 1fr; gap: var(--s-2); }
+@media (min-width: 620px) { .ch-achs--list { grid-template-columns: 1fr 1fr; } }
+.ch-achs--list .ch-ach { display: flex; align-items: flex-start; gap: var(--s-3); text-align: start; padding: var(--s-3); }
+.ch-achs--list .ch-ach svg { width: 40px; height: 40px; flex: none; }
+.ch-achs--list .ch-ach--locked { opacity: .6; }
+.ch-ach__body { flex: 1; min-width: 0; }
+.ch-achs--list .ch-ach__n { font-size: var(--fs-sm); margin-top: 0; }
+.ch-ach__sub { font-size: var(--fs-xs); color: var(--c-text-dim); line-height: 1.5; margin-top: 2px; }
+.ch-ach__meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin-top: var(--s-1); }
+
+/* ----------------------------------------------------------- آماره‌ها */
+.ch-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: var(--s-3); }
+/* Four boxes never split 3 + 1 (#664): two by two on a phone, one row when all four fit */
+.ch-stats--4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 560px) { .ch-stats--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.ch-stat {
+  background: var(--c-surface-2);
+  border-radius: var(--r-md);
+  padding: var(--s-3);
+  text-align: center;
+}
+.ch-stat b { display: block; font-size: var(--fs-xl); font-variant-numeric: tabular-nums; line-height: 1.3; }
+.ch-stat span { font-size: var(--fs-xs); color: var(--c-text-dim); font-weight: 600; }
+/* This week and last week (#664): label, this week, last week */
+.ch-week {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto; column-gap: var(--s-4); row-gap: var(--s-2);
+  align-items: baseline; margin-top: var(--s-3); padding: var(--s-3) var(--s-4);
+  background: var(--c-surface-2); border-radius: var(--r-md); font-size: var(--fs-sm);
+}
+.ch-week > :nth-child(3n+2), .ch-week > :nth-child(3n) { text-align: end; font-variant-numeric: tabular-nums; }
+.ch-week__h { font-size: var(--fs-xs); color: var(--c-text-dim); }
+.ch-week__l { color: var(--c-text-dim); font-weight: 600; }
+
+/* ------------------------------------------------------------- خالی */
+.ch-empty {
+  text-align: center;
+  padding: var(--s-6) var(--s-4);
+  color: var(--c-text-dim);
+}
+.ch-empty svg { width: 92px; height: 92px; margin-bottom: var(--s-3); }
+
+/* --------------------------------------------------- خوشامدگویی اول */
+/* صفحه‌ی اولین اجرا. عمداً جدا از .ch-tut است چون آموزش داخل بازی یک
+   پنجره‌ی کوچک است و این یک صفحه‌ی تمام‌قد با گام‌های قابل افزودن. */
+.ch-welcome {
+  position: fixed;
+  top: 0; right: 0; bottom: 0; left: 0;
+  z-index: 90;
+  background: var(--c-bg);
+  display: flex;
+  flex-direction: column;
+  padding:
+    calc(var(--s-5) + var(--safe-t))
+    calc(var(--s-4) + var(--safe-r))
+    calc(var(--s-4) + var(--safe-b))
+    calc(var(--s-4) + var(--safe-l));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.ch-welcome__in {
+  width: 100%;
+  max-width: 460px;
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+.ch-welcome__art { display: grid; place-items: center; }
+.ch-welcome__art svg { max-width: 148px; height: auto; }
+/* One line in every language (#704): the page shrinks the size to fit (fitWelcomeHeads),
+   because "Willkommen bei Chogan Plus" at 32px wrapped on a 390px phone. */
+.ch-welcome h1 { font-size: var(--fs-2xl); text-align: center; white-space: nowrap; }
+.ch-welcome__sub { color: var(--c-text-dim); text-align: center; font-size: var(--fs-md); }
+.ch-welcome__foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-top: var(--s-4);
+}
+.ch-welcome__foot .ch-btn--primary { flex: 1; }
+
+.ch-chars { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--s-2); }
+.ch-char {
+  border: 2px solid var(--c-line);
+  background: var(--c-surface);
+  border-radius: var(--r-md);
+  padding: var(--s-2) 4px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--c-text-dim);
+  transition: transform var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+  touch-action: manipulation;
+  min-height: 88px;
+}
+.ch-char svg { width: 100%; height: auto; max-width: 56px; }
+.ch-char:active { transform: scale(.94); }
+.ch-char[aria-pressed="true"] {
+  border-color: var(--c-accent);
+  background: var(--c-accent-soft);
+  color: var(--c-accent);
+}
+
+.ch-field {
+  width: 100%;
+  font: inherit;
+  padding: 12px 16px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--c-line);
+  background: var(--c-surface-2);
+  color: var(--c-text);
+}
+.ch-field:focus { outline: 2px solid var(--c-accent); outline-offset: 1px; }
+
+/* ------------------------------------------------------------ آموزش */
+.ch-tut { text-align: center; touch-action: pan-y; user-select: none; } /* #598: sideways swipes turn the card */
+.ch-tut__art { width: 100%; max-width: 260px; margin: 0 auto var(--s-4); display: block; }
+.ch-tut__dots { display: flex; justify-content: center; gap: 6px; margin-top: var(--s-4); }
+.ch-tut__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c-surface-3); transition: all var(--t-mid) var(--ease); }
+.ch-tut__dot--on { background: var(--c-accent); width: 22px; border-radius: var(--r-pill); }
+
+/* --------------------------------------------------------- دسکتاپ */
+@media (min-width: 900px) {
+  :root { --fs-3xl: 48px; }
+}
+@media (hover: hover) {
+  .ch-tap:hover { transform: translateY(-2px); box-shadow: var(--sh-3); }
+  .ch-btn:hover:not(:disabled) { filter: brightness(1.05); }
+  .ch-nav__item:hover { color: var(--c-text-dim); }
+  .ch-day:hover:not(.ch-day--empty):not(.ch-day--future) { background: var(--c-surface-3); }
+}

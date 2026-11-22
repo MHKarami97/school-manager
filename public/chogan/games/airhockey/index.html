@@ -1,0 +1,669 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#FBF6EF">
+<title>ایرهاکی — چوگان</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../lib/chogan.css">
+<script src="../../lib/early.js"></script>
+<style>
+  .ah-wrap > .ch-fit { --fit-ar: calc(360 / 640); }
+  .ch-fit > .ah-box { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
+  .ah-canvas { display: block; touch-action: none; border-radius: var(--r-lg); direction: ltr; }
+  .ah-top { display: flex; justify-content: center; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
+  .ah-players { display: flex; justify-content: space-between; gap: var(--s-2); width: 100%; max-width: 420px; direction: ltr; }
+  .ah-player { flex: 1; display: flex; align-items: center; gap: var(--s-2); padding: 6px 10px; border-radius: var(--r-md); background: var(--c-surface-2); font-weight: 700; min-width: 0; }
+  .ah-player:last-child { flex-direction: row-reverse; }
+  .ah-player__dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+  .ah-player__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; text-align: start; }
+  .ah-player:last-child .ah-player__name { text-align: end; }
+  .ah-player__score { font-size: var(--fs-lg); font-weight: 800; font-variant-numeric: tabular-nums; min-width: 2ch; text-align: center; }
+  .ah-status { min-height: 1.6em; font-weight: 700; color: var(--c-text-dim); text-align: center; font-size: var(--fs-sm); }
+  .ah-wrap { touch-action: none; user-select: none; -webkit-user-select: none; }
+</style>
+</head>
+<body>
+<script src="../../version.js"></script>
+<script src="../../lib/chogan.js"></script>
+<script>
+/* ==== ENGINE START ==== */
+function AirHockeyEngineFactory() {
+  'use strict';
+
+  // A rink seen from above, 360 × 640 units, y down. Seat 0 defends the bottom goal,
+  // seat 1 the top. Fixed steps, so bots, tests and the page share one physics.
+  var W = 360, H = 640, DT = 1 / 120;
+  var RP = 14, RM = 26, GOAL = 156;              // puck and mallet radius, goal mouth width
+  var BOUNCE = 0.9, HITE = 0.92, VMAX = 1100, DRAG = 0.22, WAIT = 0.8, WIN = 7;
+  var HAND = 2600;                                // a finger's top mallet speed
+  var BOT = {
+    easy:   { speed: 330, err: 34, react: 0.32, predict: false, strike: 0.6, corner: 0 },
+    medium: { speed: 440, err: 28, react: 0.24, predict: true,  strike: 0.85, corner: 0.5 },
+    hard:   { speed: 600, err: 16, react: 0.12, predict: true,  strike: 1, corner: 0.9 }
+  };
+
+  function home(seat) { return { x: W / 2, y: seat === 0 ? H - 70 : 70, vx: 0, vy: 0 }; }
+  function match() {
+    var S = { score: [0, 0], winner: -1, wait: WAIT, t: 0, puck: { x: W / 2, y: H / 2, vx: 0, vy: 0 },
+      mal: [home(0), home(1)], bot: [null, null], hits: 0, touched: -1 };
+    return S;
+  }
+  function setBot(S, seat, level) { S.bot[seat] = level ? { level: level, timer: 0, tx: W / 2, ty: seat === 0 ? H - 70 : 70, err: 0 } : null; }
+
+  // A mallet stays in its own half, inside the boards
+  function clampMallet(seat, x, y) {
+    x = Math.max(RM, Math.min(W - RM, x));
+    y = seat === 0 ? Math.max(H / 2 + RM, Math.min(H - RM, y)) : Math.max(RM, Math.min(H / 2 - RM, y));
+    return { x: x, y: y };
+  }
+  function moveMallet(m, seat, t, top, dt) {
+    if (!t) { m.vx = m.vy = 0; return; }
+    var c = clampMallet(seat, t.x, t.y), dx = c.x - m.x, dy = c.y - m.y, d = Math.hypot(dx, dy), step = top * dt;
+    var k = d <= step ? 1 : step / d;
+    m.vx = dx * k / dt; m.vy = dy * k / dt; m.x += dx * k; m.y += dy * k;
+  }
+
+  // Where the puck will cross a line y = ly, bounces off the side boards included
+  function crossX(P, ly) {
+    if (!P.vy || (ly - P.y) / P.vy < 0) return null;
+    var x = P.x + P.vx * (ly - P.y) / P.vy, lo = RP, span = W - 2 * RP;
+    var u = ((x - lo) % (2 * span) + 2 * span) % (2 * span);
+    return lo + (u > span ? 2 * span - u : u);
+  }
+
+  // A bot, thought out in its own frame (its goal at the bottom): it guards the mouth on a
+  // line in front of its goal while the puck is away or coming fast, and when the puck is
+  // in its half and slow enough it gets behind it and strikes it at the other goal. It
+  // re-thinks every reaction time, with an error drawn each time.
+  function botTarget(S, seat, rnd, dt) {
+    var B = S.bot[seat], L = BOT[B.level] || BOT.medium, P = S.puck, m = S.mal[seat];
+    var fy = function (y) { return seat === 0 ? y : H - y; };
+    B.timer -= dt;
+    if (B.timer <= 0) {
+      B.timer = L.react;
+      B.err = (rnd() * 2 - 1) * L.err;
+      var p = { x: P.x, y: fy(P.y), vx: P.vx, vy: seat === 0 ? P.vy : -P.vy }, me = { x: m.x, y: fy(m.y) };
+      var mine = p.y > H / 2 - RP, comingFast = p.vy > 260;
+      if (mine && !comingFast && rnd() < L.strike) {
+        // aim at the far goal and come from behind the puck. Medium and hard aim for the
+        // corner away from the other mallet: aimed at the middle, every shot met the
+        // defender and bot matches went minutes without a goal.
+        var other = S.mal[1 - seat].x, side = L.corner && rnd() < L.corner ? (other > W / 2 ? -1 : 1) * (GOAL / 2 - RP - 6) : 0;
+        var ax = W / 2 + side + B.err * 1.5, ay = -40, dx = ax - p.x, dy = ay - p.y, dl = Math.hypot(dx, dy) || 1;
+        dx /= dl; dy /= dl;
+        var bx = p.x - dx * (RP + RM + 4), by = p.y - dy * (RP + RM + 4);
+        var behind = Math.hypot(me.x - bx, me.y - by) < 18 || me.y > p.y + 8 && Math.abs(me.x - p.x) < RM;
+        if (behind) { B.tx = p.x + dx * 40; B.ty = p.y + dy * 40; }
+        else if (me.y < p.y) { B.tx = p.x + (me.x < p.x ? -1 : 1) * (RM + RP + 16); B.ty = p.y + RM + 10; }
+        else { B.tx = bx; B.ty = by; }
+      } else {
+        var line = H - 74, x = L.predict ? crossX(p, line) : p.x;
+        if (x == null) x = p.x;
+        B.tx = Math.max(W / 2 - GOAL / 2 - 6, Math.min(W / 2 + GOAL / 2 + 6, x + B.err));
+        B.ty = line;
+      }
+    }
+    return { x: B.tx, y: fy(B.ty) };
+  }
+
+  function speedCap(P) {
+    var v = Math.hypot(P.vx, P.vy);
+    if (v > VMAX) { P.vx *= VMAX / v; P.vy *= VMAX / v; }
+  }
+
+  // One fixed step. input[seat] is {x, y} where a person wants that mallet, or null.
+  function step(S, input, rnd) {
+    var ev = [];
+    if (S.winner >= 0) return ev;
+    S.t += DT;
+    for (var s = 0; s < 2; s++) {
+      if (S.bot[s]) moveMallet(S.mal[s], s, botTarget(S, s, rnd, DT), (BOT[S.bot[s].level] || BOT.medium).speed, DT);
+      else moveMallet(S.mal[s], s, input ? input[s] : null, HAND, DT);
+    }
+    var P = S.puck;
+    // After a goal the puck rests a moment, but a mallet that reaches it ends the rest at
+    // once: while resting it skipped the mallets, so a player swung straight through it and,
+    // when it woke under or behind the mallet, knocked it into their own goal (#592).
+    if (S.wait > 0) {
+      var touch = false;
+      for (var w = 0; w < 2; w++) if (Math.hypot(P.x - S.mal[w].x, P.y - S.mal[w].y) < RP + RM) touch = true;
+      if (!touch) { S.wait -= DT; return ev; }
+      S.wait = 0;
+    }
+    var drag = Math.exp(-DRAG * DT);
+    P.vx *= drag; P.vy *= drag;
+    P.x += P.vx * DT; P.y += P.vy * DT;
+    // mallets: the puck rebounds off a moving mallet, taking its speed with it
+    for (s = 0; s < 2; s++) {
+      var m = S.mal[s], dx = P.x - m.x, dy = P.y - m.y, d = Math.hypot(dx, dy);
+      if (d >= RP + RM || d === 0) continue;
+      var nx = dx / d, ny = dy / d, rel = (P.vx - m.vx) * nx + (P.vy - m.vy) * ny;
+      if (rel < 0) { P.vx -= (1 + HITE) * rel * nx; P.vy -= (1 + HITE) * rel * ny; speedCap(P); S.hits++; S.touched = s; ev.push('hit'); }
+      P.x = m.x + nx * (RP + RM); P.y = m.y + ny * (RP + RM);
+    }
+    // side boards
+    if (P.x < RP) { P.x = RP; P.vx = Math.abs(P.vx) * BOUNCE; ev.push('wall'); }
+    else if (P.x > W - RP) { P.x = W - RP; P.vx = -Math.abs(P.vx) * BOUNCE; ev.push('wall'); }
+    // end boards, with the goal mouth in the middle
+    var inMouth = Math.abs(P.x - W / 2) < GOAL / 2 - RP * 0.3;
+    if (P.y < RP && !inMouth) { P.y = RP; P.vy = Math.abs(P.vy) * BOUNCE; ev.push('wall'); }
+    else if (P.y > H - RP && !inMouth) { P.y = H - RP; P.vy = -Math.abs(P.vy) * BOUNCE; ev.push('wall'); }
+    if (P.y < -RP || P.y > H + RP) {
+      var who = P.y < 0 ? 0 : 1;
+      S.score[who]++;
+      ev.push('goal' + who);
+      if (S.score[who] >= WIN) { S.winner = who; ev.push('win'); }
+      // the puck comes back in the half of the player who let it in
+      P.x = W / 2; P.y = who === 0 ? H / 4 : H * 3 / 4; P.vx = P.vy = 0;
+      S.wait = WAIT; S.touched = -1;
+    }
+    return ev;
+  }
+
+  // Saves are taken between goals: the score only
+  function snapshot(S) { return { score: S.score.slice() }; }
+  function restore(o) {
+    if (!o || !Array.isArray(o.score) || o.score.length !== 2 || !o.score.every(function (v) { return v === (v | 0) && v >= 0 && v < WIN; })) return null;
+    var S = match();
+    S.score = o.score.slice();
+    return S;
+  }
+
+  return {
+    W: W, H: H, DT: DT, RP: RP, RM: RM, GOAL: GOAL, WIN: WIN, VMAX: VMAX,
+    match: match, step: step, setBot: setBot, clampMallet: clampMallet, crossX: crossX, snapshot: snapshot, restore: restore
+  };
+}
+if (typeof module !== 'undefined') module.exports = AirHockeyEngineFactory;
+/* ==== ENGINE END ==== */
+</script>
+<script>
+(function () {
+  'use strict';
+  var C = window.Chogan, el = C.el;
+  var E = AirHockeyEngineFactory();
+  var LEVELS = ['easy', 'medium', 'hard'];
+  // the two neon colours: cyan for the bottom player, magenta for the top
+  var NEON = ['#2DE2E6', '#FF3FD8'];
+
+  C.boot({});
+  var ctx = C.game({
+    id: 'airhockey',
+    name: { fa: 'ایرهاکی', en: 'Air Hockey', zh: '桌上冰球', de: 'Airhockey', es: 'Air hockey', pl: 'Cymbergaj', fr: 'Air hockey', ar: 'هوكي الهواء', hi: 'एयर हॉकी' },
+    accent: '#C000F4',
+    mood: 'menu',
+    strings: {
+      fa: {
+        rink: 'میز ایرهاکی از بالا', vsBot: 'مقابل ربات', people: 'دو نفره', bot: 'ربات', playerN: 'بازیکن {n}', newMatch: 'مسابقه‌ی تازه',
+        howBot: 'دسته‌ات را با انگشت روی نیمه‌ی خودت بکش و توپک را به دروازه‌ی بالا بزن.', howTwo: 'هر کس دسته‌ی نیمه‌ی خودش را می‌کشد.',
+        tapGo: 'بزن تا ادامه بدهی', goalOf: 'گل برای {n}!', playerWon: '{n} برد', dailyAh: 'ایرهاکی روزانه', ahScore: 'گل‌ها', ahHits: 'ضربه‌ها', firstTo: 'تا {n} گل',
+        kMove: 'حرکت دسته‌ی پایین', kMove2: 'حرکت دسته‌ی بالا (دونفره)',
+        rules: 'میز را از بالا می‌بینی؛ دسته‌ی تو پایین است و دروازه‌ات پشت سرت. دسته را با انگشت حرکت بده و توپک را به دروازه‌ی بالا بزن. هر چه دسته تندتر بخورد، توپک تندتر می‌رود؛ توپک از دیواره‌ها برمی‌گردد. دسته از وسط میز جلوتر نمی‌رود. هر گل توپک را به نیمه‌ی کسی می‌دهد که گل خورده. اول هفت گل برنده است. چالش روزانه مسابقه‌ای با ربات متوسط است.',
+        tutTitle1: 'هدف', tutText1: 'توپک را به دروازه‌ی بالا بزن و نگذار به دروازه‌ی خودت برود. اول هفت گل.',
+        tutTitle2: 'دسته', tutText2: 'انگشتت را روی نیمه‌ی پایین بکش؛ دسته دنبالش می‌آید. ضربه‌ی تند، شوت تند.',
+        tutTitle3: 'دیواره', tutText3: 'توپک از دیواره‌ها برمی‌گردد. با زاویه به دیواره بزن تا از کنار دسته‌ی حریف رد شود.'
+      },
+      en: {
+        rink: 'Air hockey table seen from above', vsBot: 'Against the bot', people: 'Two players', bot: 'Bot', playerN: 'Player {n}', newMatch: 'New match',
+        howBot: 'Drag your mallet on your half and hit the puck into the top goal.', howTwo: 'Each player drags the mallet on their own half.',
+        tapGo: 'Tap to go on', goalOf: 'Goal for {n}!', playerWon: '{n} wins', dailyAh: 'Daily Air Hockey', ahScore: 'Goals', ahHits: 'Hits', firstTo: 'First to {n}',
+        kMove: 'Move the bottom mallet', kMove2: 'Move the top mallet (two players)',
+        rules: 'You see the table from above: your mallet at the bottom, your goal behind you. Move the mallet with your finger and hit the puck into the top goal. The faster the mallet meets it, the faster the puck goes; it bounces off the boards. A mallet cannot cross the middle of the table. After a goal the puck goes to the player who let it in. First to seven goals wins. The daily challenge is a match against the medium bot.',
+        tutTitle1: 'The goal', tutText1: 'Hit the puck into the top goal and keep it out of yours. First to seven.',
+        tutTitle2: 'Your mallet', tutText2: 'Drag your finger on the bottom half; the mallet follows. A fast hit is a fast shot.',
+        tutTitle3: 'The boards', tutText3: 'The puck bounces off the boards. Bank it off a side to get past the other mallet.'
+      },
+      pl: {
+        rink: 'Stół do cymbergaja widziany z góry', vsBot: 'Przeciwko botowi', people: 'Dwóch graczy', bot: 'Bot', playerN: 'Gracz {n}', newMatch: 'Nowy mecz',
+        howBot: 'Przeciągaj odbijak po swojej połowie i wbij krążek do górnej bramki.', howTwo: 'Każdy gracz przeciąga odbijak po swojej połowie.',
+        tapGo: 'Dotknij, aby kontynuować', goalOf: 'Gol dla: {n}!', playerWon: '{n} wygrywa', dailyAh: 'Codzienny Cymbergaj', ahScore: 'Gole', ahHits: 'Uderzenia', firstTo: 'Do {n} trafień',
+        kMove: 'Ruch dolnym odbijakiem', kMove2: 'Ruch górnym odbijakiem (dwóch graczy)',
+        rules: 'Widzisz stół z góry: Twój odbijak jest na dole, a Twoja bramka za Tobą. Przesuwaj odbijak palcem i wbijaj krążek do górnej bramki. Im szybciej odbijak uderzy w krążek, tym szybciej on poleci; krążek odbija się od band. Odbijak nie może przekroczyć środka stołu. Po stracie bramki krążek trafia do gracza, który ją przepuścił. Wygrywa ten, kto pierwszy zdobędzie siedem goli. Codzienne wyzwanie to mecz przeciwko botowi na średnim poziomie trudności.',
+        tutTitle1: 'Cel gry', tutText1: 'Wbij krążek do górnej bramki i broń własnej. Gra toczy się do siedmiu goli.',
+        tutTitle2: 'Twój odbijak', tutText2: 'Przeciągaj palcem po dolnej połowie – odbijak podąży za nim. Szybkie uderzenie to szybki strzał.',
+        tutTitle3: 'Bandy', tutText3: 'Krążek odbija się od band. Odbij go od bocznej ściany, aby ominąć odbijak przeciwnika.'
+      },
+      fr: {
+        rink: 'Table d’air hockey vue de dessus', vsBot: 'Contre le robot', people: 'Deux joueurs', bot: 'Robot', playerN: 'Joueur {n}', newMatch: 'Nouveau match',
+        howBot: 'Fais glisser ton maillet sur ta moitié et envoie le palet dans le but du haut.', howTwo: 'Chaque joueur fait glisser son maillet sur sa moitié.',
+        tapGo: 'Touche pour continuer', goalOf: 'But pour {n} !', playerWon: '{n} gagne', dailyAh: 'Air hockey du jour', ahScore: 'Buts', ahHits: 'Frappes', firstTo: 'Premier à {n}',
+        kMove: 'Déplacer le maillet du bas', kMove2: 'Déplacer le maillet du haut (deux joueurs)',
+        rules: 'Tu vois la table de dessus : ton maillet en bas, ton but derrière toi. Déplace le maillet avec le doigt et envoie le palet dans le but du haut. Plus le maillet le frappe vite, plus le palet va vite ; il rebondit sur les bandes. Un maillet ne peut pas franchir le milieu de la table. Après un but, le palet va au joueur qui l’a encaissé. Le premier à sept buts gagne. Le défi du jour est un match contre le robot moyen.',
+        tutTitle1: 'Le but', tutText1: 'Envoie le palet dans le but du haut et protège le tien. Le premier à sept.',
+        tutTitle2: 'Ton maillet', tutText2: 'Fais glisser ton doigt sur la moitié du bas ; le maillet suit. Frappe vite, tir rapide.',
+        tutTitle3: 'Les bandes', tutText3: 'Le palet rebondit sur les bandes. Joue la bande pour passer l’autre maillet.'
+      },
+      ar: {
+        rink: 'طاولة هوكي الهواء من الأعلى', vsBot: 'ضد الروبوت', people: 'لاعبان', bot: 'الروبوت', playerN: 'اللاعب {n}', newMatch: 'مباراة جديدة',
+        howBot: 'اسحب مضربك في نصفك واضرب القرص نحو المرمى العلوي.', howTwo: 'كل لاعب يسحب مضربه في نصفه.',
+        tapGo: 'انقر للمتابعة', goalOf: 'هدف لـ{n}!', playerWon: 'فاز {n}', dailyAh: 'هوكي اليوم', ahScore: 'الأهداف', ahHits: 'الضربات', firstTo: 'أول من يسجل {n}',
+        kMove: 'حرّك المضرب السفلي', kMove2: 'حرّك المضرب العلوي (لاعبان)',
+        rules: 'ترى الطاولة من الأعلى: مضربك في الأسفل ومرماك خلفك. حرّك المضرب بإصبعك واضرب القرص نحو المرمى العلوي. كلما كان المضرب أسرع عند الضربة، انطلق القرص أسرع؛ ويرتد عن الحواف. لا يستطيع المضرب عبور منتصف الطاولة. بعد الهدف يذهب القرص إلى اللاعب الذي استقبله. أول من يسجل سبعة أهداف يفوز. تحدي اليوم مباراة ضد الروبوت المتوسط.',
+        tutTitle1: 'الهدف', tutText1: 'اضرب القرص نحو المرمى العلوي واحمِ مرماك. أول من يسجل سبعة.',
+        tutTitle2: 'مضربك', tutText2: 'اسحب إصبعك في النصف السفلي؛ يتبعه المضرب. الضربة السريعة تسديدة سريعة.',
+        tutTitle3: 'الحواف', tutText3: 'يرتد القرص عن الحواف. اضربه نحو أحد الجانبين لتتجاوز المضرب الآخر.'
+      },
+      hi: {
+        rink: 'ऊपर से दिखती एयर हॉकी की मेज़', vsBot: 'बॉट से', people: 'दो खिलाड़ी', bot: 'बॉट', playerN: 'खिलाड़ी {n}', newMatch: 'नया मुक़ाबला',
+        howBot: 'अपने आधे हिस्से में स्ट्राइकर खींचें और पक को ऊपर वाले गोल में मारें।', howTwo: 'हर खिलाड़ी अपने आधे हिस्से में अपना स्ट्राइकर खींचता है।',
+        tapGo: 'आगे बढ़ने के लिए छुएँ', goalOf: '{n} का गोल!', playerWon: '{n} की जीत', dailyAh: 'रोज़ की एयर हॉकी', ahScore: 'गोल', ahHits: 'वार', firstTo: 'पहले {n} तक',
+        kMove: 'नीचे वाला स्ट्राइकर चलाएँ', kMove2: 'ऊपर वाला स्ट्राइकर चलाएँ (दो खिलाड़ी)',
+        rules: 'आप मेज़ को ऊपर से देखते हैं: आपका स्ट्राइकर नीचे है, आपका गोल आपके पीछे। उँगली से स्ट्राइकर चलाएँ और पक को ऊपर वाले गोल में मारें। स्ट्राइकर जितनी तेज़ी से टकराए, पक उतना तेज़ जाता है; वह किनारों से टकराकर लौटता है। स्ट्राइकर मेज़ के बीच से आगे नहीं जा सकता। गोल के बाद पक उस खिलाड़ी को मिलता है जिसने गोल खाया। पहले सात गोल करने वाला जीतता है। रोज़ की चुनौती मध्यम बॉट से एक मुक़ाबला है।',
+        tutTitle1: 'लक्ष्य', tutText1: 'पक को ऊपर वाले गोल में मारें और अपने गोल से दूर रखें। पहले सात तक।',
+        tutTitle2: 'आपका स्ट्राइकर', tutText2: 'नीचे वाले आधे में उँगली खींचें; स्ट्राइकर पीछे आता है। तेज़ वार, तेज़ शॉट।',
+        tutTitle3: 'किनारे', tutText3: 'पक किनारों से टकराकर लौटता है। दूसरे स्ट्राइकर से आगे निकालने के लिए उसे किनारे से टकराकर मारें।'
+      },
+      zh: {
+        rink: '俯视的桌上冰球台', vsBot: '对战电脑', people: '双人', bot: '电脑', playerN: '玩家 {n}', newMatch: '新比赛',
+        howBot: '在自己的半场拖动球槌，把冰球打进上方球门。', howTwo: '两位玩家各自在自己的半场拖动球槌。',
+        tapGo: '点击继续', goalOf: '{n} 进球！', playerWon: '{n} 获胜', dailyAh: '每日桌上冰球', ahScore: '进球', ahHits: '击球', firstTo: '先进 {n} 球',
+        kMove: '移动下方球槌', kMove2: '移动上方球槌（双人）',
+        rules: '从上方俯视球台：你的球槌在下方，球门在你身后。用手指移动球槌，把冰球打进上方球门。球槌击球越快，冰球越快；冰球会从边框弹回。球槌不能越过球台中线。进球后冰球交给失球的一方。先进七球者获胜。每日挑战是与中等电脑的比赛。',
+        tutTitle1: '目标', tutText1: '把冰球打进上方球门，别让它进你的球门。先进七球。',
+        tutTitle2: '球槌', tutText2: '在下半场拖动手指，球槌会跟随。击得快，射得快。',
+        tutTitle3: '边框', tutText3: '冰球会从边框弹回。借边框反弹绕过对方的球槌。'
+      },
+      de: {
+        rink: 'Airhockeytisch von oben', vsBot: 'Gegen den Bot', people: 'Zwei Spieler', bot: 'Bot', playerN: 'Spieler {n}', newMatch: 'Neues Spiel',
+        howBot: 'Zieh deinen Schläger in deiner Hälfte und schieß den Puck ins obere Tor.', howTwo: 'Jeder zieht den Schläger in seiner eigenen Hälfte.',
+        tapGo: 'Tippe zum Weiterspielen', goalOf: 'Tor für {n}!', playerWon: 'Sieg: {n}', dailyAh: 'Tages-Airhockey', ahScore: 'Tore', ahHits: 'Schläge', firstTo: 'Bis {n} Tore',
+        kMove: 'Unteren Schläger bewegen', kMove2: 'Oberen Schläger bewegen (zwei Spieler)',
+        rules: 'Du siehst den Tisch von oben: dein Schläger unten, dein Tor hinter dir. Beweg den Schläger mit dem Finger und schieß den Puck ins obere Tor. Je schneller der Schläger ihn trifft, desto schneller fliegt der Puck; er prallt von den Banden ab. Ein Schläger kommt nicht über die Mitte. Nach einem Tor bekommt der Gegentreffer-Spieler den Puck. Wer zuerst sieben Tore hat, gewinnt. Die Tagesaufgabe ist ein Spiel gegen den mittleren Bot.',
+        tutTitle1: 'Das Ziel', tutText1: 'Schieß den Puck ins obere Tor und halte ihn aus deinem raus. Zuerst sieben.',
+        tutTitle2: 'Dein Schläger', tutText2: 'Zieh den Finger über die untere Hälfte; der Schläger folgt. Schneller Schlag, schneller Schuss.',
+        tutTitle3: 'Die Banden', tutText3: 'Der Puck prallt von den Banden ab. Spiel über die Bande am anderen Schläger vorbei.'
+      },
+      es: {
+        rink: 'Mesa de air hockey vista desde arriba', vsBot: 'Contra el bot', people: 'Dos jugadores', bot: 'Bot', playerN: 'Jugador {n}', newMatch: 'Nueva partida',
+        howBot: 'Arrastra tu mazo en tu mitad y mete el disco en la portería de arriba.', howTwo: 'Cada jugador arrastra el mazo en su mitad.',
+        tapGo: 'Toca para seguir', goalOf: '¡Gol para {n}!', playerWon: 'Gana {n}', dailyAh: 'Air hockey diario', ahScore: 'Goles', ahHits: 'Golpes', firstTo: 'A {n} goles',
+        kMove: 'Mover el mazo de abajo', kMove2: 'Mover el mazo de arriba (dos jugadores)',
+        rules: 'Ves la mesa desde arriba: tu mazo abajo y tu portería detrás. Mueve el mazo con el dedo y mete el disco en la portería de arriba. Cuanto más rápido lo golpees, más rápido va; rebota en las bandas. Un mazo no puede pasar del centro de la mesa. Tras un gol, el disco va para quien lo recibió. Gana quien marque antes siete goles. El reto diario es una partida contra el bot medio.',
+        tutTitle1: 'El objetivo', tutText1: 'Mete el disco en la portería de arriba y no dejes que entre en la tuya. Gana quien llegue a siete.',
+        tutTitle2: 'Tu mazo', tutText2: 'Arrastra el dedo por la mitad de abajo; el mazo lo sigue. Golpe rápido, tiro rápido.',
+        tutTitle3: 'Las bandas', tutText3: 'El disco rebota en las bandas. Úsalas para pasar el otro mazo.'
+      }
+    }
+  });
+
+  var params = new URLSearchParams(location.search);
+  var dailyDate = params.get('daily');
+  var prefs = ctx.store.get('prefs', null);
+  if (!prefs) prefs = { mode: 'bot', level: 'medium' };
+  if (prefs.mode !== 'bot' && prefs.mode !== 'people') prefs.mode = 'bot';
+  if (LEVELS.indexOf(prefs.level) < 0) prefs.level = 'medium';
+
+  var G = null, raf = 0, last = 0, acc = 0, paused = false, waiting = false, ended = false, msg = '', flash = 0;
+  var want = [null, null], keys = { l: false, r: false, u: false, d: false, a: false, dd: false, w: false, s: false }, touches = {};
+
+  var cv = el('canvas', { class: 'ah-canvas', role: 'img', 'aria-label': C.t('rink') });
+  var box = el('div', { class: 'ah-box' }, [cv]);
+  var top = el('div', { class: 'ah-top ch-above' });
+  var players = el('div', { class: 'ah-players ch-above' });
+  var status = el('div', { class: 'ah-status', role: 'status', 'aria-live': 'polite' });
+  var wrap = el('div', { class: 'ah-wrap ch-split' }, [el('div', { class: 'ch-fit' }, [box]), el('div', { class: 'ch-side' }, [top, players, status])]);
+
+  ctx.button({ icon: 'help', label: C.t('help'), onClick: showHelp });
+  ctx.button({ icon: 'refresh', label: C.t('newMatch'), onClick: askNew });
+  ctx.main.appendChild(wrap);
+  ctx.mount();
+
+  /* ------------------------------------------------------------ setup */
+
+  function goalRng() {
+    if (G.daily) return C.daily('airhockey', G.daily + '|g' + (G.S.score[0] + G.S.score[1])).rng;
+    return Math.random;
+  }
+  var rnd = Math.random;
+
+  function newGame(o) {
+    var daily = o.daily || null;
+    G = { mode: daily ? 'bot' : o.mode, level: daily ? 'medium' : o.level, daily: daily, startedAt: Date.now() };
+    G.S = E.match();
+    if (G.mode === 'bot') E.setBot(G.S, 1, G.level);
+    if (!daily) { prefs.mode = o.mode; prefs.level = o.level; ctx.store.set('prefs', prefs); }
+    rnd = goalRng();
+    ended = false; msg = ''; waiting = false;
+    render(); kick();
+  }
+  function current() { return { mode: G.mode, level: G.level }; }
+  function fromPrefs() { return { mode: prefs.mode, level: prefs.level }; }
+  function isBot(seat) { return G.mode === 'bot' && seat === 1; }
+  function pname(seat) {
+    if (seat === 0) return G.mode === 'people' ? C.t('playerN', { n: C.num(1) }) : (C.state.profile.name || C.t('you'));
+    return isBot(seat) ? C.t('bot') : C.t('playerN', { n: C.num(2) });
+  }
+
+  /* -------------------------------------------------------------- loop */
+
+  function tick(now) {
+    raf = 0;
+    if (!G) return;
+    var blocked = paused || waiting || ended || document.hidden || !!document.querySelector('.ch-scrim');
+    if (!last || blocked) last = now;
+    acc += Math.min(0.1, (now - last) / 1000);
+    last = now;
+    if (blocked) acc = 0;
+    var ev = [];
+    var input = [target(0), target(1)];
+    while (acc >= E.DT) {
+      acc -= E.DT;
+      ev = ev.concat(E.step(G.S, input, rnd));
+      if (G.S.winner >= 0) break;
+    }
+    if (ev.length) events(ev);
+    draw(now);
+    if (!ended) raf = requestAnimationFrame(tick);
+  }
+  function kick() { if (!raf) raf = requestAnimationFrame(tick); }
+
+  // Keys push a mallet from where it is; a finger puts it where the finger is
+  function target(seat) {
+    var m = G.S.mal[seat], k = 300 * E.DT * 6, dx = 0, dy = 0;
+    if (seat === 0) {
+      dx = (keys.r ? 1 : 0) - (keys.l ? 1 : 0); dy = (keys.d ? 1 : 0) - (keys.u ? 1 : 0);
+      if (G.mode === 'bot') { dx += (keys.dd ? 1 : 0) - (keys.a ? 1 : 0); dy += (keys.s ? 1 : 0) - (keys.w ? 1 : 0); }
+    } else if (G.mode === 'people') { dx = (keys.dd ? 1 : 0) - (keys.a ? 1 : 0); dy = (keys.s ? 1 : 0) - (keys.w ? 1 : 0); }
+    if (dx || dy) return { x: m.x + Math.sign(dx) * k, y: m.y + Math.sign(dy) * k };
+    return want[seat];
+  }
+
+  function events(ev) {
+    if (ev.indexOf('hit') >= 0) C.audio.sfx('tap');
+    else if (ev.indexOf('wall') >= 0) C.audio.sfx('select');
+    var g0 = ev.indexOf('goal0') >= 0, g1 = ev.indexOf('goal1') >= 0;
+    if (g0 || g1) {
+      var who = g0 ? 0 : 1;
+      C.feedback(G.mode === 'bot' ? (who === 0 ? 'good' : 'bad') : 'thud');
+      msg = C.t('goalOf', { n: pname(who) });
+      flash = performance.now();
+      rnd = goalRng();
+      if (G.S.winner >= 0) { ended = true; render(); ctx.clearSave(); setTimeout(finish, C.ui.reduceMotion() ? 200 : 900); return; }
+      save();
+      render();
+    }
+  }
+
+  /* ------------------------------------------------------------ result */
+
+  function finish() {
+    var S = G.S, w = S.winner, won = G.mode === 'people' ? null : w === 0;
+    var coins = 6, points = 15;
+    if (G.mode === 'bot') {
+      var base = { easy: 6, medium: 12, hard: 20 }[G.level];
+      coins = won ? base : Math.max(2, Math.round(base * 0.3));
+      points = won ? base * 4 : Math.round(base * 1.2);
+      if (won) {
+        C.achievements.unlock('air-win');
+        if (G.level === 'hard') C.achievements.unlock('air-hard');
+        if (S.score[1] === 0) C.achievements.unlock('air-shut');
+      }
+    }
+    var label = C.num(S.score[0]) + '–' + C.num(S.score[1]);
+    if (G.daily) {
+      var first = C.stats.daily('airhockey', G.daily, { label: label, win: won });
+      if (!first) { coins = Math.round(coins * 0.2); points = Math.round(points * 0.2); }
+    }
+    ctx.finish({
+      won: won,
+      title: G.mode === 'people' ? C.t('playerWon', { n: pname(w) }) : (won ? C.t('won') : C.t('lost')),
+      timeMs: Date.now() - G.startedAt, coins: coins, points: points,
+      lines: [{ label: C.t('ahScore'), value: label }, { label: C.t('ahHits'), value: C.num(S.hits) }],
+      shareText: 'چوگان · ایرهاکی' + (G.daily ? ('\nروزانه ' + G.daily) : '') + '\n' + label,
+      paint: cardPaint(),
+      onAgain: G.daily ? null : function () { newGame(current()); }
+    });
+  }
+
+  /* ------------------------------------------------------------- saves */
+
+  // Saved after every goal: the score; the puck comes back in the middle, waiting
+  ctx.autosave(function () {
+    if (!G || ended || G.S.winner >= 0 || G.S.score[0] + G.S.score[1] === 0) return { inProgress: false };
+    return { g: { mode: G.mode, level: G.level, daily: G.daily, s: E.snapshot(G.S), elapsed: Date.now() - G.startedAt } };
+  });
+  function save() { ctx.save(); }
+  function restore(sv) {
+    var g = sv && sv.g;
+    if (!g || (g.mode !== 'bot' && g.mode !== 'people') || LEVELS.indexOf(g.level) < 0) return false;
+    var S = E.restore(g.s);
+    if (!S) return false;
+    G = { mode: g.mode, level: g.level, daily: g.daily || null, S: S, startedAt: Date.now() - (g.elapsed || 0) };
+    if (G.mode === 'bot') E.setBot(S, 1, G.level);
+    rnd = goalRng();
+    ended = false; msg = ''; waiting = true;
+    render(); kick();
+    return true;
+  }
+
+  function askNew() {
+    if (!G || !G.daily) { settings(); return; }
+    var dd = G.daily;
+    if (ended || G.S.score[0] + G.S.score[1] === 0) { newGame({ daily: dd }); return; }
+    C.ui.confirm({ title: C.t('newMatch'), body: C.t('resetWarn'), onOk: function () { newGame({ daily: dd }); } });
+  }
+  function settings() {
+    var o = G ? current() : fromPrefs(), body = el('div', { class: 'ch-col', style: { gap: 'var(--s-3)', 'align-items': 'center' } });
+    function rows() {
+      body.innerHTML = '';
+      body.appendChild(C.ui.segmented([{ value: 'bot', label: C.t('vsBot') }, { value: 'people', label: C.t('people') }], o.mode, function (v) { o.mode = v; rows(); }));
+      if (o.mode === 'bot') body.appendChild(C.ui.segmented(LEVELS.map(function (l) { return { value: l, label: C.t(l) }; }), o.level, function (v) { o.level = v; }));
+      if (G && !ended && G.S.score[0] + G.S.score[1] > 0) body.appendChild(el('p', { class: 'ch-xs ch-dim', text: C.t('resetWarn') }));
+    }
+    rows();
+    C.ui.modal({
+      title: C.t('newMatch'), closeButton: true, body: [body],
+      actions: [{ label: C.t('cancel') }, { label: C.t('start'), kind: 'primary', onClick: function () { newGame(o); } }]
+    });
+  }
+
+  /* --------------------------------------------------------------- draw */
+
+  // The rink is neon in both themes (the owner's choice): a night-blue table with
+  // glowing boards, cyan on the bottom player's half and magenta on the top's
+  function size() {
+    var r = box.getBoundingClientRect(), h = Math.floor(Math.min(r.height, r.width * E.H / E.W));
+    h = Math.max(120, h || 0);
+    return { w: Math.round(h * E.W / E.H), h: h };
+  }
+  function draw(now) {
+    if (!G) return;
+    var Z = size(), dpr = Math.min(2, window.devicePixelRatio || 1);
+    if (cv.width !== Math.round(Z.w * dpr) || cv.height !== Math.round(Z.h * dpr)) { cv.width = Math.round(Z.w * dpr); cv.height = Math.round(Z.h * dpr); }
+    cv.style.width = Z.w + 'px'; cv.style.height = Z.h + 'px';
+    var g = cv.getContext('2d'), k = Z.w / E.W;
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.save(); g.scale(k, k);
+    paint(g, G.S, now || performance.now());
+    g.restore();
+  }
+  function glow(g, color, blur) { g.shadowColor = color; g.shadowBlur = C.ui.reduceMotion() ? 0 : blur; }
+  function paint(g, S, now) {
+    var W = E.W, H = E.H, mouth = E.GOAL / 2;
+    var bg = g.createRadialGradient(W / 2, H / 2, 40, W / 2, H / 2, H * 0.7);
+    bg.addColorStop(0, '#141A45'); bg.addColorStop(1, '#070A1F');
+    g.fillStyle = bg; g.fillRect(0, 0, W, H);
+    // centre line and circle, and a goal crease in front of each goal
+    g.strokeStyle = 'rgba(140,160,255,.28)'; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(0, H / 2); g.lineTo(W, H / 2); g.stroke();
+    g.beginPath(); g.arc(W / 2, H / 2, 54, 0, Math.PI * 2); g.stroke();
+    g.beginPath(); g.arc(W / 2, 0, mouth + 6, 0, Math.PI); g.stroke();
+    g.beginPath(); g.arc(W / 2, H, mouth + 6, Math.PI, Math.PI * 2); g.stroke();
+    // with two players, each one's score faint in their half, upright for them
+    if (G.mode === 'people') {
+      g.fillStyle = 'rgba(255,255,255,.1)'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.font = '800 88px ' + (getComputedStyle(document.body).fontFamily || 'sans-serif');
+      g.fillText(C.num(S.score[0]), W / 2, H * 0.75);
+      g.save(); g.translate(W / 2, H * 0.25); g.rotate(Math.PI); g.fillText(C.num(S.score[1]), 0, 0); g.restore();
+    }
+    // boards: a glowing line around each half, open at the goal mouth
+    var lw = 5, hl = lw / 2;
+    for (var s = 0; s < 2; s++) {
+      var c = NEON[s], ey = s === 0 ? H - hl : hl, my = H / 2;
+      glow(g, c, 14); g.strokeStyle = c; g.lineWidth = lw; g.lineCap = 'round';
+      g.beginPath();
+      g.moveTo(W / 2 - mouth, ey); g.lineTo(hl, ey); g.lineTo(hl, my);
+      g.moveTo(W / 2 + mouth, ey); g.lineTo(W - hl, ey); g.lineTo(W - hl, my);
+      g.stroke();
+    }
+    g.shadowBlur = 0;
+    // a goal lights its end for a moment
+    var since = (now - flash) / 1000;
+    if (flash && since < 0.6) {
+      var who = S.puck.y < H / 2 ? 1 : 0; // the puck sits in the half that let the goal in
+      g.fillStyle = who === 0 ? 'rgba(255,63,216,' + (0.35 * (1 - since / 0.6)) + ')' : 'rgba(45,226,230,' + (0.35 * (1 - since / 0.6)) + ')';
+      g.fillRect(0, who === 0 ? H / 2 : 0, W, H / 2);
+    }
+    // mallets: a glowing ring with a knob
+    for (s = 0; s < 2; s++) {
+      var m = S.mal[s];
+      glow(g, NEON[s], 18);
+      g.strokeStyle = NEON[s]; g.lineWidth = 5;
+      g.beginPath(); g.arc(m.x, m.y, E.RM - 3, 0, Math.PI * 2); g.stroke();
+      g.fillStyle = 'rgba(255,255,255,.08)'; g.fill();
+      g.fillStyle = NEON[s];
+      g.beginPath(); g.arc(m.x, m.y, 9, 0, Math.PI * 2); g.fill();
+    }
+    // the puck
+    var P = S.puck;
+    glow(g, '#FFFFFF', 16);
+    g.fillStyle = '#F4F7FF'; g.beginPath(); g.arc(P.x, P.y, E.RP, 0, Math.PI * 2); g.fill();
+    g.shadowBlur = 0;
+    g.strokeStyle = 'rgba(20,26,69,.5)'; g.lineWidth = 2; g.beginPath(); g.arc(P.x, P.y, E.RP - 5, 0, Math.PI * 2); g.stroke();
+  }
+  function cardPaint() {
+    var S = G.S;
+    return function (g, W, H) {
+      var w = Math.min(W, H * E.W / E.H), h = w * E.H / E.W;
+      g.save(); g.translate((W - w) / 2, (H - h) / 2); g.scale(w / E.W, w / E.W);
+      paint(g, S, 0);
+      g.restore();
+    };
+  }
+
+  /* ----------------------------------------------------------------- ui */
+
+  function renderTop() {
+    top.innerHTML = '';
+    if (G.daily) top.appendChild(el('span', { class: 'ch-badge ch-badge--accent' }, [C.icon('calendar', 14), el('span', { text: C.t('dailyAh') + ' — ' + C.num(G.daily) })]));
+    else top.appendChild(el('button', { class: 'ch-badge ch-tap', type: 'button', onclick: askNew, text: G.mode === 'bot' ? C.t('vsBot') + ' · ' + C.t(G.level) : C.t('people') }));
+    top.appendChild(el('span', { class: 'ch-badge', text: C.t('firstTo', { n: C.num(E.WIN) }) }));
+  }
+  function renderPlayers() {
+    players.innerHTML = '';
+    for (var s = 0; s < 2; s++) {
+      players.appendChild(el('div', { class: 'ah-player' }, [
+        el('span', { class: 'ah-player__dot', style: { background: NEON[s], 'box-shadow': '0 0 8px ' + NEON[s] } }),
+        el('span', { class: 'ah-player__name', text: pname(s) }),
+        el('span', { class: 'ah-player__score', text: C.num(G.S.score[s]) })
+      ]));
+    }
+  }
+  function renderStatus() {
+    status.textContent = ended ? msg : waiting ? C.t('tapGo') : msg ? msg : C.t(G.mode === 'people' ? 'howTwo' : 'howBot');
+  }
+  function render() { if (!G) return; renderTop(); renderPlayers(); renderStatus(); draw(); }
+
+  /* -------------------------------------------------------------- input */
+
+  function go() { if (waiting) { waiting = false; last = 0; renderStatus(); kick(); } }
+
+  // Against the bot a finger anywhere moves the bottom mallet (held to its half); with
+  // two players each half of the table belongs to the player on that side
+  function seatOf(e) {
+    if (G.mode !== 'people') return 0;
+    var r = cv.getBoundingClientRect();
+    return e.clientY < r.top + r.height / 2 ? 1 : 0;
+  }
+  function tablePt(e) {
+    var r = cv.getBoundingClientRect();
+    return { x: (e.clientX - r.left) / (r.width || 1) * E.W, y: (e.clientY - r.top) / (r.height || 1) * E.H };
+  }
+  function syncWant() {
+    want = [null, null];
+    for (var id in touches) want[touches[id].seat] = touches[id].p;
+  }
+  wrap.addEventListener('pointerdown', function (e) {
+    if (!G || (e.target.closest && e.target.closest('button, .ch-badge'))) return;
+    e.preventDefault();
+    go();
+    touches[e.pointerId] = { seat: seatOf(e), p: tablePt(e) }; syncWant();
+    try { wrap.setPointerCapture(e.pointerId); } catch (er) { /* old browsers */ }
+  });
+  wrap.addEventListener('pointermove', function (e) {
+    var t = touches[e.pointerId];
+    if (t) { t.p = tablePt(e); syncWant(); }
+    // a mouse moves the mallet without a button held
+    else if (e.pointerType === 'mouse' && G && G.mode === 'bot') { want[0] = tablePt(e); }
+  });
+  function lift(e) { delete touches[e.pointerId]; syncWant(); }
+  wrap.addEventListener('pointerup', lift);
+  wrap.addEventListener('pointercancel', lift);
+  wrap.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+  var KEYMAP = { ArrowLeft: 'l', ArrowRight: 'r', ArrowUp: 'u', ArrowDown: 'd' };
+  function letter(e) { return C.keyIs(e, 'a') ? 'a' : C.keyIs(e, 'd') ? 'dd' : C.keyIs(e, 'w') ? 'w' : C.keyIs(e, 's') ? 's' : null; }
+  window.addEventListener('keydown', function (e) {
+    if (document.querySelector('.ch-scrim')) return;
+    var k = KEYMAP[e.key] || letter(e);
+    if (k) { keys[k] = true; want = [null, null]; go(); e.preventDefault(); }
+    else if ((e.key === ' ' || e.key === 'Enter') && !(e.target && e.target.tagName === 'BUTTON')) { go(); e.preventDefault(); }
+  });
+  window.addEventListener('keyup', function (e) { var k = KEYMAP[e.key] || letter(e); if (k) keys[k] = false; });
+
+  // Away from the app the match holds, and it waits for a tap when the app comes back
+  C.onPause(function () { paused = true; touches = {}; syncWant(); for (var k in keys) keys[k] = false; if (G && !ended) { waiting = true; renderStatus(); } });
+  C.onResume(function () { paused = false; last = 0; kick(); });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) { last = 0; kick(); } });
+  if (window.ResizeObserver) new ResizeObserver(function () { draw(); }).observe(box);
+
+  /* --------------------------------------------------------------- help */
+
+  function kb(k, what) { return el('div', { class: 'ch-item' }, [el('div', { class: 'ch-item__label', text: what }), el('span', { class: 'ch-badge', text: k })]); }
+  function showHelp() {
+    C.ui.modal({
+      title: C.t('help'),
+      body: [
+        el('p', { class: 'ch-dim', text: C.t('rules') }),
+        el('h3', { style: { 'margin-top': 'var(--s-4)' }, text: C.t('keyboard') }),
+        el('div', { class: 'ch-list' }, [kb('← ↑ → ↓', C.t('kMove')), kb('W A S D', C.t('kMove2'))])
+      ],
+      actions: [{ label: C.t('tutorial'), onClick: function () { ctx.showTutorial(TUT); } }, { label: C.t('done'), kind: 'primary' }]
+    });
+  }
+  function tArt(kind) {
+    var s = '<svg viewBox="0 0 200 110" width="100%" direction="ltr"><rect width="200" height="110" rx="10" fill="#0B1030"/>' +
+      '<path d="M70 4 H6 V106 H70 M130 4 H194 V106 H130" fill="none" stroke="#2DE2E6" stroke-width="3"/><path d="M100 4 V106" stroke="rgba(140,160,255,.4)" stroke-width="2"/>';
+    var mal = function (x, y, c) { return '<circle cx="' + x + '" cy="' + y + '" r="12" fill="none" stroke="' + c + '" stroke-width="3"/><circle cx="' + x + '" cy="' + y + '" r="4" fill="' + c + '"/>'; };
+    if (kind === 1) s += mal(40, 55, '#2DE2E6') + mal(165, 40, '#FF3FD8') + '<circle cx="120" cy="70" r="6" fill="#F4F7FF"/><path d="M54 58 L114 70" stroke="#F4F7FF" stroke-width="2" stroke-dasharray="4 4"/>';
+    if (kind === 2) s += mal(50, 60, '#2DE2E6') + '<circle cx="70" cy="76" r="9" fill="rgba(255,255,255,.5)"/><path d="M30 80 Q50 40 70 76" fill="none" stroke="#fff" stroke-width="1.5" stroke-dasharray="3 4"/>';
+    if (kind === 3) s += mal(40, 80, '#2DE2E6') + '<circle cx="60" cy="72" r="6" fill="#F4F7FF"/><path d="M60 72 L120 8 L190 60" fill="none" stroke="#F4F7FF" stroke-width="2" stroke-dasharray="4 4"/>' + mal(160, 70, '#FF3FD8');
+    return s + '</svg>';
+  }
+  var TUT = [
+    { title: C.t('tutTitle1'), text: C.t('tutText1'), art: tArt(1) },
+    { title: C.t('tutTitle2'), text: C.t('tutText2'), art: tArt(2) },
+    { title: C.t('tutTitle3'), text: C.t('tutText3'), art: tArt(3) }
+  ];
+
+  /* -------------------------------------------------------------- start */
+
+  var saved = ctx.loadSave();
+  if (dailyDate) {
+    // the daily match has its own slot, so a half-played day goes on
+    if (!(saved && saved.g && saved.g.daily === dailyDate && restore(saved))) newGame({ daily: dailyDate });
+    if (C.stats.dailyDone('airhockey', dailyDate)) {
+      var rec = C.stats.dailyOf(dailyDate).airhockey;
+      C.ui.toast({ icon: 'check', title: C.t('dailyDone'), sub: rec && rec.label });
+    }
+  } else if (!(saved && saved.g && !saved.g.daily && restore(saved))) {
+    newGame(fromPrefs());
+  }
+  ctx.tutorialIfNew(TUT);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { if (G) draw(); });
+})();
+</script>
+</body>
+</html>

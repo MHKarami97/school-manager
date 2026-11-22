@@ -1,0 +1,1752 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#FBF6EF">
+<title>نبرد دریایی — چوگان</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../lib/chogan.css">
+<script src="../../lib/early.js"></script>
+<style>
+  .bs-wrap { width: 100%; display: flex; flex-direction: column; gap: var(--s-2); align-items: center; }
+  .bs-top { display: flex; gap: var(--s-2); flex-wrap: wrap; justify-content: center; }
+  /* the link's state can be a long sentence (a permission path); it wraps instead of widening the bar */
+  .bs-top .bs-link { white-space: normal; text-align: center; max-width: 100%; line-height: 1.4; padding: 4px 12px; border-radius: var(--r-md); }
+  .bs-status {
+    /* two lines, always: the sentence naming both shots wrapped to a second line and the seas jumped (#857) */
+    min-height: 3em; line-height: 1.5; margin: 0; text-align: center; font-weight: 700; font-size: var(--fs-sm);
+    color: var(--c-text-dim);
+  }
+  .bs-status b { color: var(--c-text); }
+  .bs-status--wait { animation: bs-blink 900ms infinite; }
+  @keyframes bs-blink { 50% { opacity: .45; } }
+  .bs-seas { width: 100%; display: flex; flex-direction: column; align-items: center; gap: var(--s-2); }
+  /* only the window's width and height limit the seas; a 460px cap left a laptop's sea at half its height (#359) */
+  .bs-box { width: 100%; max-width: min(94vw, 50vh); }
+  .bs-box--small { max-width: min(46vw, 21vh); }
+  .bs-box[hidden] { display: none; }
+  .bs-label {
+    display: flex; align-items: center; justify-content: space-between; gap: var(--s-2);
+    font-size: var(--fs-xs); font-weight: 700; color: var(--c-text-dim); margin-bottom: 4px;
+  }
+  .bs-pips { display: flex; gap: 4px; }
+  .bs-pip { height: 7px; border-radius: 4px; background: var(--game); }
+  .bs-pip--sunk { background: var(--c-bad); opacity: .45; }
+  .bs-cv {
+    width: 100%; aspect-ratio: 1; display: block; border-radius: var(--r-md);
+    touch-action: manipulation; cursor: pointer; box-shadow: var(--sh-1);
+  }
+  .bs-tray { display: flex; gap: var(--s-2); flex-wrap: wrap; justify-content: center; }
+  .bs-chip {
+    font: inherit; min-height: 44px; min-width: 44px; padding: 0 10px; border-radius: var(--r-sm);
+    border: 2px solid transparent; background: var(--c-surface); box-shadow: var(--sh-1);
+    display: inline-flex; align-items: center; gap: 3px; cursor: pointer; touch-action: manipulation;
+  }
+  .bs-chip i { width: 10px; height: 14px; border-radius: 3px; background: var(--game); display: block; }
+  .bs-chip--on { border-color: var(--game); }
+  .bs-chip--placed i { opacity: .35; }
+  .bs-actions { display: flex; gap: var(--s-2); flex-wrap: wrap; justify-content: center; }
+  /* روی صفحه‌ی افقی پهن دو دریا کنار هم می‌نشینند تا هیچ‌کدام کوچک نشود */
+  @media (orientation: landscape) and (min-width: 720px) {
+    .bs-seas { flex-direction: row; justify-content: center; align-items: flex-end; }
+    .bs-box { max-width: min(46vw, 62vh); }
+    .bs-box--small { max-width: min(30vw, 34vh); }
+  }
+</style>
+</head>
+<body>
+<script src="../../version.js"></script>
+<script src="../../lib/chogan.js"></script>
+<script>
+/* ==== ENGINE START ==== */
+function BattleshipEngineFactory() {
+  'use strict';
+
+  var N = 10;
+  var FLEET = [5, 4, 3, 3, 2];
+
+  // کشتی: { r, c, len, v } — v یعنی عمودی. خانه‌ها با شماره‌ی r*N+c.
+  function cellsOf(s) {
+    var out = [];
+    for (var k = 0; k < s.len; k++) out.push((s.r + (s.v ? k : 0)) * N + s.c + (s.v ? 0 : k));
+    return out;
+  }
+
+  function fits(s) {
+    if (!s || s.r < 0 || s.c < 0 || s.len < 1) return false;
+    return s.v ? (s.r + s.len <= N && s.c < N) : (s.c + s.len <= N && s.r < N);
+  }
+
+  // خانه‌ها به‌علاوه‌ی هشت همسایه‌شان. کشتی‌ها حتی از گوشه هم به هم نمی‌چسبند
+  // تا روی صفحه‌ی گوشی مرز هر کشتی بی‌ابهام خوانده شود.
+  function halo(cells) {
+    var f = new Array(N * N).fill(0);
+    for (var i = 0; i < cells.length; i++) {
+      var r = (cells[i] / N) | 0, c = cells[i] % N;
+      for (var dr = -1; dr <= 1; dr++) {
+        for (var dc = -1; dc <= 1; dc++) {
+          var rr = r + dr, cc = c + dc;
+          if (rr >= 0 && rr < N && cc >= 0 && cc < N) f[rr * N + cc] = 1;
+        }
+      }
+    }
+    return f;
+  }
+
+  // آیا کشتی s کنار بقیه جا می‌شود؛ skip کشتی‌ای است که دارد جابه‌جا می‌شود
+  function canPlace(ships, s, skip) {
+    if (!fits(s)) return false;
+    var others = [];
+    for (var i = 0; i < ships.length; i++) {
+      if (i === skip || !ships[i]) continue;
+      others = others.concat(cellsOf(ships[i]));
+    }
+    var h = halo(others);
+    var cs = cellsOf(s);
+    for (var k = 0; k < cs.length; k++) if (h[cs[k]]) return false;
+    return true;
+  }
+
+  function validFleet(ships) {
+    if (!ships || ships.length !== FLEET.length) return false;
+    var lens = ships.map(function (s) { return s ? s.len : 0; }).sort().join();
+    if (lens !== FLEET.slice().sort().join()) return false;
+    for (var i = 0; i < ships.length; i++) if (!canPlace(ships, ships[i], i)) return false;
+    return true;
+  }
+
+  // چیدمان تصادفی؛ بزرگ‌ها اول تا جای کوچک‌ها همیشه بماند
+  function randomFleet(rnd) {
+    for (var attempt = 0; attempt < 500; attempt++) {
+      var ships = [];
+      var ok = true;
+      for (var f = 0; f < FLEET.length && ok; f++) {
+        var placed = false;
+        for (var t = 0; t < 200; t++) {
+          var v = rnd() < 0.5;
+          var len = FLEET[f];
+          var s = {
+            r: Math.floor(rnd() * (v ? N - len + 1 : N)),
+            c: Math.floor(rnd() * (v ? N : N - len + 1)),
+            len: len, v: v
+          };
+          if (canPlace(ships, s, -1)) { ships.push(s); placed = true; break; }
+        }
+        if (!placed) ok = false;
+      }
+      if (ok) return ships;
+    }
+    throw new Error('fleet');
+  }
+
+  /* صفحه: shots برای هر خانه ۰ شلیک‌نشده، ۱ آب، ۲ اصابت. */
+  function makeBoard(ships) {
+    return {
+      ships: ships.map(function (s) { return { r: s.r, c: s.c, len: s.len, v: !!s.v }; }),
+      shots: new Array(N * N).fill(0),
+      sunk: ships.map(function () { return false; })
+    };
+  }
+
+  function shipAt(board, idx) {
+    for (var i = 0; i < board.ships.length; i++) {
+      if (cellsOf(board.ships[i]).indexOf(idx) >= 0) return i;
+    }
+    return -1;
+  }
+
+  // خانه‌های دور کشتی غرق‌شده قطعاً خالی‌اند، چون کشتی‌ها به هم نمی‌چسبند.
+  // شلیک به آن‌ها فقط یک نوبت را هدر می‌دهد، پس نه بازیکن می‌تواند نه حریف.
+  function blocked(board) {
+    var cells = [];
+    for (var i = 0; i < board.ships.length; i++) if (board.sunk[i]) cells = cells.concat(cellsOf(board.ships[i]));
+    return halo(cells);
+  }
+
+  function canFire(board, idx) {
+    if (!(idx >= 0 && idx < N * N) || idx !== Math.floor(idx)) return false;
+    if (board.shots[idx]) return false;
+    return !blocked(board)[idx];
+  }
+
+  function fire(board, idx) {
+    if (board.shots[idx]) return { result: 'repeat', ship: -1 };
+    var i = shipAt(board, idx);
+    if (i < 0) { board.shots[idx] = 1; return { result: 'miss', ship: -1 }; }
+    board.shots[idx] = 2;
+    var cs = cellsOf(board.ships[i]);
+    var all = true;
+    for (var k = 0; k < cs.length; k++) if (board.shots[cs[k]] !== 2) { all = false; break; }
+    if (all) { board.sunk[i] = true; return { result: 'sunk', ship: i }; }
+    return { result: 'hit', ship: i };
+  }
+
+  function allSunk(board) {
+    for (var i = 0; i < board.sunk.length; i++) if (!board.sunk[i]) return false;
+    return board.sunk.length > 0;
+  }
+
+  // چیزی که شلیک‌کننده واقعاً می‌داند: شلیک‌ها و کشتی‌های غرق‌شده، نه جای بقیه.
+  // هوش مصنوعی فقط همین را می‌گیرد تا تقلب از ساختار کد ناممکن باشد.
+  function knowledge(board) {
+    var sunkCells = [], remaining = [];
+    for (var i = 0; i < board.ships.length; i++) {
+      if (board.sunk[i]) sunkCells = sunkCells.concat(cellsOf(board.ships[i]));
+      else remaining.push(board.ships[i].len);
+    }
+    // ترتیب کشتی‌ها در آرایه هم نباید چیزی لو بدهد
+    sunkCells.sort(function (a, b) { return a - b; });
+    remaining.sort(function (a, b) { return b - a; });
+    return { shots: board.shots.slice(), sunkCells: sunkCells, remaining: remaining };
+  }
+
+  function knowParts(k) {
+    var sunk = new Array(N * N).fill(0);
+    for (var i = 0; i < k.sunkCells.length; i++) sunk[k.sunkCells[i]] = 1;
+    var block = halo(k.sunkCells);
+    var open = [], free = [];
+    for (var j = 0; j < N * N; j++) {
+      if (k.shots[j] === 2 && !sunk[j]) open.push(j);
+      if (!k.shots[j] && !block[j]) free.push(j);
+    }
+    return { sunk: sunk, block: block, open: open, free: free };
+  }
+
+  function pick(list, rnd) { return list[Math.floor(rnd() * list.length)]; }
+
+  // شکار و هدف: دور اصابت باز را می‌زند و اگر دو اصابت هم‌راستا دارد
+  // در همان راستا ادامه می‌دهد؛ وگرنه شطرنجی و تصادفی می‌گردد.
+  function huntTarget(k, kp, rnd) {
+    var freeF = new Array(N * N).fill(0);
+    for (var i = 0; i < kp.free.length; i++) freeF[kp.free[i]] = 1;
+    if (kp.open.length) {
+      var openF = new Array(N * N).fill(0);
+      for (var o = 0; o < kp.open.length; o++) openF[kp.open[o]] = 1;
+      var start = kp.open[0];
+      // گروه اصابت‌های باز به‌هم‌چسبیده‌ی این خانه
+      var group = [start], seen = {};
+      seen[start] = 1;
+      for (var g = 0; g < group.length; g++) {
+        var x = group[g], r = (x / N) | 0, c = x % N;
+        var nb = [[r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]];
+        for (var q = 0; q < 4; q++) {
+          var rr = nb[q][0], cc = nb[q][1], y = rr * N + cc;
+          if (rr < 0 || rr >= N || cc < 0 || cc >= N || seen[y] || !openF[y]) continue;
+          seen[y] = 1; group.push(y);
+        }
+      }
+      var cand = [];
+      if (group.length >= 2) {
+        var vert = ((group[0] / N) | 0) !== ((group[1] / N) | 0);
+        var lo = Math.min.apply(null, group), hi = Math.max.apply(null, group);
+        var step = vert ? N : 1;
+        var before = lo - step, after = hi + step;
+        if (vert ? before >= 0 : (before >= 0 && ((before / N) | 0) === ((lo / N) | 0))) cand.push(before);
+        if (vert ? after < N * N : ((after / N) | 0) === ((hi / N) | 0)) cand.push(after);
+      } else {
+        var r0 = (start / N) | 0, c0 = start % N;
+        if (r0 > 0) cand.push(start - N);
+        if (r0 < N - 1) cand.push(start + N);
+        if (c0 > 0) cand.push(start - 1);
+        if (c0 < N - 1) cand.push(start + 1);
+      }
+      cand = cand.filter(function (z) { return freeF[z]; });
+      if (cand.length) return pick(cand, rnd);
+    }
+    var par = kp.free.filter(function (z) { return (((z / N) | 0) + z % N) % 2 === 0; });
+    return pick(par.length ? par : kp.free, rnd);
+  }
+
+  // چگالی احتمال: هر جای ممکن برای هر کشتی باقی‌مانده که با دانسته‌ها جور
+  // است شمرده می‌شود. جایی که اصابت باز را بپوشاند وزن خیلی بیشتری دارد، و
+  // جایی که کنار اصابت باز باشد ولی آن را نپوشاند ناممکن است، چون آن اصابت
+  // مال کشتی دیگری است و کشتی‌ها به هم نمی‌چسبند.
+  function density(k, kp) {
+    var score = new Array(N * N).fill(0);
+    var openF = new Array(N * N).fill(0);
+    for (var o = 0; o < kp.open.length; o++) openF[kp.open[o]] = 1;
+    var targeting = kp.open.length > 0;
+    for (var li = 0; li < k.remaining.length; li++) {
+      var len = k.remaining[li];
+      for (var v = 0; v < 2; v++) {
+        for (var r = 0; r < N; r++) {
+          for (var c = 0; c < N; c++) {
+            var s = { r: r, c: c, len: len, v: !!v };
+            if (!fits(s)) continue;
+            var cs = cellsOf(s), bad = false, covers = 0;
+            for (var i = 0; i < cs.length; i++) {
+              var x = cs[i];
+              if (k.shots[x] === 1 || kp.sunk[x] || kp.block[x]) { bad = true; break; }
+              if (k.shots[x] === 2) covers++;
+            }
+            if (bad) continue;
+            var h = halo(cs);
+            for (var j = 0; j < N * N && !bad; j++) if (h[j] && openF[j] && cs.indexOf(j) < 0) bad = true;
+            if (bad) continue;
+            if (targeting && !covers) continue;
+            var w = covers ? Math.pow(30, covers) : 1;
+            for (var m = 0; m < cs.length; m++) if (!k.shots[cs[m]]) score[cs[m]] += w;
+          }
+        }
+      }
+    }
+    return score;
+  }
+
+  /* شلیک هوش مصنوعی فقط از روی دانسته‌ها.
+     آسان: تصادفی. متوسط: شکار و هدف. سخت: چگالی احتمال. */
+  function aiShot(k, level, rnd) {
+    rnd = rnd || Math.random;
+    var kp = knowParts(k);
+    if (!kp.free.length) return -1;
+    if (level === 'easy') return pick(kp.free, rnd);
+    if (level === 'medium') return huntTarget(k, kp, rnd);
+    var score = density(k, kp);
+    var best = -1, top = [];
+    for (var i = 0; i < kp.free.length; i++) {
+      var x = kp.free[i];
+      if (score[x] > best) { best = score[x]; top = [x]; }
+      else if (score[x] === best) top.push(x);
+    }
+    return pick(top, rnd);
+  }
+
+  /* یک دست کامل: بازیکن به صفحه‌ی foe شلیک می‌کند، حریف به me.
+     again: with the house rule many people play (#304), a hit or a sink keeps the
+     turn and only a miss passes it. Without it turns alternate every shot; a game
+     saved before the rule existed has no again and keeps alternating. */
+  function newGame(myShips, foeShips, level, again) {
+    return {
+      me: makeBoard(myShips), foe: makeBoard(foeShips), level: level, again: !!again,
+      turn: 'me', shots: { me: 0, ai: 0 }, log: [], winner: null
+    };
+  }
+  function keepsTurn(G, result) { return !!G.again && result !== 'miss'; }
+
+  function playerFire(G, idx) {
+    if (G.winner || G.turn !== 'me' || !canFire(G.foe, idx)) return null;
+    var res = fire(G.foe, idx);
+    G.shots.me++;
+    G.log.push({ by: 'me', i: idx, r: res.result });
+    if (allSunk(G.foe)) G.winner = 'me'; else if (!keepsTurn(G, res.result)) G.turn = 'ai';
+    return { i: idx, result: res.result, ship: res.ship };
+  }
+
+  function aiFire(G, rnd) {
+    if (G.winner || G.turn !== 'ai') return null;
+    var idx = aiShot(knowledge(G.me), G.level, rnd);
+    if (idx < 0) return null;
+    var res = fire(G.me, idx);
+    G.shots.ai++;
+    G.log.push({ by: 'ai', i: idx, r: res.result });
+    if (allSunk(G.me)) G.winner = 'ai'; else if (!keepsTurn(G, res.result)) G.turn = 'me';
+    return { i: idx, result: res.result, ship: res.ship };
+  }
+
+  /* ---- Two phones (#755) ----
+     Each phone holds only its own fleet. The rival side ("foe") is only what the replies
+     said: the shots and the ships reported sunk, so the fleet cannot leak before the end.
+     The defender's phone answers every shot from its own board. Shots and replies are
+     numbered lists (out: my shots, inn: theirs at me), and the turn is worked out from
+     them, so a resync after an app switch exchanges lists, never a turn flag that could
+     disagree, and a shot is never applied twice. */
+  function netGame(myShips, again, first) {
+    var G = {
+      net: true, me: makeBoard(myShips), foe: { ships: [], shots: new Array(N * N).fill(0), sunk: [] },
+      again: !!again, first: first ? 'me' : 'ai', out: [], inn: [], shots: { me: 0, ai: 0 }, winner: null, turn: 'me'
+    };
+    G.turn = netTurn(G);
+    return G;
+  }
+
+  // 'me', 'ai' (the other phone shoots) or 'wait' (my shot has no reply yet)
+  function netTurn(G) {
+    var cur = G.first, a = 0, b = 0;
+    for (;;) {
+      var list = cur === 'me' ? G.out : G.inn, k = cur === 'me' ? a : b;
+      if (k >= list.length) return cur;
+      var r = list[k].r;
+      if (r == null) return 'wait';
+      if (cur === 'me') a++; else b++;
+      if (!G.again || r === 'miss') cur = cur === 'me' ? 'ai' : 'me';
+    }
+  }
+
+  // My shot; the reply comes later. Returns the message to send, or null.
+  function netFire(G, idx) {
+    if (G.winner || netTurn(G) !== 'me' || !canFire(G.foe, idx)) return null;
+    G.out.push({ i: idx, r: null });
+    G.turn = netTurn(G);
+    return { t: 'shot', n: G.out.length - 1, i: idx };
+  }
+
+  // Their shot number n at idx, answered from my own board. A shot already answered gets
+  // the same reply again (it was lost on the way back); anything else out of order is
+  // dropped, and the next sync fills the gap.
+  function netAnswer(G, n, idx) {
+    if (n >= 0 && n < G.inn.length) return G.inn[n].i === idx ? reply(G, n) : null;
+    if (n !== G.inn.length || G.winner || netTurn(G) !== 'ai') return null;
+    if (!(idx >= 0 && idx < N * N) || idx !== Math.floor(idx) || G.me.shots[idx]) return null;
+    var res = fire(G.me, idx);
+    var rec = { i: idx, r: res.result };
+    if (res.result === 'sunk') rec.cells = cellsOf(G.me.ships[res.ship]);
+    G.inn.push(rec);
+    G.shots.ai++;
+    if (allSunk(G.me)) G.winner = 'ai';
+    G.turn = netTurn(G);
+    return reply(G, n);
+  }
+  function reply(G, n) {
+    var rec = G.inn[n], m = { t: 'reply', n: n, i: rec.i, r: rec.r };
+    if (rec.cells) m.cells = rec.cells.slice();
+    // the loser shows its fleet with the reply that sank it
+    if (G.winner === 'ai' && n === G.inn.length - 1) m.fleet = G.me.ships;
+    return m;
+  }
+
+  // A sunk report must be a whole ship of a size still afloat, over my own hits plus this
+  // shot; a reply that does not fit what I know is refused rather than drawn.
+  function shipFromCells(foe, cells, idx) {
+    if (!Array.isArray(cells) || !cells.length) return null;
+    var cs = cells.slice().sort(function (a, b) { return a - b; });
+    var len = cs.length, r = (cs[0] / N) | 0, c = cs[0] % N;
+    var v = len > 1 && cs[1] - cs[0] === N;
+    var s = { r: r, c: c, len: len, v: v };
+    if (!fits(s) || cellsOf(s).join() !== cs.join() || cs.indexOf(idx) < 0) return null;
+    for (var k = 0; k < cs.length; k++) if (cs[k] !== idx && foe.shots[cs[k]] !== 2) return null;
+    var want = FLEET.filter(function (l) { return l === len; }).length;
+    var have = foe.ships.filter(function (x) { return x.len === len; }).length;
+    return have < want ? s : null;
+  }
+
+  // The reply to my shot number n
+  function netReply(G, n, d) {
+    var o = G.out[n];
+    if (!o || o.r != null || !d || d.i !== o.i) return false;
+    if (d.r !== 'miss' && d.r !== 'hit' && d.r !== 'sunk') return false;
+    var s = null;
+    if (d.r === 'sunk' && !(s = shipFromCells(G.foe, d.cells, o.i))) return false;
+    o.r = d.r;
+    G.foe.shots[o.i] = d.r === 'miss' ? 1 : 2;
+    G.shots.me++;
+    if (s) { o.cells = cellsOf(s); G.foe.ships.push(s); G.foe.sunk.push(true); }
+    // the winner is what my own record shows, not what the reply claims
+    if (G.foe.ships.length === FLEET.length) {
+      G.winner = 'me';
+      if (agrees(G, d.fleet)) G.reveal = d.fleet;
+    }
+    G.turn = netTurn(G);
+    return true;
+  }
+
+  // What a phone tells the other on every connect
+  function netState(G) {
+    return {
+      out: G.out.map(function (o) { return { i: o.i, r: o.r }; }),
+      inn: G.inn.map(function (x) { var m = { i: x.i, r: x.r }; if (x.cells) m.cells = x.cells.slice(); return m; })
+    };
+  }
+
+  // The other phone's lists: take the replies I missed, answer the shots I missed, and
+  // return what it missed from me (replies it has no answer for, my unanswered shot).
+  function netSync(G, d) {
+    var send = [], theirOut = Array.isArray(d && d.out) ? d.out : [], theirInn = Array.isArray(d && d.inn) ? d.inn : [];
+    for (var k = 0; k < Math.min(G.out.length, theirInn.length); k++) {
+      if (G.out[k].r == null && theirInn[k]) netReply(G, k, theirInn[k]);
+    }
+    for (var j = 0; j < theirOut.length; j++) {
+      var o = theirOut[j] || {};
+      if (j < G.inn.length) { if (o.r == null && G.inn[j].i === o.i) send.push(reply(G, j)); continue; }
+      var m = netAnswer(G, j, o.i);
+      if (!m) break;
+      send.push(m);
+    }
+    for (var q = theirInn.length; q < G.out.length; q++) {
+      if (G.out[q].r == null) send.push({ t: 'shot', n: q, i: G.out[q].i });
+    }
+    return send;
+  }
+
+  // The winner's fleet, shown to the loser once the game is over. It must agree with every
+  // reply the loser got, so a phone cannot draw a fleet that its own answers contradict.
+  function netReveal(G, ships) {
+    if (G.winner !== 'ai' || !agrees(G, ships)) return false;
+    G.reveal = makeBoard(ships).ships;
+    return true;
+  }
+  function agrees(G, ships) {
+    if (!validFleet(ships)) return false;
+    var b = makeBoard(ships);
+    for (var k = 0; k < G.out.length; k++) {
+      var o = G.out[k];
+      if (o.r == null) continue;
+      if ((shipAt(b, o.i) >= 0) !== (o.r !== 'miss')) return false;
+    }
+    for (var j = 0; j < G.foe.ships.length; j++) {
+      var cs = cellsOf(G.foe.ships[j]), at = shipAt(b, cs[0]);
+      if (at < 0 || cellsOf(b.ships[at]).join() !== cs.join()) return false;
+    }
+    return true;
+  }
+
+  var api = {
+    N: N, FLEET: FLEET, cellsOf: cellsOf, fits: fits, halo: halo, canPlace: canPlace,
+    validFleet: validFleet, randomFleet: randomFleet, makeBoard: makeBoard, shipAt: shipAt,
+    blocked: blocked, canFire: canFire, fire: fire, allSunk: allSunk, knowledge: knowledge,
+    aiShot: aiShot, newGame: newGame, keepsTurn: keepsTurn, playerFire: playerFire, aiFire: aiFire,
+    netGame: netGame, netTurn: netTurn, netFire: netFire, netAnswer: netAnswer, netReply: netReply,
+    netState: netState, netSync: netSync, netReveal: netReveal
+  };
+  if (typeof self !== 'undefined') self.BattleshipEngine = api;
+  return api;
+}
+if (typeof module !== 'undefined' && module.exports) module.exports = BattleshipEngineFactory;
+/* ==== ENGINE END ==== */
+</script>
+<script>
+(function () {
+  'use strict';
+  var C = window.Chogan, el = C.el;
+  var E = BattleshipEngineFactory();
+  var N = E.N;
+
+  C.boot({});
+  var NAME = { fa: 'نبرد دریایی', en: 'Battleship', zh: '海战棋', de: 'Schiffe versenken', es: 'Batalla naval', pl: 'Statki', fr: 'Bataille navale', ar: 'معركة بحرية', hi: 'युद्धपोत' };
+  var ctx = C.game({
+    id: 'battleship',
+    name: NAME,
+    accent: '#3A7AAA',
+    mood: 'minesweeper',
+    // on a phone on its side the seas, the tray and the buttons are taller than the
+    // screen; the area scrolls like the card games' instead of cutting the buttons (#477)
+    scroll: true,
+    strings: {
+      fa: {
+        placeTitle: 'ناوگانت را بچین', placeHint: 'کشتی را انتخاب کن و روی دریا بزن. روی خودش بزنی می‌چرخد.',
+        placeDone: 'ناوگان آماده است', rotate: 'چرخاندن', randomFleet: 'چیدن تصادفی', startBattle: 'شروع نبرد',
+        notHere: 'اینجا جا نمی‌شود؛ کشتی‌ها به هم نمی‌چسبند',
+        yourFleet: 'ناوگان تو', foeSea: 'دریای حریف',
+        yourTurn: 'نوبت توست، شلیک کن', aiming: 'حریف نشانه می‌گیرد…',
+        shotYou: 'شلیک تو', shotAi: 'شلیک حریف', miss: 'آب', hit: 'اصابت', sunk: 'غرق شد',
+        shots: 'شلیک', accuracy: 'دقت', shipsLeft: 'کشتی‌های سالم تو', rival: 'حریف',
+        newMatch: 'دست تازه', dailyBs: 'نبرد دریایی روزانه', vsMedium: 'مقابل حریف متوسط',
+        ship: 'کشتی {n} خانه‌ای', move: 'جابه‌جایی', fireKey: 'شلیک یا گذاشتن کشتی', pickShip: 'انتخاب کشتی',
+        wonIn: 'برد در {n} شلیک',
+        vsAi: 'با حریف', twoPhones: 'دو گوشی', hostGame: 'میزبان', joinGame: 'مهمان', linkPick: 'یک گوشی میزبان شود و دیگری مهمان. هر کدام ناوگان خودش را پنهانی می‌چیند و میزبان اول شلیک می‌کند.', linkSearching: 'در جست‌وجوی گوشی دیگر…', linkConnected: 'وصل شد', linkLost: 'اتصال قطع شد؛ دوباره دنبالش می‌گردد…', linkMismatch: 'نسخه‌ی دو گوشی یکی نیست؛ هر دو را به‌روز کن', linkError: 'اتصال راه نیفتاد؛ دوباره امتحان کن', linkPermission: 'اجازه‌ی «دستگاه‌های نزدیک» داده نشده: تنظیمات ← برنامه‌ها ← چوگان پلاس ← اجازه‌ها', linkBluetooth: 'بلوتوث خاموش است؛ روشنش کن و دوباره امتحان کن',
+        waitFleet: 'منتظر ناوگان گوشی دیگر…', waitShot: 'منتظر جواب…',
+        tutTitle1: 'ناوگان را بچین', tutText1: 'پنج کشتی داری: ۵، ۴، ۳، ۳ و ۲ خانه. هیچ دو کشتی‌ای حتی از گوشه به هم نمی‌چسبند. دکمه‌ی تصادفی هم هست.',
+        tutTitle2: 'نوبتی شلیک کنید', tutText2: 'به نوبت شلیک کنید: آب، اصابت یا غرق. با «اصابت، دوباره شلیک» هر اصابت یک شلیک دیگر می‌دهد و فقط آب نوبت را رد می‌کند. اولین کسی که همه‌ی ناوگان حریف را غرق کند می‌برد.', hitAgain: 'اصابت، دوباره شلیک', oneShot: 'یک شلیک در نوبت',
+        tutTitle3: 'دور کشتی غرق‌شده خالی است', tutText3: 'چون کشتی‌ها به هم نمی‌چسبند، خانه‌های دور کشتی غرق‌شده علامت می‌خورند و لازم نیست آنجا شلیک کنی.'
+      },
+      en: {
+        placeTitle: 'Place your fleet', placeHint: 'Pick a ship and tap the sea. Tap it again to rotate.',
+        placeDone: 'Fleet ready', rotate: 'Rotate', randomFleet: 'Random', startBattle: 'Start battle',
+        notHere: 'It does not fit here; ships never touch',
+        yourFleet: 'Your fleet', foeSea: 'Rival waters',
+        yourTurn: 'Your turn, fire', aiming: 'Rival is aiming…',
+        shotYou: 'Your shot', shotAi: 'Rival shot', miss: 'Miss', hit: 'Hit', sunk: 'Sunk',
+        shots: 'Shots', accuracy: 'Accuracy', shipsLeft: 'Your ships afloat', rival: 'Rival',
+        newMatch: 'New match', dailyBs: 'Daily battleship', vsMedium: 'against the medium AI',
+        ship: '{n}-cell ship', move: 'Move', fireKey: 'Fire or place ship', pickShip: 'Pick ship',
+        wonIn: 'Won in {n} shots',
+        vsAi: 'Versus AI', twoPhones: 'Two phones', hostGame: 'Host', joinGame: 'Join', linkPick: 'One phone hosts, the other joins. Each places its own fleet in secret; the host fires first.', linkSearching: 'Looking for the other phone…', linkConnected: 'Connected', linkLost: 'Connection lost; looking again…', linkMismatch: 'The two phones run different versions; update both', linkError: 'Could not connect; try again', linkPermission: 'The nearby devices permission is off: Settings → Apps → Chogan Plus → Permissions', linkBluetooth: 'Bluetooth is off; turn it on and try again',
+        waitFleet: 'Waiting for the other phone’s fleet…', waitShot: 'Waiting for the answer…',
+        tutTitle1: 'Place your fleet', tutText1: 'You have five ships: 5, 4, 3, 3 and 2 cells. No two ships touch, not even at a corner. There is a random button too.',
+        tutTitle2: 'Take turns firing', tutText2: 'Take turns firing: miss, hit or sunk. With "Hit, fire again" every hit gives another shot and only a miss passes the turn. The first to sink the whole rival fleet wins.', hitAgain: 'Hit, fire again', oneShot: 'One shot a turn',
+        tutTitle3: 'Around a wreck is empty', tutText3: 'Ships never touch, so the cells around a sunk ship get marked and you never need to fire there.'
+      },
+      pl: {
+        placeTitle: 'Rozmieść swoją flotę', placeHint: 'Wybierz okręt i dotknij morza. Dotknij go ponownie, aby obrócić.',
+        placeDone: 'Flota gotowa', rotate: 'Obróć', randomFleet: 'Losowo', startBattle: 'Rozpocznij bitwę',
+        notHere: 'Nie mieści się tutaj – okręty nie mogą się stykać',
+        yourFleet: 'Twoja flota', foeSea: 'Wody rywala',
+        yourTurn: 'Twoja tura, ognia', aiming: 'Rywal celuje…',
+        shotYou: 'Twój strzał', shotAi: 'Strzał rywala', miss: 'Pudło', hit: 'Trafiony', sunk: 'Zatopiony',
+        shots: 'Strzały', accuracy: 'Celność', shipsLeft: 'Twoje okręty na wodzie', rival: 'Rywal',
+        newMatch: 'Nowy mecz', dailyBs: 'Codzienna bitwa morska', vsMedium: 'przeciwko AI na średnim poziomie',
+        ship: '{n}-masztowiec', move: 'Ruch', fireKey: 'Ognia lub umieść okręt', pickShip: 'Wybierz okręt',
+        wonIn: 'Wygrana w {n} strzałach',
+        vsAi: 'Przeciwko SI', twoPhones: 'Dwa telefony', hostGame: 'Gospodarz', joinGame: 'Dołącz', linkPick: 'Jeden telefon jest gospodarzem, drugi dołącza. Każdy w tajemnicy rozmieszcza swoją flotę; gospodarz strzela pierwszy.', linkSearching: 'Szukam drugiego telefonu…', linkConnected: 'Połączono', linkLost: 'Połączenie przerwane; szukam ponownie…', linkMismatch: 'Telefony mają różne wersje; zaktualizuj oba', linkError: 'Nie udało się połączyć; spróbuj ponownie', linkPermission: 'Brak uprawnienia do urządzeń w pobliżu: Ustawienia → Aplikacje → Chogan Plus → Uprawnienia', linkBluetooth: 'Bluetooth jest wyłączony; włącz go i spróbuj ponownie',
+        waitFleet: 'Czekam na flotę drugiego telefonu…', waitShot: 'Czekam na odpowiedź…',
+        tutTitle1: 'Rozmieść swoją flotę', tutText1: 'Masz pięć okrętów: 5, 4, 3, 3 i 2-masztowych. Żadne dwa okręty nie mogą się stykać, nawet rogami. Możesz też skorzystać z przycisku losowego rozmieszczenia.',
+        tutTitle2: 'Strzelajcie na zmianę', tutText2: 'Strzelacie naprzemiennie: pudło, trafiony lub zatopiony. W trybie „Trafienie daje kolejny strzał” każde trafienie pozwala strzelić ponownie, a tura przechodzi na rywala dopiero przy pudle. Wygrywa ten, kto pierwszy zatopi całą flotę przeciwnika.', hitAgain: 'Trafienie daje kolejny strzał', oneShot: 'Jeden strzał na turę',
+        tutTitle3: 'Wokół wraku jest pusto', tutText3: 'Okręty nigdy się nie stykają, więc pola wokół zatopionej jednostki zostają automatycznie oznaczone i nie musisz w nie strzelać.'
+      },
+      fr: {
+        placeTitle: 'Place ta flotte', placeHint: 'Choisis un navire et touche la mer. Touche-le encore pour le tourner.',
+        placeDone: 'Flotte prête', rotate: 'Tourner', randomFleet: 'Au hasard', startBattle: 'Commencer la bataille',
+        notHere: 'Il ne rentre pas ici ; les navires ne se touchent jamais',
+        yourFleet: 'Ta flotte', foeSea: 'Eaux adverses',
+        yourTurn: 'À toi, tire', aiming: 'L’adversaire vise…',
+        shotYou: 'Ton tir', shotAi: 'Tir adverse', miss: 'Raté', hit: 'Touché', sunk: 'Coulé',
+        shots: 'Tirs', accuracy: 'Précision', shipsLeft: 'Tes navires à flot', rival: 'Adversaire',
+        newMatch: 'Nouveau match', dailyBs: 'Bataille navale du jour', vsMedium: 'contre l’IA moyenne',
+        ship: 'Navire de {n} cases', move: 'Déplacer', fireKey: 'Tirer ou placer le navire', pickShip: 'Choisir un navire',
+        wonIn: 'Gagné en {n} tirs',
+        vsAi: 'Contre l’IA', twoPhones: 'Deux téléphones', hostGame: 'Héberger', joinGame: 'Rejoindre', linkPick: 'Un téléphone héberge, l’autre rejoint. Chacun place sa flotte en secret ; l’hôte tire en premier.', linkSearching: 'Recherche de l’autre téléphone…', linkConnected: 'Connecté', linkLost: 'Connexion perdue ; nouvelle recherche…', linkMismatch: 'Les deux téléphones n’ont pas la même version ; mets-les à jour', linkError: 'Connexion impossible ; réessaie', linkPermission: 'L’autorisation Appareils à proximité est désactivée : Paramètres → Applications → Chogan Plus → Autorisations', linkBluetooth: 'Le Bluetooth est désactivé ; active-le et réessaie',
+        waitFleet: 'En attente de la flotte de l’autre téléphone…', waitShot: 'En attente de la réponse…',
+        tutTitle1: 'Place ta flotte', tutText1: 'Tu as cinq navires : 5, 4, 3, 3 et 2 cases. Deux navires ne se touchent jamais, même pas par un coin. Il y a aussi un bouton Au hasard.',
+        tutTitle2: 'Tirez chacun votre tour', tutText2: 'Tirez chacun votre tour : raté, touché ou coulé. Avec « Touché, rejoue », chaque touche donne un autre tir et seul un raté passe la main. Le premier à couler toute la flotte adverse gagne.', hitAgain: 'Touché, rejoue', oneShot: 'Un tir par tour',
+        tutTitle3: 'Autour d’une épave, c’est vide', tutText3: 'Les navires ne se touchent jamais, donc les cases autour d’un navire coulé sont marquées et tu n’as jamais besoin d’y tirer.'
+      },
+      ar: {
+        placeTitle: 'رتّب أسطولك', placeHint: 'اختر سفينة وانقر البحر. انقرها مرة أخرى لتدويرها.',
+        placeDone: 'الأسطول جاهز', rotate: 'تدوير', randomFleet: 'عشوائي', startBattle: 'ابدأ المعركة',
+        notHere: 'لا تتسع هنا؛ السفن لا تتلامس أبدًا',
+        yourFleet: 'أسطولك', foeSea: 'مياه الخصم',
+        yourTurn: 'دورك، أطلق', aiming: 'الخصم يصوّب…',
+        shotYou: 'طلقتك', shotAi: 'طلقة الخصم', miss: 'خطأ', hit: 'إصابة', sunk: 'غرقت',
+        shots: 'الطلقات', accuracy: 'الدقة', shipsLeft: 'سفنك الطافية', rival: 'الخصم',
+        newMatch: 'مباراة جديدة', dailyBs: 'المعركة البحرية اليومية', vsMedium: 'ضد الروبوت المتوسط',
+        ship: 'سفينة من {n} خانات', move: 'تحريك', fireKey: 'أطلق أو ضع السفينة', pickShip: 'اختر سفينة',
+        wonIn: 'فزت في {n} طلقة',
+        vsAi: 'ضد الروبوت', twoPhones: 'هاتفان', hostGame: 'استضافة', joinGame: 'انضمام', linkPick: 'هاتف يستضيف والآخر ينضم. يرتب كلٌّ أسطوله سرًّا؛ والمضيف يطلق أولًا.', linkSearching: 'جارٍ البحث عن الهاتف الآخر…', linkConnected: 'متصل', linkLost: 'انقطع الاتصال؛ جارٍ البحث مجددًا…', linkMismatch: 'الهاتفان يشغلان إصدارين مختلفين؛ حدّث كليهما', linkError: 'تعذر الاتصال؛ حاول مجددًا', linkPermission: 'إذن الأجهزة القريبة متوقف: الإعدادات ← التطبيقات ← Chogan Plus ← الأذونات', linkBluetooth: 'البلوتوث متوقف؛ شغّله وحاول مجددًا',
+        waitFleet: 'بانتظار أسطول الهاتف الآخر…', waitShot: 'بانتظار الرد…',
+        tutTitle1: 'رتّب أسطولك', tutText1: 'لديك خمس سفن: 5 و4 و3 و3 و2 خانات. لا تتلامس سفينتان، ولا حتى عند الزاوية. وهناك زر عشوائي أيضًا.',
+        tutTitle2: 'أطلقا بالتناوب', tutText2: 'تطلقان بالتناوب: خطأ أو إصابة أو غرق. مع «إصابة، أطلق مجددًا» تمنح كل إصابة طلقة أخرى ولا ينتقل الدور إلا بخطأ. أول من يُغرق أسطول الخصم كله يفوز.', hitAgain: 'إصابة، أطلق مجددًا', oneShot: 'طلقة لكل دور',
+        tutTitle3: 'حول الحطام فراغ', tutText3: 'السفن لا تتلامس أبدًا، لذا تُعلَّم الخانات حول السفينة الغارقة ولن تحتاج إلى الإطلاق عليها.'
+      },
+      hi: {
+        placeTitle: 'अपना बेड़ा लगाएँ', placeHint: 'जहाज़ चुनें और समुद्र को छुएँ। घुमाने के लिए उसे फिर छुएँ।',
+        placeDone: 'बेड़ा तैयार', rotate: 'घुमाएँ', randomFleet: 'अपने-आप', startBattle: 'युद्ध शुरू',
+        notHere: 'यह यहाँ नहीं आता; जहाज़ कभी एक-दूसरे को नहीं छूते',
+        yourFleet: 'आपका बेड़ा', foeSea: 'विरोधी का समुद्र',
+        yourTurn: 'आपकी बारी, गोला दागें', aiming: 'विरोधी निशाना लगा रहा है…',
+        shotYou: 'आपका वार', shotAi: 'विरोधी का वार', miss: 'चूका', hit: 'लगा', sunk: 'डूबा',
+        shots: 'वार', accuracy: 'सटीकता', shipsLeft: 'आपके बचे जहाज़', rival: 'विरोधी',
+        newMatch: 'नया मुक़ाबला', dailyBs: 'रोज़ का युद्धपोत', vsMedium: 'मध्यम कंप्यूटर के ख़िलाफ़',
+        ship: '{n} खानों का जहाज़', move: 'चलें', fireKey: 'वार करें या जहाज़ रखें', pickShip: 'जहाज़ चुनें',
+        wonIn: '{n} वार में जीते',
+        vsAi: 'कंप्यूटर से', twoPhones: 'दो फ़ोन', hostGame: 'मेज़बान', joinGame: 'जुड़ें', linkPick: 'एक फ़ोन मेज़बान बने, दूसरा जुड़े। हर कोई अपना बेड़ा छिपाकर लगाता है; मेज़बान पहले वार करता है।', linkSearching: 'दूसरा फ़ोन खोज रहे हैं…', linkConnected: 'जुड़ गया', linkLost: 'कनेक्शन टूट गया; फिर खोज रहे हैं…', linkMismatch: 'दोनों फ़ोन में अलग संस्करण हैं; दोनों अपडेट करें', linkError: 'जुड़ नहीं सका; फिर कोशिश करें', linkPermission: 'आस-पास के डिवाइस की अनुमति बंद है: सेटिंग्स → ऐप्स → Chogan Plus → अनुमतियाँ', linkBluetooth: 'ब्लूटूथ बंद है; उसे चालू करके फिर कोशिश करें',
+        waitFleet: 'दूसरे फ़ोन के बेड़े का इंतज़ार…', waitShot: 'जवाब का इंतज़ार…',
+        tutTitle1: 'अपना बेड़ा लगाएँ', tutText1: 'आपके पास पाँच जहाज़ हैं: 5, 4, 3, 3 और 2 खानों के। कोई दो जहाज़ एक-दूसरे को नहीं छूते, कोने से भी नहीं। अपने-आप लगाने का बटन भी है।',
+        tutTitle2: 'बारी-बारी से वार', tutText2: 'बारी-बारी से वार करें: चूका, लगा या डूबा। «लगा, फिर वार» चालू हो तो हर निशाना लगने पर एक और वार मिलता है और सिर्फ़ चूकने पर बारी जाती है। जो पहले विरोधी का पूरा बेड़ा डुबो दे, वह जीतता है।', hitAgain: 'लगा, फिर वार', oneShot: 'एक बारी, एक वार',
+        tutTitle3: 'डूबे जहाज़ के आसपास ख़ाली', tutText3: 'जहाज़ कभी एक-दूसरे को नहीं छूते, इसलिए डूबे जहाज़ के आसपास के खाने निशान लग जाते हैं और वहाँ वार करने की ज़रूरत नहीं।'
+      },
+      zh: {
+        placeTitle: '布置舰队', placeHint: '选一艘船，点海面放下。再点一次可以旋转。',
+        placeDone: '舰队就绪', rotate: '旋转', randomFleet: '随机布置', startBattle: '开战',
+        notHere: '这里放不下；船与船不能相邻',
+        yourFleet: '你的舰队', foeSea: '对手海域',
+        yourTurn: '轮到你开炮', aiming: '对手正在瞄准…',
+        shotYou: '你的炮击', shotAi: '对手炮击', miss: '落空', hit: '命中', sunk: '击沉',
+        shots: '炮击', accuracy: '命中率', shipsLeft: '你剩下的船', rival: '对手',
+        newMatch: '新一局', dailyBs: '每日海战棋', vsMedium: '对战中等电脑',
+        ship: '{n} 格船', move: '移动', fireKey: '开炮或放船', pickShip: '选择船只',
+        wonIn: '{n} 炮获胜',
+        vsAi: '对战电脑', twoPhones: '两部手机', hostGame: '主机', joinGame: '加入', linkPick: '一部手机做主机，另一部加入。各自秘密布置舰队，主机先开炮。', linkSearching: '正在寻找另一部手机…', linkConnected: '已连接', linkLost: '连接已断开，正在重新寻找…', linkMismatch: '两部手机版本不同，请都更新', linkError: '无法连接，请重试', linkPermission: '未授予“附近设备”权限：设置 → 应用 → Chogan Plus → 权限', linkBluetooth: '蓝牙已关闭，请打开后重试',
+        waitFleet: '等待另一部手机布置舰队…', waitShot: '等待对方回应…',
+        tutTitle1: '布置舰队', tutText1: '你有五艘船：5、4、3、3、2 格。任何两艘船都不相邻，连斜角也不行。也可以随机布置。',
+        tutTitle2: '轮流开炮', tutText2: '轮流开炮：落空、命中或击沉。开启“命中再开炮”时，每次命中都能再开一炮，只有落空才换人。先击沉对方全部舰队的人获胜。', hitAgain: '命中再开炮', oneShot: '每回合一炮',
+        tutTitle3: '沉船周围是空的', tutText3: '因为船不相邻，被击沉的船周围会被标出，不必再往那里开炮。'
+      },
+      de: {
+        placeTitle: 'Flotte aufstellen', placeHint: 'Wähl ein Schiff und tipp aufs Meer. Tipp nochmal, um es zu drehen.',
+        placeDone: 'Flotte bereit', rotate: 'Drehen', randomFleet: 'Zufällig', startBattle: 'Kampf starten',
+        notHere: 'Passt hier nicht; Schiffe berühren sich nie',
+        yourFleet: 'Deine Flotte', foeSea: 'Gegnerisches Meer',
+        yourTurn: 'Du bist dran, feuer', aiming: 'Gegner zielt…',
+        shotYou: 'Dein Schuss', shotAi: 'Gegnerschuss', miss: 'Wasser', hit: 'Treffer', sunk: 'Versenkt',
+        shots: 'Schüsse', accuracy: 'Trefferquote', shipsLeft: 'Deine Schiffe übrig', rival: 'Gegner',
+        newMatch: 'Neue Partie', dailyBs: 'Tägliches Schiffe versenken', vsMedium: 'gegen die mittlere KI',
+        ship: '{n}er-Schiff', move: 'Bewegen', fireKey: 'Feuern oder Schiff setzen', pickShip: 'Schiff wählen',
+        wonIn: 'Gewonnen mit {n} Schüssen',
+        vsAi: 'Gegen KI', twoPhones: 'Zwei Handys', hostGame: 'Gastgeber', joinGame: 'Beitreten', linkPick: 'Ein Handy ist Gastgeber, das andere tritt bei. Jedes stellt seine Flotte geheim auf; der Gastgeber schießt zuerst.', linkSearching: 'Suche das andere Handy…', linkConnected: 'Verbunden', linkLost: 'Verbindung verloren; suche erneut…', linkMismatch: 'Die Handys haben verschiedene Versionen; aktualisiere beide', linkError: 'Keine Verbindung; versuche es erneut', linkPermission: 'Die Berechtigung „Geräte in der Nähe“ fehlt: Einstellungen → Apps → Chogan Plus → Berechtigungen', linkBluetooth: 'Bluetooth ist aus; schalte es ein und versuche es erneut',
+        waitFleet: 'Warte auf die Flotte des anderen Handys…', waitShot: 'Warte auf die Antwort…',
+        tutTitle1: 'Flotte aufstellen', tutText1: 'Du hast fünf Schiffe: 5, 4, 3, 3 und 2 Felder. Keine zwei Schiffe berühren sich, nicht mal an einer Ecke. Es gibt auch einen Zufallsknopf.',
+        tutTitle2: 'Abwechselnd feuern', tutText2: 'Abwechselnd feuern: Wasser, Treffer oder versenkt. Mit „Treffer, nochmal“ gibt jeder Treffer einen weiteren Schuss, nur Wasser gibt den Zug ab. Wer zuerst die ganze gegnerische Flotte versenkt, gewinnt.', hitAgain: 'Treffer, nochmal', oneShot: 'Ein Schuss pro Zug',
+        tutTitle3: 'Um ein Wrack ist Wasser', tutText3: 'Schiffe berühren sich nie, also werden die Felder um ein versenktes Schiff markiert und du musst nie dorthin schießen.'
+      },
+      es: {
+        placeTitle: 'Coloca tu flota', placeHint: 'Elige un barco y toca el mar. Tócalo otra vez para girarlo.',
+        placeDone: 'Flota lista', rotate: 'Girar', randomFleet: 'Al azar', startBattle: 'Empezar batalla',
+        notHere: 'No cabe aquí; los barcos nunca se tocan',
+        yourFleet: 'Tu flota', foeSea: 'Aguas del rival',
+        yourTurn: 'Tu turno, dispara', aiming: 'El rival apunta…',
+        shotYou: 'Tu disparo', shotAi: 'Disparo rival', miss: 'Agua', hit: 'Tocado', sunk: 'Hundido',
+        shots: 'Disparos', accuracy: 'Precisión', shipsLeft: 'Tus barcos a flote', rival: 'Rival',
+        newMatch: 'Nueva partida', dailyBs: 'Batalla naval diaria', vsMedium: 'contra la IA media',
+        ship: 'Barco de {n} casillas', move: 'Mover', fireKey: 'Disparar o colocar barco', pickShip: 'Elegir barco',
+        wonIn: 'Ganaste en {n} disparos',
+        vsAi: 'Contra la IA', twoPhones: 'Dos móviles', hostGame: 'Anfitrión', joinGame: 'Unirse', linkPick: 'Un móvil es anfitrión y el otro se une. Cada uno coloca su flota en secreto; el anfitrión dispara primero.', linkSearching: 'Buscando el otro móvil…', linkConnected: 'Conectado', linkLost: 'Conexión perdida; buscando de nuevo…', linkMismatch: 'Los móviles tienen versiones distintas; actualiza ambos', linkError: 'No se pudo conectar; vuelve a intentarlo', linkPermission: 'Falta el permiso de dispositivos cercanos: Ajustes → Aplicaciones → Chogan Plus → Permisos', linkBluetooth: 'El Bluetooth está apagado; actívalo y vuelve a intentarlo',
+        waitFleet: 'Esperando la flota del otro móvil…', waitShot: 'Esperando la respuesta…',
+        tutTitle1: 'Coloca tu flota', tutText1: 'Tienes cinco barcos: de 5, 4, 3, 3 y 2 casillas. Dos barcos nunca se tocan, ni siquiera en una esquina. También hay un botón para colocarlos al azar.',
+        tutTitle2: 'Disparos por turnos', tutText2: 'Disparad por turnos: agua, tocado o hundido. Con «Tocado, otra vez» cada acierto da otro disparo y solo el agua pasa el turno. Gana quien hunda primero toda la flota rival.', hitAgain: 'Tocado, otra vez', oneShot: 'Un disparo por turno',
+        tutTitle3: 'Alrededor de un naufragio hay agua', tutText3: 'Los barcos nunca se tocan, así que las casillas alrededor de un barco hundido se marcan y nunca necesitas disparar ahí.'
+      }
+    }
+  });
+
+  var params = new URLSearchParams(location.search);
+  var dailyDate = params.get('daily');
+  var prefs = ctx.store.get('prefs', { level: 'medium' });
+  // Fire again after a hit (#304) is on unless the player turned it off
+  if (typeof prefs.again !== 'boolean') prefs.again = true;
+  // روزانه با حریف متوسط است: سخت بیشتر شانسِ چیدمان را می‌سنجد تا مهارت را،
+  // و بازی روزانه باید برای همه منصفانه و تمام‌شدنی بماند.
+  var DAILY_LEVEL = 'medium';
+
+  var S = null, aiTimer = null;
+  var cur = { me: 44, foe: 44 }, kbUsed = false, hover = -1;
+  // Two phones (#755): 'ai' or 'net'. The two-phone mode is never remembered, because the
+  // next visit may be in an app without the link. NET outlives a match: the role, the open
+  // link and the match counter g stay while new matches are dealt.
+  var mode = 'ai';
+  var NET = { side: 0, link: 'idle', why: null, peer: '', g: 0, want: null };
+  var finTimer = null;
+
+  var top = el('div', { class: 'bs-top' });
+  var status = el('p', { class: 'bs-status', role: 'status', 'aria-live': 'polite' });
+  var cvFoe = el('canvas', { class: 'bs-cv', role: 'img' });
+  var cvMe = el('canvas', { class: 'bs-cv', role: 'img' });
+  var foePips = el('div', { class: 'bs-pips' });
+  var mePips = el('div', { class: 'bs-pips' });
+  var foeTitle = el('span'), meTitle = el('span');
+  var foeBox = el('div', { class: 'bs-box' }, [el('div', { class: 'bs-label' }, [foeTitle, foePips]), cvFoe]);
+  var meBox = el('div', { class: 'bs-box' }, [el('div', { class: 'bs-label' }, [meTitle, mePips]), cvMe]);
+  var seas = el('div', { class: 'bs-seas' }, [foeBox, meBox]);
+  var tray = el('div', { class: 'bs-tray' });
+  var actions = el('div', { class: 'bs-actions' });
+  var wrap = el('div', { class: 'bs-wrap' }, [top, status, seas, tray, actions]);
+
+  ctx.stat('shots', C.t('shots'));
+  ctx.button({ icon: 'help', label: C.t('help'), onClick: showHelp });
+  ctx.button({ icon: 'refresh', label: C.t('newMatch'), onClick: askNew });
+  ctx.main.appendChild(wrap);
+  ctx.mount();
+
+  /* ------------------------------------------------------------ ساخت */
+
+  function freshPlace(level, daily, keepShips) {
+    stopAi();
+    if (finTimer) { clearTimeout(finTimer); finTimer = null; }
+    S = {
+      phase: 'place', level: level, daily: daily || null, mode: daily ? 'ai' : mode,
+      ships: keepShips || E.FLEET.map(function () { return null; }), sel: keepShips ? -1 : 0, vert: false,
+      G: null, startedAt: Date.now(), lastMe: -1, lastAi: -1, msgMe: '', msgAi: '',
+      ready: false, peerReady: false, again: null, peerAgain: null
+    };
+    hover = -1;
+    ctx.setStat('shots', 0);
+    render();
+    save();
+  }
+
+  // ناوگان حریف در روزانه از تاریخ می‌آید تا برای همه یکی باشد؛ ناوگان خود
+  // بازیکن آزاد است، پس فقط همین سمت را می‌شود قطعی کرد.
+  function foeFleet() {
+    return S.daily ? E.randomFleet(C.daily('battleship', S.daily).rng) : E.randomFleet(Math.random);
+  }
+
+  function startBattle() {
+    if (!S || S.phase !== 'place' || !E.validFleet(S.ships)) { C.feedback('bad'); return; }
+    if (S.mode === 'net') { netReady(); return; }
+    // The daily keeps one shot a turn, so every player of a day plays the same rules
+    S.G = E.newGame(S.ships, foeFleet(), S.level, !S.daily && prefs.again);
+    S.phase = 'battle';
+    S.startedAt = Date.now();
+    hover = -1;
+    C.feedback('good');
+    render();
+    save();
+  }
+
+  /* ------------------------------------------------------------ رسم */
+
+  function palette() {
+    var cs = getComputedStyle(document.documentElement);
+    function v(n, f) { var x = cs.getPropertyValue(n).trim(); return x || f; }
+    return {
+      water: v('--c-surface-2', '#F7F1E8'), line: v('--c-line', '#E7DACA'),
+      ship: v('--game', '#3A7AAA'), text: v('--c-text', '#2C2620'),
+      dim: v('--c-text-dim', '#7C7063'), faint: v('--c-text-faint', '#A99C8C'),
+      bad: v('--c-bad', '#C8574B'), good: v('--c-good', '#5C9A6B')
+    };
+  }
+
+  // یک دریا را روی بوم می‌کشد؛ صفحه و کارت نتیجه هر دو از همین استفاده می‌کنند.
+  // o: { ships, board, reveal, sel, preview, cursor, last }
+  function paintSea(g, x0, y0, size, o, P) {
+    var cs = size / N, board = o.board;
+    g.save();
+    g.translate(x0, y0);
+    g.fillStyle = P.water;
+    C.rrect(g, 0, 0, size, size, cs * 0.35);
+    g.fill();
+
+    var blk = board ? E.blocked(board) : null;
+    var ships = o.ships || [];
+    for (var i = 0; i < ships.length; i++) {
+      var s = ships[i];
+      if (!s) continue;
+      var sunk = !!(board && board.sunk[i]);
+      if (!sunk && !o.reveal) continue;
+      var w = s.v ? 1 : s.len, h = s.v ? s.len : 1;
+      g.globalAlpha = sunk ? 0.32 : (o.ghost ? 0.4 : 0.9);
+      g.fillStyle = sunk ? P.bad : P.ship;
+      C.rrect(g, s.c * cs + cs * 0.1, s.r * cs + cs * 0.1, w * cs - cs * 0.2, h * cs - cs * 0.2, cs * 0.34);
+      g.fill();
+      g.globalAlpha = 1;
+      if (o.sel === i) {
+        g.strokeStyle = P.text;
+        g.lineWidth = Math.max(2, cs * 0.08);
+        C.rrect(g, s.c * cs + cs * 0.06, s.r * cs + cs * 0.06, w * cs - cs * 0.12, h * cs - cs * 0.12, cs * 0.36);
+        g.stroke();
+      }
+    }
+    if (o.preview) {
+      g.globalAlpha = 0.45;
+      g.fillStyle = o.preview.ok ? P.ship : P.bad;
+      for (var p = 0; p < o.preview.cells.length; p++) {
+        var pc = o.preview.cells[p];
+        C.rrect(g, (pc % N) * cs + cs * 0.12, ((pc / N) | 0) * cs + cs * 0.12, cs * 0.76, cs * 0.76, cs * 0.2);
+        g.fill();
+      }
+      g.globalAlpha = 1;
+    }
+
+    // خط‌های شبکه
+    g.strokeStyle = P.line;
+    g.lineWidth = Math.max(1, cs * 0.03);
+    g.beginPath();
+    for (var k = 1; k < N; k++) {
+      g.moveTo(k * cs, 0); g.lineTo(k * cs, size);
+      g.moveTo(0, k * cs); g.lineTo(size, k * cs);
+    }
+    g.stroke();
+
+    if (board) {
+      for (var x = 0; x < N * N; x++) {
+        var cx = (x % N) * cs + cs / 2, cy = ((x / N) | 0) * cs + cs / 2;
+        var sh = board.shots[x];
+        if (sh === 1) {
+          g.fillStyle = P.dim;
+          g.globalAlpha = 0.6;
+          g.beginPath(); g.arc(cx, cy, cs * 0.13, 0, Math.PI * 2); g.fill();
+          g.globalAlpha = 1;
+        } else if (sh === 2) {
+          g.fillStyle = P.bad;
+          g.beginPath(); g.arc(cx, cy, cs * 0.27, 0, Math.PI * 2); g.fill();
+          g.strokeStyle = P.water;
+          g.lineWidth = Math.max(1.5, cs * 0.07);
+          g.beginPath();
+          g.moveTo(cx - cs * 0.12, cy - cs * 0.12); g.lineTo(cx + cs * 0.12, cy + cs * 0.12);
+          g.moveTo(cx + cs * 0.12, cy - cs * 0.12); g.lineTo(cx - cs * 0.12, cy + cs * 0.12);
+          g.stroke();
+        } else if (blk[x]) {
+          g.fillStyle = P.faint;
+          g.globalAlpha = 0.55;
+          g.beginPath(); g.arc(cx, cy, cs * 0.07, 0, Math.PI * 2); g.fill();
+          g.globalAlpha = 1;
+        }
+      }
+    }
+    if (o.last >= 0) {
+      g.strokeStyle = P.text;
+      g.lineWidth = Math.max(1.5, cs * 0.06);
+      g.beginPath();
+      g.arc((o.last % N) * cs + cs / 2, ((o.last / N) | 0) * cs + cs / 2, cs * 0.4, 0, Math.PI * 2);
+      g.stroke();
+    }
+    if (o.cursor >= 0) {
+      g.strokeStyle = P.ship;
+      g.lineWidth = Math.max(2, cs * 0.1);
+      C.rrect(g, (o.cursor % N) * cs + cs * 0.06, ((o.cursor / N) | 0) * cs + cs * 0.06, cs * 0.88, cs * 0.88, cs * 0.18);
+      g.stroke();
+    }
+    g.restore();
+  }
+
+  // #407: a shot only left its mark. Now a miss sends rings across the water,
+  // a hit bursts, and a sinking shakes that sea. Marks and state are final
+  // first; the core's burst and shake do nothing under reduced motion.
+  var SPLASH_MS = 520, splashes = [], splashRaf = 0;
+  // the centre of a cell on the page, for the shared burst layer
+  function cellOnPage(r, idx) {
+    var cs = r.width / N;
+    return { x: r.left + (idx % N + 0.5) * cs, y: r.top + (((idx / N) | 0) + 0.5) * cs };
+  }
+  // two rings, the second a little behind, growing and fading; q is 0..1
+  function splashRings(q) {
+    return [q, q - 0.25].filter(function (v) { return v > 0 && v < 1; })
+      .map(function (v) { return { r: 0.12 + 0.42 * v, a: 0.75 * (1 - v) * (1 - q) }; });
+  }
+  function shotFx(cv, idx, result) {
+    if (result === 'miss') {
+      if (C.ui.reduceMotion()) return;
+      splashes.push({ cv: cv, idx: idx, t0: performance.now() });
+      if (!splashRaf) splashRaf = requestAnimationFrame(function tick() {
+        splashRaf = 0;
+        draw();
+        if (splashes.length) splashRaf = requestAnimationFrame(tick);
+      });
+      return;
+    }
+    var at = cellOnPage(cv.getBoundingClientRect(), idx), sunk = result === 'sunk';
+    C.ui.burst(at, { count: sunk ? 30 : 16, speed: sunk ? 300 : 220, ring: sunk ? 30 : 0, colors: ['#E8913A', '#E07A5F', '#FFF1C9', '#6B5A4E'] });
+    if (sunk) C.ui.shake(cv.parentNode);
+  }
+  function drawSplashes(cv, g, w, P) {
+    var now = performance.now(), cs = w / N, keep = [];
+    for (var i = 0; i < splashes.length; i++) {
+      var sp = splashes[i], q = (now - sp.t0) / SPLASH_MS;
+      if (q >= 1) continue;
+      keep.push(sp);
+      if (sp.cv !== cv) continue;
+      var cx = (sp.idx % N + 0.5) * cs, cy = (((sp.idx / N) | 0) + 0.5) * cs;
+      splashRings(q).forEach(function (ring) {
+        // the palette's dim ink: white rings vanished on the light theme's pale water
+        g.globalAlpha = ring.a; g.strokeStyle = P.dim; g.lineWidth = Math.max(1.5, cs * 0.06);
+        g.beginPath(); g.arc(cx, cy, ring.r * cs, 0, Math.PI * 2); g.stroke();
+      });
+      g.globalAlpha = 1;
+    }
+    if (cv === cvMe) splashes = keep;
+  }
+
+  function fitCanvas(cv) {
+    var w = cv.clientWidth || 300;
+    var d = window.devicePixelRatio || 1;
+    var px = Math.round(w * d);
+    // both sides: a new canvas is 300×150, so a board exactly 300px wide kept a
+    // 150px-high backing and was drawn squashed (#359, seen in Ludo)
+    if (cv.width !== px || cv.height !== px) { cv.width = px; cv.height = px; }
+    var g = cv.getContext('2d');
+    g.setTransform(d, 0, 0, d, 0, 0);
+    g.clearRect(0, 0, w, w);
+    return { g: g, w: w };
+  }
+
+  function draw() {
+    if (!S) return;
+    var P = palette();
+    if (S.phase === 'place') {
+      var f = fitCanvas(cvMe);
+      paintSea(f.g, 0, 0, f.w, {
+        ships: S.ships, reveal: true, sel: S.sel, preview: placePreview(),
+        cursor: kbUsed ? cur.me : -1, last: -1
+      }, P);
+      return;
+    }
+    var G = S.G, over = S.phase === 'over';
+    var ff = fitCanvas(cvFoe), fb = foeView();
+    paintSea(ff.g, 0, 0, ff.w, {
+      board: fb, ships: fb.ships, reveal: over, ghost: over, sel: -1,
+      cursor: (kbUsed && !over) ? cur.foe : -1, last: S.lastMe,
+      preview: (!over && hover >= 0 && E.canFire(G.foe, hover) && !busy()) ? { cells: [hover], ok: true } : null
+    }, P);
+    drawSplashes(cvFoe, ff.g, ff.w, P);
+    var fm = fitCanvas(cvMe);
+    paintSea(fm.g, 0, 0, fm.w, { board: G.me, ships: G.me.ships, reveal: true, sel: -1, cursor: -1, last: S.lastAi }, P);
+    drawSplashes(cvMe, fm.g, fm.w, P);
+  }
+
+  // The rival's sea as this phone may draw it. Against the AI that is its board. With two
+  // phones it is only the shots and the ships reported sunk, plus the rival's fleet once
+  // the game is over and that phone has shown it.
+  function foeView() {
+    var G = S.G;
+    if (!G.net || !G.reveal) return G.foe;
+    var b = E.makeBoard(G.reveal);
+    b.shots = G.foe.shots.slice();
+    b.sunk = b.ships.map(function (s) {
+      return E.cellsOf(s).every(function (x) { return b.shots[x] === 2; });
+    });
+    return b;
+  }
+  // Pips for the rival's fleet with two phones: the whole fleet, a pip greyed for each
+  // length reported sunk, since this phone does not know where the rest is.
+  function netFoePips() {
+    var left = S.G.foe.ships.map(function (s) { return s.len; });
+    var flags = E.FLEET.map(function (len) {
+      var k = left.indexOf(len);
+      if (k < 0) return false;
+      left.splice(k, 1);
+      return true;
+    });
+    pips(foePips, { sunk: flags }, E.FLEET.map(function () { return null; }));
+  }
+
+  function pips(box, board, ships) {
+    box.innerHTML = '';
+    for (var i = 0; i < ships.length; i++) {
+      var sunk = !!(board && board.sunk[i]);
+      box.appendChild(el('i', { class: 'bs-pip' + (sunk ? ' bs-pip--sunk' : ''), style: { width: (ships[i] ? ships[i].len : E.FLEET[i]) * 6 + 'px' } }));
+    }
+  }
+
+  function busy() {
+    if (!(S && S.phase === 'battle' && S.G)) return false;
+    if (S.mode === 'net') return S.G.turn !== 'me' || NET.link !== 'connected';
+    return S.G.turn === 'ai';
+  }
+
+  function render() {
+    top.innerHTML = '';
+    if (S.daily) {
+      top.appendChild(el('span', { class: 'ch-badge ch-badge--accent' },
+        [C.icon('calendar', 14), el('span', { text: C.t('dailyBs') + ' — ' + C.num(S.daily) })]));
+      top.appendChild(el('span', { class: 'ch-badge', text: C.t('vsMedium') }));
+    } else if (S.phase === 'place') {
+      // The two-phone choice shows only where the link exists (Chogan Plus); web, PWA and
+      // F-Droid see the page exactly as before
+      if (C.link.available() || S.mode === 'net') {
+        top.appendChild(C.ui.segmented([
+          { value: 'ai', label: C.t('vsAi') }, { value: 'net', label: C.t('twoPhones') }
+        ], S.mode, function (v) { if (v !== S.mode) setMode(v); }));
+      }
+      if (S.mode === 'net') {
+        top.appendChild(C.ui.segmented([
+          { value: 'host', label: C.t('hostGame') }, { value: 'guest', label: C.t('joinGame') }
+        ], NET.side ? (NET.side === 1 ? 'host' : 'guest') : '', function (v) {
+          if (NET.side === (v === 'host' ? 1 : 2) && NET.link !== 'mismatch' && NET.link !== 'error' && NET.link !== 'idle') return;
+          // the fleet already placed stays; only the readiness starts again
+          freshPlace(S.level, null, E.validFleet(S.ships) ? S.ships : null);
+          openLink(v);
+        }));
+        top.appendChild(el('span', { class: 'ch-badge bs-link', text: linkText() }));
+      } else {
+        // سختی فقط پیش از نبرد عوض می‌شود؛ وسط نبرد یعنی دست تازه
+        top.appendChild(C.ui.segmented([
+          { value: 'easy', label: C.t('easy') }, { value: 'medium', label: C.t('medium') }, { value: 'hard', label: C.t('hard') }
+        ], S.level, function (v) {
+          S.level = v;
+          prefs.level = v;
+          ctx.store.set('prefs', prefs);
+        }));
+      }
+      // With two phones the host's rule counts for both, so only the host picks it
+      if (S.mode !== 'net' || (NET.side === 1 && !S.ready)) {
+        top.appendChild(C.ui.segmented([
+          { value: true, label: C.t('hitAgain') }, { value: false, label: C.t('oneShot') }
+        ], prefs.again, function (v) {
+          prefs.again = v;
+          ctx.store.set('prefs', prefs);
+        }));
+      }
+    } else if (S.mode === 'net') {
+      top.appendChild(el('span', { class: 'ch-badge', text: C.t('twoPhones') + ' · ' + C.t(S.G && S.G.again ? 'hitAgain' : 'oneShot') }));
+      if (S.phase === 'battle') top.appendChild(el('span', { class: 'ch-badge bs-link', text: linkText() }));
+    } else {
+      top.appendChild(el('span', { class: 'ch-badge', text: C.t('rival') + ' · ' + C.t(S.level) + ' · ' + C.t(S.G && S.G.again ? 'hitAgain' : 'oneShot') }));
+    }
+
+    var placing = S.phase === 'place';
+    foeBox.hidden = placing;
+    meBox.classList.toggle('bs-box--small', !placing);
+    foeTitle.textContent = C.t('foeSea');
+    meTitle.textContent = C.t('yourFleet');
+    cvFoe.setAttribute('aria-label', C.t('foeSea'));
+    cvMe.setAttribute('aria-label', C.t('yourFleet'));
+    tray.hidden = !placing;
+    actions.hidden = !placing;
+    if (placing) { renderTray(); pips(mePips, null, S.ships); }
+    else {
+      if (S.G.net) netFoePips(); else pips(foePips, S.G.foe, S.G.foe.ships);
+      pips(mePips, S.G.me, S.G.me.ships);
+      ctx.setStat('shots', S.G.shots.me);
+    }
+    renderStatus();
+    draw();
+  }
+
+  function renderStatus(msg) {
+    status.classList.remove('bs-status--wait');
+    status.innerHTML = '';
+    if (msg) { status.textContent = msg; return; }
+    if (S.phase === 'place') {
+      if (S.ready) { status.textContent = C.t('waitFleet'); status.classList.add('bs-status--wait'); return; }
+      status.textContent = E.validFleet(S.ships) ? C.t('placeDone') : C.t('placeHint');
+      return;
+    }
+    if (S.phase === 'over') { status.textContent = S.G.winner === 'me' ? C.t('won') : C.t('lost'); return; }
+    var parts = [];
+    if (S.msgMe) parts.push(C.t('shotYou') + ': ' + S.msgMe);
+    if (S.msgAi) parts.push(C.t('shotAi') + ': ' + S.msgAi);
+    var turnWord = busy() ? C.t('aiming') : C.t('yourTurn');
+    if (S.mode === 'net' && S.G.turn === 'wait') turnWord = C.t('waitShot');
+    var head = el('b', { text: turnWord });
+    status.appendChild(head);
+    if (parts.length) status.appendChild(document.createTextNode(' · ' + parts.join(' · ')));
+    if (busy()) status.classList.add('bs-status--wait');
+  }
+
+  function renderTray() {
+    tray.innerHTML = '';
+    for (var i = 0; i < E.FLEET.length; i++) {
+      (function (k) {
+        var bars = [];
+        for (var j = 0; j < E.FLEET[k]; j++) bars.push(el('i'));
+        var b = el('button', {
+          type: 'button',
+          class: 'bs-chip' + (S.sel === k ? ' bs-chip--on' : '') + (S.ships[k] ? ' bs-chip--placed' : ''),
+          'aria-label': C.t('ship', { n: C.num(E.FLEET[k]) }),
+          'aria-pressed': S.sel === k ? 'true' : 'false'
+        }, bars);
+        b.addEventListener('click', function () { selectShip(k); });
+        tray.appendChild(b);
+      })(i);
+    }
+    actions.innerHTML = '';
+    var rot = el('button', { type: 'button', class: 'ch-btn ch-btn--soft' }, [C.icon('refresh', 18), el('span', { text: C.t('rotate') })]);
+    rot.addEventListener('click', function () { C.feedback('tap'); rotateSel(); });
+    var rnd = el('button', { type: 'button', class: 'ch-btn ch-btn--soft' }, [C.icon('sparkle', 18), el('span', { text: C.t('randomFleet') })]);
+    rnd.addEventListener('click', function () { C.feedback('tap'); randomize(); });
+    var go = el('button', { type: 'button', class: 'ch-btn ch-btn--primary', text: C.t('startBattle') });
+    go.disabled = !E.validFleet(S.ships) || !!S.ready || (S.mode === 'net' && !NET.side);
+    rot.disabled = rnd.disabled = !!S.ready;
+    go.addEventListener('click', startBattle);
+    actions.appendChild(rot);
+    actions.appendChild(rnd);
+    actions.appendChild(go);
+  }
+
+  /* ------------------------------------------------------- چیدمان */
+
+  // کشتی‌ای که روی این خانه نشسته، در حالت چیدمان
+  function placedAt(idx) {
+    for (var i = 0; i < S.ships.length; i++) {
+      if (S.ships[i] && E.cellsOf(S.ships[i]).indexOf(idx) >= 0) return i;
+    }
+    return -1;
+  }
+
+  // لنگر کشتی خانه‌ی لمس‌شده است، ولی اگر بیرون می‌زد به داخل هل داده می‌شود؛
+  // وگرنه لمس نزدیک لبه هیچ‌وقت جواب نمی‌داد و بازیکن نمی‌فهمید چرا.
+  function shipFor(k, idx, vert) {
+    var len = E.FLEET[k];
+    var r = (idx / N) | 0, c = idx % N;
+    if (vert) r = Math.min(r, N - len); else c = Math.min(c, N - len);
+    return { r: r, c: c, len: len, v: !!vert };
+  }
+
+  function placePreview() {
+    if (S.phase !== 'place' || S.sel < 0) return null;
+    var at = kbUsed ? cur.me : hover;
+    if (at < 0) return null;
+    var on = placedAt(at);
+    if (on >= 0) return null;
+    var s = shipFor(S.sel, at, S.vert);
+    return { cells: E.cellsOf(s), ok: E.canPlace(S.ships, s, S.sel) };
+  }
+
+  function nextFree() {
+    for (var i = 0; i < S.ships.length; i++) if (!S.ships[i]) return i;
+    return -1;
+  }
+
+  function selectShip(k) {
+    if (S.phase !== 'place' || S.ready) return;
+    S.sel = k;
+    if (S.ships[k]) S.vert = S.ships[k].v;
+    C.feedback('select');
+    render();
+  }
+
+  function tapMe(idx) {
+    // a fleet announced as ready to the other phone is final
+    if (!S || S.phase !== 'place' || S.ready) return;
+    var on = placedAt(idx);
+    if (on >= 0 && on !== S.sel) { selectShip(on); return; }
+    if (on >= 0) { rotateSel(); return; }
+    if (S.sel < 0) return;
+    var s = shipFor(S.sel, idx, S.vert);
+    if (!E.canPlace(S.ships, s, S.sel)) { refuse(); return; }
+    S.ships[S.sel] = s;
+    S.sel = nextFree();
+    C.feedback('place');
+    render();
+  }
+
+  function rotateSel() {
+    if (S.phase !== 'place' || S.ready) return;
+    if (S.sel < 0 || !S.ships[S.sel]) { S.vert = !S.vert; render(); return; }
+    var old = S.ships[S.sel];
+    var s = shipFor(S.sel, old.r * N + old.c, !old.v);
+    if (!E.canPlace(S.ships, s, S.sel)) { refuse(); return; }
+    S.ships[S.sel] = s;
+    S.vert = s.v;
+    C.feedback('place');
+    render();
+  }
+
+  function randomize() {
+    if (S.phase !== 'place' || S.ready) return;
+    S.ships = E.randomFleet(Math.random);
+    S.sel = -1;
+    render();
+  }
+
+  function refuse() {
+    C.feedback('bad');
+    C.ui.shake(cvMe);
+    renderStatus(C.t('notHere'));
+  }
+
+  /* ----------------------------------------------------------- نبرد */
+
+  function word(r) { return C.t(r === 'miss' ? 'miss' : (r === 'sunk' ? 'sunk' : 'hit')); }
+
+  function tapFoe(idx) {
+    if (!S || S.phase !== 'battle' || busy()) return;
+    if (!E.canFire(S.G.foe, idx)) { C.feedback('bad'); return; }
+    if (S.mode === 'net') { netShoot(idx); return; }
+    var res = E.playerFire(S.G, idx);
+    if (!res) return;
+    S.lastMe = idx;
+    S.msgMe = word(res.result);
+    if (res.result === 'sunk') { C.audio.sfx('boom'); C.haptic('success'); }
+    else if (res.result === 'hit') { C.audio.sfx('hit'); C.haptic('success'); }
+    else { C.audio.sfx('place'); C.haptic('tap'); }
+    after();
+    shotFx(cvFoe, idx, res.result);
+  }
+
+  function after() {
+    save();
+    render();
+    if (S.G.winner) { finish(); return; }
+    maybeAi();
+  }
+
+  // مکث کوتاه تا بازیکن جای شلیک حریف را ببیند، نه اینکه منتظر بماند
+  function maybeAi() {
+    stopAi();
+    if (S.mode === 'net' || !busy()) return;
+    aiTimer = setTimeout(function () {
+      aiTimer = null;
+      if (!busy()) return;
+      var rnd = S.daily ? C.daily('battleship', S.daily + '|' + S.G.shots.ai).rng : Math.random;
+      var res = E.aiFire(S.G, rnd);
+      if (!res) return;
+      S.lastAi = res.i;
+      S.msgAi = word(res.result);
+      if (res.result !== 'miss') { C.audio.sfx(res.result === 'sunk' ? 'boom' : 'hit'); C.haptic('warn'); }
+      else C.audio.sfx('tick');
+      after();
+      shotFx(cvMe, res.i, res.result);
+    }, 700);
+  }
+  function stopAi() { if (aiTimer) { clearTimeout(aiTimer); aiTimer = null; } }
+
+  /* ------------------------------------------------- دو گوشی (#755) */
+
+  function setMode(v) {
+    mode = v;
+    if (v !== 'net') {
+      NET.want = null;
+      C.link.close();
+      NET.side = 0; NET.link = 'idle'; NET.why = null;
+    }
+    freshPlace(prefs.level || 'medium', null, keepFleet());
+  }
+
+  // Every message carries the game number, so a shot from a game one phone already left
+  // never lands in the next one
+  function tx(m) { m.g = NET.g; C.link.send(m); }
+
+  var LINK_TEXT = { searching: 'linkSearching', connected: 'linkConnected', lost: 'linkLost', mismatch: 'linkMismatch', error: 'linkError' };
+  // #744: a refused permission and Bluetooth switched off each say what to do; any other
+  // failure carries Nearby's status code, so a player's report can name it.
+  function linkText() {
+    if (!NET.side) return C.t('linkPick');
+    var why = NET.link === 'error' && NET.why || {};
+    if (why.reason === 'permission') return C.t('linkPermission');
+    if (why.reason === 'bluetooth') return C.t('linkBluetooth');
+    return C.t(LINK_TEXT[NET.link] || 'linkPick') + (NET.link === 'error' && why.code ? ' (' + why.code + ')' : '');
+  }
+
+  function openLink(role) {
+    NET.side = role === 'host' ? 1 : 2;
+    NET.link = 'idle';
+    NET.why = null;
+    NET.want = role;
+    C.link.open({
+      role: role, game: 'battleship', version: C.version, name: C.state.profile.name || '',
+      onStatus: function (st, info) {
+        if (!S || S.mode !== 'net') return;
+        if (st === 'mismatch') NET.want = null;
+        NET.link = st;
+        NET.why = st === 'error' ? info : null;
+        if (st === 'connected') {
+          tx({ t: 'name', name: C.state.profile.name || '' });
+          // #752: after an app switch either phone may have restarted or missed a shot;
+          // each says where it is and the one behind catches up
+          tx(syncMsg());
+        }
+        render();
+      },
+      onMessage: onNet
+    });
+    render();
+  }
+
+  function syncMsg() {
+    var G = S.G;
+    var m = { t: 'sync', ready: !!S.ready || S.phase !== 'place', again: S.again, state: G ? E.netState(G) : null };
+    // the winner shows its fleet; the loser's came with the reply that sank it
+    if (G && G.winner === 'me') m.fleet = G.me.ships;
+    return m;
+  }
+
+  function netReady() {
+    if (!NET.side) { C.feedback('bad'); return; }
+    S.ready = true;
+    // the host's rule counts for both phones
+    S.again = NET.side === 1 ? !!prefs.again : null;
+    tx({ t: 'ready', again: S.again });
+    C.feedback('good');
+    save();
+    render();
+    maybeBegin();
+  }
+
+  function maybeBegin() {
+    if (!S || S.phase !== 'place' || !S.ready || !S.peerReady) return;
+    var again = NET.side === 1 ? S.again : S.peerAgain;
+    if (typeof again !== 'boolean') return;
+    S.G = E.netGame(S.ships, again, NET.side === 1);
+    S.phase = 'battle';
+    S.startedAt = Date.now();
+    hover = -1;
+    render();
+    save();
+  }
+
+  function netShoot(idx) {
+    var m = E.netFire(S.G, idx);
+    if (!m) return;
+    S.lastMe = idx;
+    S.msgMe = '';
+    tx(m);
+    C.feedback('tap');
+    save();
+    render();
+  }
+
+  function shotSound(r, mine) {
+    if (r === 'sunk') { C.audio.sfx('boom'); C.haptic(mine ? 'success' : 'warn'); }
+    else if (r === 'hit') { C.audio.sfx('hit'); C.haptic(mine ? 'success' : 'warn'); }
+    else C.audio.sfx(mine ? 'place' : 'tick');
+  }
+
+  function keepFleet() { return S && E.validFleet(S.ships) ? S.ships : null; }
+
+  function onNet(d) {
+    if (!S || S.mode !== 'net' || !d) return;
+    var g = d.g | 0;
+    if (d.t === 'name') { NET.peer = String(d.name || '').slice(0, 16); return; }
+    if (d.t === 'new') { if (g > NET.g) { NET.g = g; freshPlace(S.level, null, keepFleet()); } return; }
+    if (d.t === 'sync') { onSync(d); return; }
+    if (g !== NET.g) return;
+    if (d.t === 'ready') {
+      S.peerReady = true;
+      S.peerAgain = typeof d.again === 'boolean' ? d.again : null;
+      save();
+      maybeBegin();
+    } else if (d.t === 'shot') {
+      if (!S.G) return;
+      var before = S.G.inn.length;
+      var m = E.netAnswer(S.G, d.n, d.i);
+      if (m) tx(m);
+      if (S.G.inn.length > before) theirShot(before);
+    } else if (d.t === 'reply') {
+      if (!S.G || !E.netReply(S.G, d.n, d)) return;
+      myReply(d.n);
+    } else if (d.t === 'fleet') {
+      if (S.G && E.netReveal(S.G, d.ships)) {
+        save();
+        if (S.finWait) showNetResult(); else draw();
+      }
+    }
+  }
+
+  function theirShot(k) {
+    var rec = S.G.inn[k];
+    S.lastAi = rec.i;
+    S.msgAi = word(rec.r);
+    shotSound(rec.r, false);
+    save();
+    render();
+    shotFx(cvMe, rec.i, rec.r);
+    if (S.G.winner && S.phase === 'battle') finish();
+  }
+  function myReply(n) {
+    var o = S.G.out[n];
+    S.msgMe = word(o.r);
+    shotSound(o.r, true);
+    save();
+    render();
+    shotFx(cvFoe, o.i, o.r);
+    if (S.G.winner === 'me') {
+      tx({ t: 'fleet', ships: S.G.me.ships });
+      if (S.phase === 'battle') finish();
+    }
+  }
+
+  function answered(G) { return G.out.filter(function (o) { return o.r != null; }).length; }
+
+  // The newer state wins: a later game number restarts this phone's placing; within one
+  // game the engine merges the two shot lists, so nothing is dropped or applied twice.
+  function onSync(d) {
+    var g = d.g | 0;
+    if (g < NET.g) return;
+    if (g > NET.g) { NET.g = g; freshPlace(S.level, null, keepFleet()); }
+    if (d.ready) {
+      S.peerReady = true;
+      if (typeof d.again === 'boolean') S.peerAgain = d.again;
+    }
+    maybeBegin();
+    if (!S.G) { save(); render(); return; }
+    var outN = answered(S.G), innN = S.G.inn.length;
+    var send = E.netSync(S.G, d.state || {});
+    for (var k = 0; k < send.length; k++) tx(send[k]);
+    if (d.fleet) E.netReveal(S.G, d.fleet);
+    if (S.G.inn.length > innN) theirShot(S.G.inn.length - 1);
+    else if (answered(S.G) > outN) {
+      var last = -1;
+      for (var j = 0; j < S.G.out.length; j++) if (S.G.out[j].r != null) last = j;
+      myReply(last);
+    } else {
+      save();
+      render();
+      if (S.G.winner && S.phase === 'battle') finish();
+      else if (S.finWait && S.G.reveal) showNetResult();
+    }
+  }
+
+  // The loser waits a moment for the winner's fleet so the result card can show it; if it
+  // does not come, the card shows what the shots found.
+  function netFinish() {
+    S.phase = 'over';
+    S.elapsed = Date.now() - S.startedAt;
+    ctx.clearSave();
+    render();
+    if (S.G.winner === 'ai' && !S.G.reveal) {
+      S.finWait = true;
+      finTimer = setTimeout(function () { finTimer = null; showNetResult(); }, 2500);
+      return;
+    }
+    showNetResult();
+  }
+
+  function showNetResult() {
+    if (!S || S.shown) return;
+    if (finTimer) { clearTimeout(finTimer); finTimer = null; }
+    S.finWait = false;
+    S.shown = true;
+    draw();
+    var G = S.G, won = G.winner === 'me';
+    var hits = 0;
+    for (var i = 0; i < N * N; i++) if (G.foe.shots[i] === 2) hits++;
+    var acc = G.shots.me ? Math.round(hits * 100 / G.shots.me) : 0;
+    var afloat = G.me.sunk.filter(function (x) { return !x; }).length;
+    // Same scale as Reversi's two-player game; no awards, stats or daily with two phones
+    var base = 8;
+    var coins = Math.max(2, Math.round(won ? base : base * 0.35));
+    var points = Math.max(3, Math.round(won ? base * 4 : base * 1.2));
+    var foe = JSON.parse(JSON.stringify(foeView()));
+    var name = C.t('appName') + ' · ' + (NAME[C.state.settings.lang] || NAME.en);
+    ctx.finish({
+      won: won,
+      title: won ? C.t('won') : C.t('lost'),
+      timeMs: S.elapsed, coins: coins, points: points,
+      lines: [
+        { label: C.t('shots'), value: C.num(G.shots.me) },
+        { label: C.t('accuracy'), value: C.num(acc) + '%' },
+        { label: C.t('shipsLeft'), value: C.num(afloat) + ' / ' + C.num(G.me.ships.length) },
+        { label: C.t('rival'), value: NET.peer || C.t('twoPhones') }
+      ],
+      shareText: name + '\n' + C.t('twoPhones') + '\n' +
+        (won ? C.t('wonIn', { n: C.num(G.shots.me) }) : C.t('lost')) + ' · ' + C.t('accuracy') + ' ' + C.num(acc) + '%',
+      paint: function (g, W, H) {
+        var side = Math.min(W, H);
+        paintSea(g, (W - side) / 2, (H - side) / 2, side,
+          { board: foe, ships: foe.ships, reveal: true, ghost: true, sel: -1, cursor: -1, last: -1 }, palette());
+      },
+      onAgain: function () { netNew(); }
+    });
+  }
+
+  function netNew() {
+    NET.g++;
+    tx({ t: 'new' });
+    freshPlace(S.level, null, keepFleet());
+  }
+
+  window.addEventListener('pagehide', function () { if (S && S.mode === 'net') C.link.close(); });
+  // If the page was hidden long enough for the link to be closed, coming back reopens it
+  C.onResume(function () {
+    if (S && S.mode === 'net' && NET.want && C.link.status === 'idle') openLink(NET.want);
+  });
+
+  function finish() {
+    stopAi();
+    if (finTimer) { clearTimeout(finTimer); finTimer = null; }
+    var G = S.G;
+    if (S.mode === 'net') { netFinish(); return; }
+    S.phase = 'over';
+    S.elapsed = Date.now() - S.startedAt;
+    render();
+    var won = G.winner === 'me';
+    var hits = 0;
+    for (var i = 0; i < N * N; i++) if (G.foe.shots[i] === 2) hits++;
+    var acc = G.shots.me ? Math.round(hits * 100 / G.shots.me) : 0;
+    var afloat = G.me.sunk.filter(function (x) { return !x; }).length;
+
+    // همان بازه‌ی نقطه‌بازی تا هیچ بازی‌ای راه میان‌بر سکه و لیگ نشود
+    var base = { easy: 5, medium: 10, hard: 18 }[S.level] || 10;
+    var coins = Math.max(2, Math.round(won ? base : base * 0.35)) + (S.daily ? 8 : 0);
+    var points = Math.max(3, Math.round(won ? base * 4 : base * 1.2)) + (S.daily ? 25 : 0);
+
+    if (won) {
+      C.achievements.unlock('bs-win');
+      if (S.level === 'hard') C.achievements.unlock('bs-hard');
+      if (afloat === G.me.ships.length) C.achievements.unlock('bs-intact');
+      C.stats.best('battleship', 'shots', G.shots.me, true);
+    }
+    if (S.daily) {
+      var first = C.stats.daily('battleship', S.daily, {
+        label: won ? C.t('wonIn', { n: C.num(G.shots.me) }) : C.t('lost'), win: won, diff: afloat
+      });
+      if (!first) { coins = Math.round(coins * 0.2); points = Math.round(points * 0.2); }
+    }
+    ctx.clearSave();
+
+    var foe = JSON.parse(JSON.stringify(G.foe));
+    var name = C.t('appName') + ' · ' + (NAME[C.state.settings.lang] || NAME.en);
+    ctx.finish({
+      won: won,
+      title: won ? C.t('won') : C.t('lost'),
+      timeMs: S.elapsed, coins: coins, points: points,
+      lines: [
+        { label: C.t('shots'), value: C.num(G.shots.me) },
+        { label: C.t('accuracy'), value: C.num(acc) + '%' },
+        { label: C.t('shipsLeft'), value: C.num(afloat) + ' / ' + C.num(G.me.ships.length) },
+        { label: C.t('rival'), value: C.t(S.level) }
+      ],
+      shareText: name + (S.daily ? ('\n' + C.t('daily') + ' ' + S.daily) : '') + '\n' +
+        (won ? C.t('wonIn', { n: C.num(G.shots.me) }) : C.t('lost')) + ' · ' + C.t('accuracy') + ' ' + C.num(acc) + '%',
+      paint: function (g, W, H) {
+        var side = Math.min(W, H);
+        paintSea(g, (W - side) / 2, (H - side) / 2, side,
+          { board: foe, ships: foe.ships, reveal: true, ghost: true, sel: -1, cursor: -1, last: -1 }, palette());
+      },
+      onAgain: S.daily ? null : function () { freshPlace(S.level); }
+    });
+  }
+
+  /* --------------------------------------------------------- ذخیره */
+
+  ctx.autosave(function () {
+    // #752: a two-phone game is saved with its side, so a phone the system killed comes
+    // back into the same game, placed fleet included
+    if (S && S.mode === 'net') {
+      if (!NET.side || !(S.phase === 'battle' || (S.phase === 'place' && S.ready))) return { inProgress: false };
+      return {
+        v: 1, mode: 'net', side: NET.side, g: NET.g, peer: NET.peer, phase: S.phase,
+        ships: S.ships, ready: !!S.ready, peerReady: !!S.peerReady, again: S.again, peerAgain: S.peerAgain,
+        G: S.G, elapsed: Date.now() - S.startedAt, lastMe: S.lastMe, lastAi: S.lastAi
+      };
+    }
+    if (!S || S.phase !== 'battle' || !S.G) return { inProgress: false };
+    return {
+      v: 1, level: S.level, daily: S.daily, G: S.G,
+      elapsed: Date.now() - S.startedAt, lastMe: S.lastMe, lastAi: S.lastAi
+    };
+  });
+  function save() { ctx.save(); }
+
+  function askNew() {
+    function go() {
+      if (S && S.mode === 'net') { netNew(); return; }
+      freshPlace(S && S.daily ? DAILY_LEVEL : prefs.level, S ? S.daily : dailyDate);
+    }
+    if (!S || S.phase !== 'battle') { go(); return; }
+    C.ui.confirm({ title: C.t('newMatch'), body: C.t('resetWarn'), onOk: go });
+  }
+
+  function showHelp() {
+    C.ui.modal({
+      title: C.t('help'),
+      body: [
+        el('p', { class: 'ch-dim', text: C.t('tutText1') }),
+        el('p', { class: 'ch-dim', text: C.t('tutText2') }),
+        el('h3', { style: { 'margin-top': 'var(--s-4)' }, text: C.t('keyboard') }),
+        el('div', { class: 'ch-list' }, [
+          kb('← ↑ → ↓', C.t('move')),
+          kb('Space / Enter', C.t('fireKey')),
+          kb('R', C.t('rotate')),
+          kb('X', C.t('randomFleet')),
+          kb('1 – 5', C.t('pickShip'))
+        ])
+      ],
+      actions: [
+        { label: C.t('tutorial'), onClick: function () { ctx.showTutorial(TUT); } },
+        { label: C.t('done'), kind: 'primary' }
+      ]
+    });
+  }
+  function kb(k, what) {
+    return el('div', { class: 'ch-item' }, [
+      el('div', { class: 'ch-item__label', text: what }),
+      el('span', { class: 'ch-badge', text: k })
+    ]);
+  }
+
+  var GRID = function (x, y) {
+    var s = '';
+    for (var i = 0; i <= 4; i++) {
+      s += '<path d="M' + (x + i * 20) + ' ' + y + 'v80M' + x + ' ' + (y + i * 20) + 'h80" stroke="var(--c-line)" stroke-width="2"/>';
+    }
+    return '<rect x="' + x + '" y="' + y + '" width="80" height="80" rx="8" fill="var(--c-surface-2)"/>' + s;
+  };
+  var TUT = [
+    { title: C.t('tutTitle1'), text: C.t('tutText1'),
+      art: '<svg viewBox="0 0 200 110" width="100%">' + GRID(60, 15) +
+        '<rect x="62" y="17" width="56" height="16" rx="7" fill="var(--game)"/>' +
+        '<rect x="122" y="57" width="16" height="36" rx="7" fill="var(--game)"/></svg>' },
+    { title: C.t('tutTitle2'), text: C.t('tutText2'),
+      art: '<svg viewBox="0 0 200 110" width="100%">' + GRID(60, 15) +
+        '<circle cx="90" cy="45" r="6" fill="var(--c-bad)"/><circle cx="110" cy="45" r="6" fill="var(--c-bad)"/>' +
+        '<circle cx="70" cy="85" r="3.5" fill="var(--c-text-dim)"/><circle cx="130" cy="25" r="3.5" fill="var(--c-text-dim)"/></svg>' },
+    { title: C.t('tutTitle3'), text: C.t('tutText3'),
+      art: '<svg viewBox="0 0 200 110" width="100%">' + GRID(60, 15) +
+        '<rect x="82" y="37" width="36" height="16" rx="7" fill="var(--c-bad)" opacity=".35"/>' +
+        '<g fill="var(--c-text-faint)"><circle cx="70" cy="25" r="2.5"/><circle cx="90" cy="25" r="2.5"/><circle cx="110" cy="25" r="2.5"/><circle cx="130" cy="25" r="2.5"/>' +
+        '<circle cx="70" cy="45" r="2.5"/><circle cx="130" cy="45" r="2.5"/>' +
+        '<circle cx="70" cy="65" r="2.5"/><circle cx="90" cy="65" r="2.5"/><circle cx="110" cy="65" r="2.5"/><circle cx="130" cy="65" r="2.5"/></g>' +
+        '<circle cx="90" cy="45" r="6" fill="var(--c-bad)"/><circle cx="110" cy="45" r="6" fill="var(--c-bad)"/></svg>' }
+  ];
+
+  /* ------------------------------------------------------ ورودی */
+
+  function cellOf(cv, e) {
+    var r = cv.getBoundingClientRect();
+    if (!r.width) return -1;
+    var c = Math.floor((e.clientX - r.left) / r.width * N);
+    var rr = Math.floor((e.clientY - r.top) / r.height * N);
+    if (c < 0 || c >= N || rr < 0 || rr >= N) return -1;
+    return rr * N + c;
+  }
+  cvMe.addEventListener('click', function (e) {
+    var i = cellOf(cvMe, e);
+    kbUsed = false;
+    if (i >= 0) tapMe(i);
+  });
+  cvFoe.addEventListener('click', function (e) {
+    var i = cellOf(cvFoe, e);
+    kbUsed = false;
+    if (i >= 0) tapFoe(i);
+  });
+  // پیش‌نمایش فقط برای موس؛ روی لمس، اشاره‌ای در کار نیست
+  function hoverOn(cv) {
+    cv.addEventListener('pointermove', function (e) {
+      if (e.pointerType !== 'mouse') return;
+      var i = cellOf(cv, e);
+      if (i !== hover) { hover = i; draw(); }
+    });
+    cv.addEventListener('pointerleave', function () { if (hover >= 0) { hover = -1; draw(); } });
+  }
+  hoverOn(cvMe);
+  hoverOn(cvFoe);
+
+  window.addEventListener('keydown', function (e) {
+    if (!S || S.phase === 'over') return;
+    if (document.querySelector('.ch-scrim')) return;
+    var tg = e.target, tag = tg && tg.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (tg && tg.isContentEditable)) return;
+    if (tag === 'BUTTON' && (e.key === ' ' || e.key === 'Enter')) return;
+    var k = e.key, placing = S.phase === 'place';
+    var which = placing ? 'me' : 'foe';
+    var d = { ArrowUp: -N, ArrowDown: N, ArrowLeft: -1, ArrowRight: 1 }[k];
+    // دریا روی بوم با مختصات ثابت کشیده می‌شود و در راست‌چین آینه نمی‌شود،
+    // پس جهت‌نماها هم برعکس نمی‌شوند.
+    if (d) {
+      var p = cur[which], r = (p / N) | 0, c = p % N;
+      if (d === -N && r > 0) p -= N;
+      if (d === N && r < N - 1) p += N;
+      if (d === -1 && c > 0) p -= 1;
+      if (d === 1 && c < N - 1) p += 1;
+      cur[which] = p;
+      kbUsed = true;
+      draw();
+      e.preventDefault();
+      return;
+    }
+    if (k === ' ' || k === 'Enter') {
+      kbUsed = true;
+      if (placing) {
+        if (S.sel < 0 && E.validFleet(S.ships) && placedAt(cur.me) < 0) startBattle();
+        else tapMe(cur.me);
+      } else tapFoe(cur.foe);
+      e.preventDefault();
+      return;
+    }
+    if (!placing) return;
+    if (C.keyIs(e, 'r')) { rotateSel(); e.preventDefault(); return; }
+    if (C.keyIs(e, 'x')) { randomize(); e.preventDefault(); return; }
+    var n = parseInt(k, 10);
+    if (n >= 1 && n <= E.FLEET.length) { selectShip(n - 1); e.preventDefault(); }
+  });
+
+  if (window.ResizeObserver) new ResizeObserver(function () { draw(); }).observe(seas);
+  else window.addEventListener('resize', draw);
+  // رنگ‌های بوم از توکن‌ها خوانده می‌شوند؛ با عوض شدن تم سیستم باید دوباره کشیده شود
+  try { window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw); } catch (e) { /* مرورگر قدیمی */ }
+
+  C.onPause(function () { stopAi(); });
+  C.onResume(function () { if (S && S.phase === 'battle') maybeAi(); });
+
+  /* ---------------------------------------------------------- شروع */
+
+  function restoreNet(v) {
+    // the web and F-Droid apps have no link, so a two-phone save is only reopened in Chogan Plus
+    if (!C.link.available() || (v.side !== 1 && v.side !== 2) || !E.validFleet(v.ships)) return false;
+    var battle = v.phase === 'battle';
+    if (battle && !(v.G && v.G.net && v.G.me && v.G.foe && E.validFleet(v.G.me.ships) && !v.G.winner)) return false;
+    mode = 'net';
+    NET.side = v.side; NET.g = v.g | 0; NET.peer = String(v.peer || '').slice(0, 16);
+    S = {
+      phase: battle ? 'battle' : 'place', level: prefs.level || 'medium', daily: null, mode: 'net',
+      ships: battle ? v.G.me.ships : v.ships, sel: -1, vert: false, G: battle ? v.G : null,
+      startedAt: Date.now() - (v.elapsed || 0), lastMe: battle ? v.lastMe : -1, lastAi: battle ? v.lastAi : -1,
+      msgMe: '', msgAi: '', ready: true, peerReady: !!v.peerReady,
+      again: typeof v.again === 'boolean' ? v.again : null, peerAgain: typeof v.peerAgain === 'boolean' ? v.peerAgain : null
+    };
+    if (battle) S.G.turn = E.netTurn(S.G);
+    openLink(v.side === 1 ? 'host' : 'guest');
+    return true;
+  }
+
+  function restore(v) {
+    if (v && v.mode === 'net') return restoreNet(v);
+    if (!v || v.v !== 1 || !v.G || !v.G.me || !v.G.foe || v.G.winner) return false;
+    if (!E.validFleet(v.G.me.ships) || !E.validFleet(v.G.foe.ships)) return false;
+    S = {
+      phase: 'battle', level: v.level, daily: v.daily || null,
+      ships: v.G.me.ships, sel: -1, vert: false, G: v.G,
+      startedAt: Date.now() - (v.elapsed || 0), lastMe: v.lastMe, lastAi: v.lastAi, msgMe: '', msgAi: ''
+    };
+    render();
+    maybeAi();
+    return true;
+  }
+
+  var saved = ctx.loadSave();
+  if (dailyDate) {
+    if (!(saved && saved.daily === dailyDate && restore(saved))) freshPlace(DAILY_LEVEL, dailyDate);
+    if (C.stats.dailyDone('battleship', dailyDate)) {
+      var rec = C.stats.dailyOf(dailyDate).battleship;
+      C.ui.toast({ icon: 'check', title: C.t('dailyDone'), sub: rec.label });
+    }
+    ctx.tutorialIfNew(TUT);
+  } else if (!(saved && restore(saved))) {
+    freshPlace(prefs.level || 'medium');
+    ctx.tutorialIfNew(TUT);
+  }
+})();
+</script>
+</body>
+</html>

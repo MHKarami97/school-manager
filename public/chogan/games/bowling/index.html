@@ -1,0 +1,968 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#FBF6EF">
+<title>بولینگ — چوگان</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../lib/chogan.css">
+<script src="../../lib/early.js"></script>
+<style>
+  /* Ball colours tell the players apart and stay the same in both themes */
+  :root { --bw-c0: #2F6FDE; --bw-c1: #8E4EC6; }
+  .bw-wrap { gap: var(--s-2); }
+  .bw-wrap > .ch-fit { --fit-ar: calc(1 / 1.35); }
+  .bw-top { display: flex; gap: var(--s-2); flex-wrap: wrap; justify-content: center; width: 100%; max-width: 560px; }
+  .bw-top .ch-tap { border: 0; font: inherit; font-size: var(--fs-sm); font-weight: 700; min-height: 44px; padding-inline: var(--s-4); cursor: pointer; }
+  .bw-cards { width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: 6px; }
+  .bw-card {
+    display: grid; grid-template-columns: 64px repeat(10, minmax(0, 1fr)); direction: ltr;
+    background: var(--c-surface); border-radius: var(--r-md); box-shadow: var(--sh-1); overflow: hidden;
+    border: 2px solid transparent; transition: border-color var(--t-mid) var(--ease);
+  }
+  .bw-card--on { border-color: var(--pc); }
+  .bw-card__who { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 1px; padding: 2px 4px; border-right: 1px solid var(--c-line); min-width: 0; }
+  .bw-card__who i { width: 10px; height: 10px; border-radius: 50%; background: var(--pc); }
+  .bw-card__who span { font-size: 11px; font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; }
+  .bw-card__who b { font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+  .bw-f { border-right: 1px solid var(--c-line); display: flex; flex-direction: column; min-width: 0; }
+  .bw-f:last-child { border-right: 0; }
+  .bw-f--now { background: var(--c-surface-2); }
+  .bw-f__r { display: flex; justify-content: flex-end; font-size: 11px; font-weight: 700; min-height: 15px; color: var(--c-text-dim); }
+  .bw-f__r em { font-style: normal; min-width: 9px; text-align: center; }
+  .bw-f__t { text-align: center; font-size: 12px; font-weight: 800; min-height: 17px; font-variant-numeric: tabular-nums; }
+  .bw-thinking { animation: bw-blink 900ms infinite; }
+  @keyframes bw-blink { 50% { opacity: .55; } }
+  .ch-fit > .bw-lanebox { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
+  .bw-canvas { display: block; touch-action: none; border-radius: var(--r-md); box-shadow: var(--sh-2); cursor: grab; }
+  .bw-status { width: 100%; max-width: 560px; min-height: 40px; text-align: center; font-weight: 700; font-size: var(--fs-sm); color: var(--c-text-dim); }
+  /* a strike or spare is called out, not just written (#407) */
+  .bw-status--big { font-size: var(--fs-lg); font-weight: 800; color: var(--game); animation: bw-pop 420ms var(--ease-back); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .bw-status--big { color: var(--game-text-dark, var(--game)); } }
+  :root[data-theme="dark"] .bw-status--big { color: var(--game-text-dark, var(--game)); }
+  @keyframes bw-pop { 0% { transform: scale(.6); opacity: 0; } 60% { transform: scale(1.15); opacity: 1; } }
+</style>
+</head>
+<body>
+<script src="../../version.js"></script>
+<script src="../../lib/chogan.js"></script>
+<script>
+/* ==== ENGINE START ==== */
+function BowlingEngineFactory() {
+  'use strict';
+
+  // Lane units: the lane is 1 wide (about 42 inches) and the head pin stands 17
+  // along it (60 feet). x runs across, 0 in the middle, y from the foul line.
+  var BALL_R = 0.1, PIN_R = 0.057, HEAD = 17, PIT = HEAD + 1.25, EDGE = 0.5, WALL = 0.72;
+  // Pins 1 to 10 on the standard triangle, 12 inches apart
+  var PINS = [];
+  (function () {
+    var dy = 0.247, dx = 0.143, rows = [[1], [2, 3], [4, 5, 6], [7, 8, 9, 10]];
+    rows.forEach(function (row, r) {
+      row.forEach(function (n, i) { PINS[n - 1] = [(i - (row.length - 1) / 2) * dx * 2, HEAD + r * dy]; });
+    });
+  })();
+  // Ball and pin masses (about 15 lb and 3.5 lb). A struck pin lies down and
+  // sweeps about half again its standing width: without that, a perfect pocket
+  // hit carried only 15 of 48 strikes; with it, 76% in the pocket, 11% head-on
+  // and none on a light hit, close to real lanes.
+  var MB = 4, MP = 1, LIE = 1.5;
+
+  // Hook: the front of the lane is oiled, the back end dry, so a spinning ball
+  // runs straight first and curves late.
+  function grip(y) { return y < 9 ? 0 : y > 13 ? 1 : (y - 9) / 4; }
+
+  // One throw against the standing pins. t: { x, angle, speed, spin }; spin in
+  // -1..1, positive curving to the left. hook scales the lane's dryness (the
+  // daily changes it). Returns the pins knocked down and the motion, sampled
+  // 60 times a second, for drawing.
+  function simulate(standing, t, hook) {
+    hook = hook === undefined ? 1 : hook;
+    var dt = 1 / 240, b = { x: t.x, y: 0, vx: Math.sin(t.angle) * t.speed, vy: Math.cos(t.angle) * t.speed };
+    var pins = [], i, j;
+    for (i = 0; i < 10; i++) pins.push({ n: i, x: PINS[i][0], y: PINS[i][1], vx: 0, vy: 0, up: !!standing[i], hit: false, gone: !standing[i] });
+    var gutter = false, frames = [], time = 0, still = 0;
+    for (var step = 0; step < 240 * 7; step++) {
+      time += dt;
+      // the ball
+      if (!gutter && b.y < PIT) {
+        b.vx += -t.spin * 1.25 * hook * grip(b.y) * dt;
+        // off the wood anywhere before the pit is a gutter ball: a hooking ball
+        // once slid past the edge beside the rack and still counted as rolling
+        if (Math.abs(b.x) > EDGE - BALL_R * 0.3 && b.y < HEAD + 0.8) {
+          gutter = true;
+          b.x = (b.x < 0 ? -1 : 1) * (EDGE + 0.1);
+          b.vx = 0;
+        }
+      }
+      b.x += b.vx * dt; b.y += b.vy * dt;
+      // pins slide and slow down
+      for (i = 0; i < 10; i++) {
+        var p = pins[i];
+        if (p.gone) continue;
+        var sp = Math.hypot(p.vx, p.vy);
+        if (sp > 0) {
+          var dec = Math.max(0, sp - 2.2 * dt) / sp;
+          p.vx *= dec; p.vy *= dec;
+          p.x += p.vx * dt; p.y += p.vy * dt;
+          // the kickback plates send pins back into the deck
+          if (Math.abs(p.x) > WALL) { p.x = (p.x < 0 ? -1 : 1) * WALL; p.vx = -p.vx * 0.5; }
+          if (p.y > PIT) { p.gone = true; }
+        }
+      }
+      // ball against pins
+      if (!gutter) for (i = 0; i < 10; i++) collide(b, MB, BALL_R, pins[i], MP, PIN_R, 0.6);
+      // pins against pins
+      for (i = 0; i < 10; i++) for (j = i + 1; j < 10; j++) {
+        collide(pins[i], MP, pins[i].hit ? PIN_R * LIE : PIN_R, pins[j], MP, pins[j].hit ? PIN_R * LIE : PIN_R, 0.75);
+      }
+      if (step % 4 === 0) {
+        frames.push({ b: [b.x, b.y], p: pins.map(function (q) { return [q.x, q.y, q.gone ? 2 : (q.hit ? 1 : 0)]; }) });
+      }
+      var moving = pins.some(function (q) { return !q.gone && Math.hypot(q.vx, q.vy) > 0.02; });
+      if (b.y >= PIT && !moving) { if (++still > 30) break; } else still = 0;
+    }
+    var down = pins.map(function (q) { return !!standing[q.n] && q.hit; });
+    return { down: down, count: down.filter(Boolean).length, gutter: gutter, frames: frames, time: time };
+  }
+
+  // Elastic push between two circles; a pin that is struck falls
+  function collide(a, ma, ra, p, mp, rp, e) {
+    if (p.gone || (a.gone)) return;
+    var dx = p.x - a.x, dy = p.y - a.y, d = Math.hypot(dx, dy), min = ra + rp;
+    if (d >= min || d === 0) return;
+    var nx = dx / d, ny = dy / d;
+    var rel = (a.vx - p.vx) * nx + (a.vy - p.vy) * ny;
+    // separate them
+    var over = min - d, sa = mp / (ma + mp), sp2 = ma / (ma + mp);
+    a.x -= nx * over * sa; a.y -= ny * over * sa;
+    p.x += nx * over * sp2; p.y += ny * over * sp2;
+    if (rel <= 0) return;
+    var jimp = (1 + e) * rel / (1 / ma + 1 / mp);
+    a.vx -= jimp / ma * nx; a.vy -= jimp / ma * ny;
+    p.vx += jimp / mp * nx; p.vy += jimp / mp * ny;
+    if (jimp / mp > 0.25) { p.hit = true; if (a.hit !== undefined && jimp / ma > 0.25) a.hit = true; }
+  }
+
+  /* ---- frames and score ---- */
+
+  function newGame(players) {
+    var f = [];
+    for (var i = 0; i < players; i++) f.push([]);
+    return { frames: f, turn: 0, frame: 0, standing: fullRack(), done: false };
+  }
+  function fullRack() { return [true, true, true, true, true, true, true, true, true, true]; }
+  function copy(S) {
+    return { frames: S.frames.map(function (p) { return p.map(function (r) { return r.slice(); }); }), turn: S.turn, frame: S.frame, standing: S.standing.slice(), done: S.done };
+  }
+
+  // Records a roll that knocked `down` (array of 10) of the standing pins
+  function roll(S, down) {
+    if (S.done) return null;
+    var N = copy(S), me = N.turn, fr = N.frames[me];
+    if (!fr[N.frame]) fr[N.frame] = [];
+    var cur = fr[N.frame], k = 0, full = N.standing.every(Boolean);
+    for (var i = 0; i < 10; i++) if (N.standing[i] && down[i]) { N.standing[i] = false; k++; }
+    cur.push(k);
+    var tenth = N.frame === 9, next = false;
+    if (!tenth) {
+      if (cur.length === 2 || cur[0] === 10) next = true;
+    } else {
+      var n = cur.length;
+      if (n === 1 && cur[0] === 10) N.standing = fullRack();
+      else if (n === 2) {
+        if (cur[0] === 10 && cur[1] === 10) N.standing = fullRack();
+        else if (cur[0] !== 10 && cur[0] + cur[1] === 10) N.standing = fullRack();
+        else if (cur[0] !== 10) next = true;
+      } else if (n === 3) next = true;
+    }
+    var clear = N.standing.every(function (x) { return !x; });
+    var result = { state: N, count: k, strike: full && clear, spare: !full && clear && k > 0 };
+    if (next) {
+      N.standing = fullRack();
+      if (me + 1 < N.frames.length) N.turn = me + 1;
+      else { N.turn = 0; N.frame++; if (N.frame > 9) N.done = true; }
+    }
+    return result;
+  }
+
+  // Running totals per frame; null where a frame cannot be scored yet
+  function score(frames) {
+    var rolls = [], starts = [];
+    frames.forEach(function (f) { starts.push(rolls.length); f.forEach(function (r) { rolls.push(r); }); });
+    var out = [], total = 0;
+    for (var i = 0; i < 10; i++) {
+      var f = frames[i];
+      if (!f || !f.length) { out.push(null); continue; }
+      var s = starts[i], v = null;
+      if (i === 9) v = f.length === 3 || (f.length === 2 && f[0] + f[1] < 10) ? f[0] + f[1] + (f[2] || 0) : null;
+      else if (f[0] === 10) v = rolls.length > s + 2 ? 10 + rolls[s + 1] + rolls[s + 2] : null;
+      else if (f.length === 2) v = f[0] + f[1] === 10 ? (rolls.length > s + 2 ? 10 + rolls[s + 2] : null) : f[0] + f[1];
+      if (v === null) { out.push(null); for (var k = i + 1; k < 10; k++) out.push(null); return out; }
+      total += v; out.push(total);
+    }
+    return out;
+  }
+  // What the scorecard shows for roll k of frame i: X, /, a dash for none
+  function mark(f, i, k) {
+    var r = f[k];
+    if (r === undefined) return '';
+    var prev = k > 0 ? f[k - 1] : null;
+    // a roll starts a fresh rack after a strike, or in the tenth after a spare
+    var fresh = k === 0 || (i === 9 && (prev === 10 || (k === 2 && f[0] !== 10 && f[0] + f[1] === 10) || (k === 2 && f[0] === 10 && f[1] === 10)));
+    if (r === 10 && fresh) return 'X';
+    if (!fresh && prev + r === 10) return '/';
+    return r === 0 ? '-' : String(r);
+  }
+  function total(frames) { var s = score(frames), t = 0; s.forEach(function (v) { if (v !== null) t = v; }); return t; }
+
+  /* ---- bot ---- */
+
+  // Where a ball thrown with t crosses the line ty, from the ball's own path
+  // (no pins): the same hook as simulate()
+  function crossing(t, ty, hook) {
+    hook = hook === undefined ? 1 : hook;
+    var dt = 1 / 240, x = t.x, y = 0, vx = Math.sin(t.angle) * t.speed, vy = Math.cos(t.angle) * t.speed;
+    while (y < ty) { vx += -t.spin * 1.25 * hook * grip(y) * dt; x += vx * dt; y += vy * dt; }
+    return x;
+  }
+  // The angle that brings a ball from x0 to tx on the line ty
+  function aimAngle(x0, tx, ty, speed, spin, hook) {
+    var lo = -0.08, hi = 0.08;
+    for (var k = 0; k < 40; k++) {
+      var mid = (lo + hi) / 2;
+      if (crossing({ x: x0, angle: mid, speed: speed, spin: spin }, ty, hook) < tx) lo = mid; else hi = mid;
+    }
+    return (lo + hi) / 2;
+  }
+
+  // A bot hooks its first ball from the right into the 1-3 pocket, where a
+  // straight ball carried far less often, and shoots spares straight at the
+  // middle of the front pins left. Its hand shakes more on the easier levels.
+  var NOISE = { easy: { a: 0.02, s: 1.0 }, medium: { a: 0.009, s: 0.5 }, hard: { a: 0.0045, s: 0.3 } };
+  function think(standing, level, rnd, hook) {
+    var left = [];
+    for (var i = 0; i < 10; i++) if (standing[i]) left.push(PINS[i]);
+    var full = left.length === 10, t;
+    if (full) t = { x: 0.3, speed: 7.5, spin: 0.5, tx: 0.075, ty: HEAD };
+    else {
+      var front = Math.min.apply(null, left.map(function (p) { return p[1]; }));
+      var row = left.filter(function (p) { return p[1] < front + 0.3; });
+      var tx = row.reduce(function (a, p) { return a + p[0]; }, 0) / row.length;
+      // cross the lane: a pin on the right is easier from the left
+      t = { x: Math.max(-0.32, Math.min(0.32, -tx * 0.8)), speed: 8, spin: 0, tx: tx, ty: front };
+    }
+    var nz = NOISE[level] || NOISE.medium, g = function () { var u = Math.max(1e-9, rnd()), v = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
+    var angle = aimAngle(t.x, t.tx, t.ty, t.speed, t.spin, hook);
+    return { x: t.x, angle: angle + g() * nz.a, speed: t.speed + g() * nz.s, spin: t.spin };
+  }
+
+  var api = {
+    PINS: PINS, BALL_R: BALL_R, PIN_R: PIN_R, HEAD: HEAD, PIT: PIT, EDGE: EDGE, WALL: WALL,
+    simulate: simulate, newGame: newGame, roll: roll, score: score, total: total, mark: mark, think: think, grip: grip, crossing: crossing, aimAngle: aimAngle
+  };
+  if (typeof self !== 'undefined') self.BowlingEngine = api;
+  return api;
+}
+if (typeof module !== 'undefined' && module.exports) module.exports = BowlingEngineFactory;
+/* ==== ENGINE END ==== */
+</script>
+
+<script>
+(function () {
+  'use strict';
+  var C = window.Chogan, el = C.el;
+  var E = BowlingEngineFactory();
+
+  C.boot({});
+  var ctx = C.game({
+    id: 'bowling',
+    name: { fa: 'بولینگ', en: 'Bowling', zh: '保龄球', de: 'Bowling', es: 'Bolos', pl: 'Kręgle', fr: 'Bowling', ar: 'البولينغ', hi: 'बॉलिंग' },
+    accent: '#3C4F9A',
+    mood: 'menu',
+    strings: {
+      fa: {
+        solo: 'تنها', vsBot: 'با ربات', people: 'دو نفره', you: 'تو', playerN: 'بازیکن {n}', bot: 'ربات',
+        newMatch: 'دست تازه', resetWarn: 'دست فعلی تمام می‌شود. ادامه؟', laneLabel: 'مسیر بولینگ',
+        swipe: 'از جایی که می‌خواهی بایستی رو به بالا بکش', botRolls: '{n} پرتاب می‌کند', turnOf: 'نوبت {n}', yourTurn: 'نوبت توست',
+        strike: 'استرایک!', spare: 'اسپر!', gutter: 'توی کانال', pinsDown: '{n} پین', pinOne: 'یک پین', noPins: 'هیچ پینی نیفتاد',
+        frameN: 'فریم {n}', playerWon: '{n} برد', draw: 'مساوی', scoreLabel: 'امتیاز', strikesLabel: 'استرایک‌ها', sparesLabel: 'اسپرها',
+        dailyBowling: 'بولینگ روزانه', dailySolo: 'ده فریم تنها، روی مسیر امروز', laneDry: 'مسیر امروز: خشک‌تر، توپ بیشتر می‌چرخد', laneOily: 'مسیر امروز: چرب‌تر، توپ کمتر می‌چرخد',
+        rules: 'ده فریم است و در هر فریم دو توپ داری تا ده پین را بیندازی. اگر با توپ اول همه را بیندازی استرایک است و امتیاز دو توپ بعدی هم به آن اضافه می‌شود؛ اگر با دو توپ بیندازی اسپر است و امتیاز توپ بعدی اضافه می‌شود. در فریم دهم با استرایک یا اسپر توپ اضافه داری. بیشترین امتیاز ممکن ۳۰۰ است. انگشتت را از جایی که می‌خواهی بایستی رو به پین‌ها بکش: جهت کشیدن نشانه است، سرعتش سرعت توپ، و اگر آخر کشیدن را کج کنی توپ پیچ می‌خورد و در انتهای مسیر می‌چرخد.',
+        keyboard: 'صفحه‌کلید', moveKey: 'جای ایستادن', aimKey: 'نشانه', spinKey: 'پیچ', throwKey: 'پرتاب',
+        tutTitle1: 'بکش و رها کن', tutText1: 'از پایین مسیر، همان جایی که می‌خواهی بایستی، انگشتت را رو به پین‌ها بکش. تندتر بکشی، توپ تندتر می‌رود.',
+        tutTitle2: 'پیچ بده', tutText2: 'آخر کشیدن را کمی کج کن تا توپ پیچ بخورد. ابتدای مسیر روغنی است؛ توپ آخر راه می‌چرخد.',
+        tutTitle3: 'به جیب بزن', tutText3: 'بهترین جا برای استرایک بین پین جلو و پین کنارش است، نه وسط وسط. هر فریم دو توپ داری.'
+      },
+      en: {
+        solo: 'Alone', vsBot: 'Versus bot', people: 'Two players', you: 'You', playerN: 'Player {n}', bot: 'Bot',
+        newMatch: 'New game', resetWarn: 'This ends the current game. Continue?', laneLabel: 'Bowling lane',
+        swipe: 'Swipe up from where you want to stand', botRolls: '{n} bowling', turnOf: "{n}'s turn", yourTurn: 'Your turn',
+        strike: 'Strike!', spare: 'Spare!', gutter: 'Gutter ball', pinsDown: '{n} pins', pinOne: 'One pin', noPins: 'No pins',
+        frameN: 'Frame {n}', playerWon: '{n} wins', draw: 'A tie', scoreLabel: 'Score', strikesLabel: 'Strikes', sparesLabel: 'Spares',
+        dailyBowling: 'Daily bowling', dailySolo: 'Ten frames alone, on today\'s lane', laneDry: 'Today\'s lane: drier, the ball hooks more', laneOily: 'Today\'s lane: oilier, the ball hooks less',
+        rules: 'A game is ten frames, and each frame gives you two balls to knock down ten pins. All ten with the first ball is a strike, worth ten plus your next two balls; all ten with two balls is a spare, worth ten plus your next ball. A strike or spare in the tenth frame gives extra balls. The best possible game is 300. Swipe towards the pins from where you want to stand: the direction is your aim, the speed is the ball\'s speed, and bending the end of the swipe puts spin on the ball, which hooks late in the lane.',
+        keyboard: 'Keyboard', moveKey: 'Where you stand', aimKey: 'Aim', spinKey: 'Spin', throwKey: 'Bowl',
+        tutTitle1: 'Swipe and let go', tutText1: 'From the bottom of the lane, where you want to stand, swipe towards the pins. A faster swipe throws a faster ball.',
+        tutTitle2: 'Add spin', tutText2: 'Bend the end of your swipe a little to spin the ball. The front of the lane is oiled, so the ball hooks late.',
+        tutTitle3: 'Hit the pocket', tutText3: 'Strikes come from the pocket between the head pin and the one beside it, not dead centre. Each frame gives you two balls.'
+      },
+      pl: {
+        solo: 'Samotnie', vsBot: 'Przeciwko botowi', people: 'Dwóch graczy', you: 'Ty', playerN: 'Gracz {n}', bot: 'Bot',
+        newMatch: 'Nowa gra', resetWarn: 'To zakończy bieżącą grę. Kontynuować?', laneLabel: 'Tor kręglarski',
+        swipe: 'Przesuń palcem w górę od miejsca, w którym chcesz stanąć', botRolls: '{n} rzuca', turnOf: 'Ruch gracza {n}', yourTurn: 'Twoja kolej',
+        strike: 'Strike!', spare: 'Spare!', gutter: 'Rzut w rynnę', pinsDown: 'Liczba kręgli: {n}', pinOne: 'Jeden kręgiel', noPins: 'Brak kręgli',
+        frameN: 'Runda {n}', playerWon: '{n} wygrywa', draw: 'Remis', scoreLabel: 'Wynik', strikesLabel: 'Strike-i', sparesLabel: 'Spare-e',
+        dailyBowling: 'Codzienne kręgle', dailySolo: 'Dziesięć rund samotnie na dzisiejszym torze', laneDry: 'Dzisiejszy tor: bardziej suchy, kula mocniej skręca', laneOily: 'Dzisiejszy tor: bardziej naoliwiony, kula słabiej skręca',
+        rules: 'Gra składa się z dziesięciu rund, a w każdej masz dwa rzuty, aby strącić dziesięć kręgli. Strącenie wszystkich dziesięciu w pierwszym rzucie to „strike” – wart dziesięć punktów plus wynik z dwóch kolejnych rzutów. Strącenie wszystkich dwoma rzutami to „spare” – wart dziesięć punktów plus wynik z następnego rzutu. „Strike” lub „spare” w dziesiątej rundzie daje dodatkowe rzuty. Najlepszy możliwy wynik to 300. Przesuń palcem w stronę kręgli od miejsca, w którym chcesz stanąć: kierunek określa cel, prędkość ruchu to prędkość kuli, a zakrzywienie końcówki ruchu nadaje kuli rotację, przez co skręca ona w dalszej części toru.',
+        keyboard: 'Klawiatura', moveKey: 'Gdzie stoisz', aimKey: 'Cel', spinKey: 'Rotacja', throwKey: 'Rzut',
+        tutTitle1: 'Przesuń i puść', tutText1: 'Od dołu toru, z miejsca, w którym chcesz stanąć, przesuń palcem w stronę kręgli. Szybszy ruch to szybszy rzut kulą.',
+        tutTitle2: 'Nadaj rotację', tutText2: 'Zakrzywĳ lekko końcówkę ruchu palca, aby podkręcić kulę. Początek toru jest naoliwiony, więc kula skręca dopiero w jego dalszej części.',
+        tutTitle3: 'Traf w „pocket”', tutText3: 'Najwięcej strike-ów uzyskuje się trafiając w przestrzeń (pocket) między pierwszym kręglem a tym obok niego, a nie idealnie w środek. Każda runda daje Ci dwa rzuty.'
+      },
+      fr: {
+        solo: 'Seul', vsBot: 'Contre le robot', people: 'Deux joueurs', you: 'Toi', playerN: 'Joueur {n}', bot: 'Robot',
+        newMatch: 'Nouvelle partie', resetWarn: 'Cela met fin à la partie en cours. Continuer ?', laneLabel: 'Piste de bowling',
+        swipe: 'Balaie vers le haut depuis là où tu veux te placer', botRolls: '{n} lance', turnOf: 'Au tour de {n}', yourTurn: 'À toi',
+        strike: 'Strike !', spare: 'Spare !', gutter: 'Dans la rigole', pinsDown: '{n} quilles', pinOne: 'Une quille', noPins: 'Aucune quille',
+        frameN: 'Frame {n}', playerWon: '{n} gagne', draw: 'Égalité', scoreLabel: 'Score', strikesLabel: 'Strikes', sparesLabel: 'Spares',
+        dailyBowling: 'Bowling du jour', dailySolo: 'Dix frames seul, sur la piste du jour', laneDry: 'Piste du jour : plus sèche, la boule tourne plus', laneOily: 'Piste du jour : plus huilée, la boule tourne moins',
+        rules: 'Une partie fait dix frames, et chaque frame te donne deux boules pour faire tomber dix quilles. Les dix avec la première boule, c’est un strike : dix plus tes deux boules suivantes ; les dix en deux boules, c’est un spare : dix plus ta boule suivante. Un strike ou un spare à la dixième frame donne des boules en plus. La meilleure partie possible vaut 300. Balaie vers les quilles depuis là où tu veux te placer : la direction est ta visée, la vitesse est celle de la boule, et courber la fin du geste donne de l’effet à la boule, qui tourne tard sur la piste.',
+        keyboard: 'Clavier', moveKey: 'Ta position', aimKey: 'Viser', spinKey: 'Effet', throwKey: 'Lancer',
+        tutTitle1: 'Balaie et lâche', tutText1: 'Depuis le bas de la piste, là où tu veux te placer, balaie vers les quilles. Un geste plus rapide lance une boule plus rapide.',
+        tutTitle2: 'Ajoute de l’effet', tutText2: 'Courbe un peu la fin de ton geste pour donner de l’effet. L’avant de la piste est huilé, donc la boule tourne tard.',
+        tutTitle3: 'Vise la poche', tutText3: 'Les strikes viennent de la poche entre la quille de tête et sa voisine, pas du plein centre. Chaque frame te donne deux boules.'
+      },
+      ar: {
+        solo: 'وحدك', vsBot: 'ضد الروبوت', people: 'لاعبان', you: 'أنت', playerN: 'اللاعب {n}', bot: 'الروبوت',
+        newMatch: 'لعبة جديدة', resetWarn: 'سينهي هذا اللعبة الحالية. هل تتابع؟', laneLabel: 'ممر البولينغ',
+        swipe: 'اسحب للأعلى من حيث تريد أن تقف', botRolls: '{n} يرمي', turnOf: 'دور {n}', yourTurn: 'دورك',
+        strike: 'ضربة كاملة!', spare: 'سبير!', gutter: 'في القناة', pinsDown: '{n} قوارير', pinOne: 'قارورة واحدة', noPins: 'لا قوارير',
+        frameN: 'الشوط {n}', playerWon: '{n} يفوز', draw: 'تعادل', scoreLabel: 'النتيجة', strikesLabel: 'ضربات كاملة', sparesLabel: 'سبير',
+        dailyBowling: 'بولينغ اليوم', dailySolo: 'عشرة أشواط وحدك على ممر اليوم', laneDry: 'ممر اليوم: أكثر جفافًا، والكرة تنعطف أكثر', laneOily: 'ممر اليوم: أكثر زيتًا، والكرة تنعطف أقل',
+        rules: 'اللعبة عشرة أشواط، وفي كل شوط لديك كرتان لإسقاط عشر قوارير. إسقاط العشر بالكرة الأولى ضربة كاملة (سترايك)، قيمتها عشر نقاط مع نقاط كرتيك التاليتين؛ وإسقاط العشر بكرتين «سبير»، قيمته عشر نقاط مع نقاط كرتك التالية. الضربة الكاملة أو السبير في الشوط العاشر يمنحان كرات إضافية. أفضل نتيجة ممكنة 300. اسحب نحو القوارير من حيث تريد أن تقف: الاتجاه هو تصويبك، وسرعة السحب هي سرعة الكرة، وثني نهاية السحب يعطي الكرة دورانًا فتنعطف في آخر الممر.',
+        keyboard: 'لوحة المفاتيح', moveKey: 'مكان وقوفك', aimKey: 'التصويب', spinKey: 'الدوران', throwKey: 'ارمِ',
+        tutTitle1: 'اسحب وأفلت', tutText1: 'من أسفل الممر، من حيث تريد أن تقف، اسحب نحو القوارير. السحب الأسرع يرمي كرة أسرع.',
+        tutTitle2: 'أضف دورانًا', tutText2: 'اثنِ نهاية السحب قليلًا لتدوير الكرة. مقدمة الممر مدهونة بالزيت، لذا تنعطف الكرة متأخرة.',
+        tutTitle3: 'أصب الجيب', tutText3: 'الضربات الكاملة تأتي من الجيب بين القارورة الأمامية والتي بجانبها، لا من المنتصف تمامًا. كل شوط يمنحك كرتين.'
+      },
+      hi: {
+        solo: 'अकेले', vsBot: 'बॉट से', people: 'दो खिलाड़ी', you: 'आप', playerN: 'खिलाड़ी {n}', bot: 'बॉट',
+        newMatch: 'नया खेल', resetWarn: 'इससे चल रहा खेल ख़त्म हो जाएगा। जारी रखें?', laneLabel: 'बॉलिंग लेन',
+        swipe: 'जहाँ खड़े होना चाहें वहाँ से ऊपर स्वाइप करें', botRolls: '{n} गेंद फेंक रहा है', turnOf: '{n} की बारी', yourTurn: 'आपकी बारी',
+        strike: 'स्ट्राइक!', spare: 'स्पेयर!', gutter: 'नाली में गई', pinsDown: '{n} पिन', pinOne: 'एक पिन', noPins: 'कोई पिन नहीं',
+        frameN: 'फ़्रेम {n}', playerWon: '{n} जीत गए', draw: 'बराबरी', scoreLabel: 'स्कोर', strikesLabel: 'स्ट्राइक', sparesLabel: 'स्पेयर',
+        dailyBowling: 'रोज़ की बॉलिंग', dailySolo: 'आज की लेन पर अकेले दस फ़्रेम', laneDry: 'आज की लेन: ज़्यादा सूखी, गेंद ज़्यादा मुड़ती है', laneOily: 'आज की लेन: ज़्यादा तेल, गेंद कम मुड़ती है',
+        rules: 'एक खेल में दस फ़्रेम होते हैं, और हर फ़्रेम में दस पिन गिराने के लिए दो गेंदें मिलती हैं। पहली गेंद से दसों गिरें तो स्ट्राइक: दस अंक और अगली दो गेंदों के अंक; दो गेंदों में दसों गिरें तो स्पेयर: दस अंक और अगली गेंद के अंक। दसवें फ़्रेम में स्ट्राइक या स्पेयर पर अतिरिक्त गेंदें मिलती हैं। सबसे अच्छा संभव खेल 300 का है। जहाँ खड़े होना चाहें वहाँ से पिनों की ओर स्वाइप करें: दिशा आपका निशाना है, रफ़्तार गेंद की रफ़्तार है, और स्वाइप के आख़िर में मोड़ देने से गेंद घूमती है और लेन के आख़िर में मुड़ती है।',
+        keyboard: 'कीबोर्ड', moveKey: 'खड़े होने की जगह', aimKey: 'निशाना', spinKey: 'घुमाव', throwKey: 'फेंकें',
+        tutTitle1: 'स्वाइप करें और छोड़ें', tutText1: 'लेन के नीचे, जहाँ खड़े होना चाहें, वहाँ से पिनों की ओर स्वाइप करें। तेज़ स्वाइप से गेंद तेज़ जाती है।',
+        tutTitle2: 'घुमाव दें', tutText2: 'गेंद को घुमाने के लिए स्वाइप का आख़िरी हिस्सा थोड़ा मोड़ें। लेन के आगे के हिस्से में तेल है, इसलिए गेंद देर से मुड़ती है।',
+        tutTitle3: 'पॉकेट पर मारें', tutText3: 'स्ट्राइक ठीक बीच से नहीं, बल्कि सबसे आगे वाली पिन और उसके बगल की पिन के बीच की जगह (पॉकेट) से आते हैं। हर फ़्रेम में दो गेंदें मिलती हैं।'
+      },
+      zh: {
+        solo: '单人', vsBot: '对战电脑', people: '双人', you: '你', playerN: '玩家{n}', bot: '电脑',
+        newMatch: '新一局', resetWarn: '将结束当前对局，是否继续？', laneLabel: '保龄球道',
+        swipe: '从你想站的位置向上滑动', botRolls: '{n}正在投球', turnOf: '轮到{n}', yourTurn: '轮到你',
+        strike: '全中！', spare: '补中！', gutter: '洗沟', pinsDown: '{n}个瓶', pinOne: '一个瓶', noPins: '一个都没倒',
+        frameN: '第{n}格', playerWon: '{n}获胜', draw: '平局', scoreLabel: '得分', strikesLabel: '全中', sparesLabel: '补中',
+        dailyBowling: '每日保龄球', dailySolo: '单人十格，今天的球道', laneDry: '今天的球道：较干，球弧线更大', laneOily: '今天的球道：较油，球弧线更小',
+        rules: '一局十格，每格有两球击倒十个瓶。第一球全倒为全中，得十分加后两球的分；两球全倒为补中，得十分加后一球的分。第十格全中或补中可加投。满分300。从你想站的位置朝球瓶滑动：方向就是瞄准，速度就是球速，滑动末端带弯就会给球加旋转，球在球道后段转弯。',
+        keyboard: '键盘', moveKey: '站位', aimKey: '瞄准', spinKey: '旋转', throwKey: '投球',
+        tutTitle1: '滑动并松手', tutText1: '在球道底部、你想站的位置，朝球瓶滑动。滑得越快，球越快。',
+        tutTitle2: '加旋转', tutText2: '滑动末端稍微带弯，球就会旋转。球道前段有油，球在后段才转弯。',
+        tutTitle3: '打进球袋', tutText3: '全中来自1号瓶和旁边瓶之间的球袋，而不是正中。每格有两球。'
+      },
+      de: {
+        solo: 'Allein', vsBot: 'Gegen Bot', people: 'Zu zweit', you: 'Du', playerN: 'Spieler {n}', bot: 'Bot',
+        newMatch: 'Neue Partie', resetWarn: 'Die aktuelle Partie endet. Weiter?', laneLabel: 'Bowlingbahn',
+        swipe: 'Wisch nach oben, von dort, wo du stehen willst', botRolls: 'Wurf: {n}', turnOf: 'Am Zug: {n}', yourTurn: 'Du bist dran',
+        strike: 'Strike!', spare: 'Spare!', gutter: 'Rinne', pinsDown: '{n} Pins', pinOne: 'Ein Pin', noPins: 'Kein Pin',
+        frameN: 'Frame {n}', playerWon: 'Sieg: {n}', draw: 'Unentschieden', scoreLabel: 'Punkte', strikesLabel: 'Strikes', sparesLabel: 'Spares',
+        dailyBowling: 'Tägliches Bowling', dailySolo: 'Zehn Frames allein, auf der Bahn von heute', laneDry: 'Bahn heute: trockener, die Kugel hakt mehr', laneOily: 'Bahn heute: öliger, die Kugel hakt weniger',
+        rules: 'Ein Spiel hat zehn Frames, jedes mit zwei Kugeln für zehn Pins. Alle zehn mit der ersten Kugel sind ein Strike: zehn plus die nächsten zwei Kugeln; alle zehn mit zwei Kugeln sind ein Spare: zehn plus die nächste Kugel. Ein Strike oder Spare im zehnten Frame gibt Zusatzkugeln. Das beste Spiel sind 300. Wisch von dort, wo du stehen willst, zu den Pins: Die Richtung ist dein Ziel, das Tempo die Geschwindigkeit, und ein gebogenes Ende gibt der Kugel Drall, sodass sie spät hakt.',
+        keyboard: 'Tastatur', moveKey: 'Standplatz', aimKey: 'Zielen', spinKey: 'Drall', throwKey: 'Werfen',
+        tutTitle1: 'Wischen und loslassen', tutText1: 'Wisch unten auf der Bahn, wo du stehen willst, zu den Pins. Schneller wischen heißt schnellere Kugel.',
+        tutTitle2: 'Drall geben', tutText2: 'Bieg das Ende des Wischens etwas, um der Kugel Drall zu geben. Vorne ist die Bahn geölt, darum hakt die Kugel spät.',
+        tutTitle3: 'Triff die Tasche', tutText3: 'Strikes gelingen in der Tasche zwischen dem ersten Pin und dem daneben, nicht genau in der Mitte. Jedes Frame hat zwei Kugeln.'
+      },
+      es: {
+        solo: 'Solo', vsBot: 'Contra el bot', people: 'Dos jugadores', you: 'Tú', playerN: 'Jugador {n}', bot: 'Bot',
+        newMatch: 'Nueva partida', resetWarn: 'Esto termina la partida actual. ¿Seguir?', laneLabel: 'Pista de bolos',
+        swipe: 'Desliza hacia arriba desde donde quieras ponerte', botRolls: 'Lanza: {n}', turnOf: 'Turno: {n}', yourTurn: 'Tu turno',
+        strike: '¡Pleno!', spare: '¡Semipleno!', gutter: 'Al canal', pinsDown: '{n} bolos', pinOne: 'Un bolo', noPins: 'Ningún bolo',
+        frameN: 'Juego {n}', playerWon: 'Gana: {n}', draw: 'Empate', scoreLabel: 'Puntos', strikesLabel: 'Plenos', sparesLabel: 'Semiplenos',
+        dailyBowling: 'Bolos diarios', dailySolo: 'Diez juegos en solitario, en la pista de hoy', laneDry: 'Pista de hoy: más seca, la bola curva más', laneOily: 'Pista de hoy: más aceitosa, la bola curva menos',
+        rules: 'Una partida son diez juegos, y en cada uno tienes dos bolas para tirar diez bolos. Los diez con la primera bola es un pleno: diez más tus dos bolas siguientes; los diez con dos bolas es un semipleno: diez más tu bola siguiente. Un pleno o semipleno en el décimo juego da bolas extra. La partida perfecta son 300. Desliza hacia los bolos desde donde quieras ponerte: la dirección es la puntería, la velocidad es la de la bola, y curvar el final del gesto le da efecto, así que curva al final de la pista.',
+        keyboard: 'Teclado', moveKey: 'Dónde te pones', aimKey: 'Apuntar', spinKey: 'Efecto', throwKey: 'Lanzar',
+        tutTitle1: 'Desliza y suelta', tutText1: 'Desde abajo, donde quieras ponerte, desliza hacia los bolos. Cuanto más rápido, más rápida va la bola.',
+        tutTitle2: 'Dale efecto', tutText2: 'Curva un poco el final del gesto para darle efecto. El principio de la pista tiene aceite, así que la bola curva tarde.',
+        tutTitle3: 'Al bolsillo', tutText3: 'Los plenos salen del bolsillo entre el primer bolo y el de al lado, no del centro exacto. Cada juego tiene dos bolas.'
+      }
+    }
+  });
+
+  var params = new URLSearchParams(location.search);
+  var dailyDate = params.get('daily');
+  var LEVELS = ['easy', 'medium', 'hard'];
+  var prefs = ctx.store.get('prefs', { mode: 'bot', level: 'medium' });
+  if (['solo', 'bot', 'people'].indexOf(prefs.mode) < 0) prefs.mode = 'bot';
+  if (LEVELS.indexOf(prefs.level) < 0) prefs.level = 'medium';
+
+  // G: the game. phase: 'aim' (a person bowls), 'busy' (the ball is rolling).
+  // shown: the view the canvas was last drawn with. Touches are read against it:
+  // the layout can grow after the first draw (the web font arriving), and a
+  // fresh view() then mapped a touch with the new size onto the old picture.
+  var G = null, timer = null, anim = null, raf = 0, swipe = null, kb = null, fallen = null, shown = null;
+
+  var cv = document.createElement('canvas');
+  cv.className = 'bw-canvas';
+  cv.setAttribute('role', 'img');
+  cv.setAttribute('aria-label', C.t('laneLabel'));
+  var laneBox = el('div', { class: 'bw-lanebox' }, [cv]);
+  var top = el('div', { class: 'bw-top ch-above' });
+  var cards = el('div', { class: 'bw-cards ch-above' });
+  var status = el('div', { class: 'bw-status', role: 'status', 'aria-live': 'polite' });
+  var wrap = el('div', { class: 'bw-wrap ch-split' }, [el('div', { class: 'ch-fit' }, [laneBox]), el('div', { class: 'ch-side' }, [top, cards, status])]);
+
+  ctx.button({ icon: 'help', label: C.t('help'), onClick: showHelp });
+  ctx.button({ icon: 'refresh', label: C.t('newMatch'), onClick: askNew });
+  ctx.main.appendChild(wrap);
+  ctx.mount();
+
+  /* ------------------------------------------------------------ setup */
+
+  // The daily lane's oil: how much the ball hooks, from the day's seed, so
+  // everyone bowls the same lane that day
+  function laneHook(daily) { return daily ? 0.7 + 0.6 * C.daily('bowling', daily).rng() : 1; }
+
+  function newGame(o) {
+    stop();
+    var daily = o.daily || null;
+    G = {
+      mode: daily ? 'solo' : o.mode, level: daily ? 'medium' : o.level, daily: daily, hook: laneHook(daily),
+      phase: 'aim', msg: '', startedAt: Date.now(), done: false, stand: [0.25, 0.25], strikes: 0, spares: 0, run: 0
+    };
+    G.s = E.newGame(G.mode === 'solo' ? 1 : 2);
+    anim = null; fallen = null;
+    if (!daily) { prefs.mode = o.mode; prefs.level = o.level; ctx.store.set('prefs', prefs); }
+    else G.msg = C.t(G.hook > 1 ? 'laneDry' : 'laneOily');
+    render();
+    save();
+    startTurn();
+  }
+  function current() { return { mode: G.mode, level: G.level }; }
+  function fromPrefs() { return { mode: prefs.mode, level: prefs.level }; }
+
+  function isBot(seat) { return G.mode === 'bot' && seat === 1; }
+  function stop() { if (timer) { clearTimeout(timer); timer = null; } }
+  function later(fn, ms) { stop(); timer = setTimeout(function () { timer = null; fn(); }, ms); }
+
+  /* ------------------------------------------------------------- turns */
+
+  function startTurn() {
+    if (!G || G.done) return;
+    G.phase = isBot(G.s.turn) ? 'busy' : 'aim';
+    G.big = false;
+    kb = null;
+    render();
+    if (isBot(G.s.turn)) later(function () { bowl(E.think(G.s.standing, G.level, Math.random, G.hook)); }, 900);
+  }
+
+  function bowl(t) {
+    if (!G || G.done) return;
+    G.phase = 'busy';
+    G.msg = '';
+    G.big = false;
+    if (!isBot(G.s.turn)) G.stand[G.s.turn] = t.x;
+    var res = E.simulate(G.s.standing, t, G.hook);
+    C.feedback('roll');
+    // the motion plays a little faster than real time, so a game stays short
+    anim = { res: res, i: 0, seat: G.s.turn, hits: 0, t0: performance.now(), speed: 1.35 };
+    // #407: reduced motion used to replay the roll six times faster, which is
+    // still motion; now the pins simply show where they fell
+    if (C.ui.reduceMotion()) { settle(); draw(); return; }
+    render();
+    kick();
+  }
+
+  function settle() {
+    var res = anim.res, who = anim.seat, fr = G.s.frame;
+    fallen = res.frames[res.frames.length - 1];
+    anim = null;
+    var r = E.roll(G.s, res.down);
+    G.s = r.state;
+    G.big = !!(r.strike || r.spare);
+    if (r.strike) { G.msg = C.t('strike'); C.feedback('good'); }
+    else if (r.spare) { G.msg = C.t('spare'); C.feedback('good'); }
+    else if (res.gutter && !r.count) G.msg = C.t('gutter');
+    else G.msg = r.count > 1 ? C.t('pinsDown', { n: C.num(r.count) }) : C.t(r.count ? 'pinOne' : 'noPins');
+    if (who === 0) {
+      if (r.strike) { G.strikes++; G.run++; } else G.run = 0;
+      if (r.spare) G.spares++;
+      if (G.run >= 3 && G.mode !== 'people') C.achievements.unlock('bw-turkey');
+    }
+    save();
+    render();
+    if (G.s.done) { G.done = true; later(finish, 1200); return; }
+    // the rack is swept after the ball; a new frame or player starts on a full one
+    later(function () { fallen = null; startTurn(); }, G.s.turn !== who || G.s.frame !== fr ? 1300 : 1000);
+  }
+
+  /* ------------------------------------------------------------ result */
+
+  function finish() {
+    stop();
+    var mine = E.total(G.s.frames[0]), theirs = G.s.frames.length > 1 ? E.total(G.s.frames[1]) : 0;
+    var won = G.mode === 'bot' && mine > theirs;
+    var coins, points, title;
+    if (G.mode === 'bot') {
+      var base = { easy: 6, medium: 12, hard: 20 }[G.level];
+      coins = won ? base : Math.max(2, Math.round(base * 0.3));
+      points = won ? base * 4 : Math.round(base * 1.2);
+      title = mine === theirs ? C.t('draw') : (won ? C.t('won') : C.t('lost'));
+      if (won) { C.achievements.unlock('bw-win'); if (G.level === 'hard') C.achievements.unlock('bw-hard'); }
+    } else if (G.mode === 'solo') {
+      coins = Math.max(2, Math.round(mine / 20));
+      points = Math.round(mine / 2);
+      title = C.num(mine);
+    } else {
+      coins = 6; points = 15;
+      title = mine === theirs ? C.t('draw') : C.t('playerWon', { n: pname(mine > theirs ? 0 : 1) });
+    }
+    if (G.mode !== 'people') C.stats.best('bowling', 'score', mine);
+    if (G.daily) {
+      var first = C.stats.daily('bowling', G.daily, { label: C.num(mine), win: true });
+      if (!first) { coins = Math.round(coins * 0.2); points = Math.round(points * 0.2); }
+    }
+    ctx.clearSave();
+    ctx.finish({
+      // alone there is nobody to beat: the score is the result
+      won: G.mode === 'bot' ? won : null,
+      title: title, timeMs: Date.now() - G.startedAt, coins: coins, points: points,
+      lines: [
+        { label: C.t('scoreLabel'), value: C.num(mine) },
+        { label: C.t('strikesLabel'), value: C.num(G.strikes) },
+        { label: C.t('sparesLabel'), value: C.num(G.spares) }
+      ],
+      shareText: 'چوگان · بولینگ' + (G.daily ? ('\nروزانه ' + G.daily) : '') + '\n' + mine,
+      paint: cardPaint(),
+      onAgain: G.daily ? null : function () { newGame(current()); }
+    });
+  }
+
+  /* ------------------------------------------------------------- saves */
+
+  // Saved after every ball; a ball still rolling is thrown again on reload
+  ctx.autosave(function () {
+    if (!G || G.done || !G.s.frames.some(function (p) { return p.length; })) return { inProgress: false };
+    return {
+      g: { mode: G.mode, level: G.level, daily: G.daily, s: G.s, stand: G.stand, strikes: G.strikes, spares: G.spares, run: G.run, elapsed: Date.now() - G.startedAt },
+      prefs: prefs
+    };
+  });
+  function save() { ctx.save(); }
+
+  function validSave(sv) {
+    var g = sv && sv.g, s = g && g.s;
+    return !!(g && ['solo', 'bot', 'people'].indexOf(g.mode) >= 0 && LEVELS.indexOf(g.level) >= 0 && s && Array.isArray(s.frames) &&
+      s.frames.length === (g.mode === 'solo' ? 1 : 2) && Array.isArray(s.standing) && s.standing.length === 10 && !s.done &&
+      s.frame >= 0 && s.frame < 10 && s.turn >= 0 && s.turn < s.frames.length);
+  }
+  function restore(g) {
+    G = {
+      mode: g.mode, level: g.level, daily: g.daily || null, hook: laneHook(g.daily), s: g.s, phase: 'aim', msg: '',
+      startedAt: Date.now() - (g.elapsed || 0), done: false, stand: Array.isArray(g.stand) ? g.stand : [0.25, 0.25],
+      strikes: g.strikes || 0, spares: g.spares || 0, run: g.run || 0
+    };
+    render();
+    startTurn();
+  }
+
+  function askNew() {
+    if (!G || !G.daily) { settings(); return; }
+    var dd = G.daily;
+    if (G.done || !G.s.frames[0].length) { newGame({ daily: dd }); return; }
+    C.ui.confirm({ title: C.t('newMatch'), body: C.t('resetWarn'), onOk: function () { newGame({ daily: dd }); } });
+  }
+
+  function settings() {
+    var o = G && !G.daily ? current() : fromPrefs(), body = el('div', { class: 'ch-col', style: { gap: 'var(--s-3)', 'align-items': 'center' } });
+    function rows() {
+      body.innerHTML = '';
+      body.appendChild(C.ui.segmented([{ value: 'solo', label: C.t('solo') }, { value: 'bot', label: C.t('vsBot') }, { value: 'people', label: C.t('people') }],
+        o.mode, function (v) { o.mode = v; rows(); }));
+      if (o.mode === 'bot') body.appendChild(C.ui.segmented(LEVELS.map(function (l) { return { value: l, label: C.t(l) }; }), o.level, function (v) { o.level = v; }));
+      if (G && !G.done && G.s.frames[0].length) body.appendChild(el('p', { class: 'ch-xs ch-dim', text: C.t('resetWarn') }));
+    }
+    rows();
+    C.ui.modal({
+      title: C.t('newMatch'), closeButton: true, body: [body],
+      actions: [{ label: C.t('cancel') }, { label: C.t('start'), kind: 'primary', onClick: function () { newGame(o); } }]
+    });
+  }
+
+  /* --------------------------------------------------------------- view */
+
+  // The lane seen from behind the foul line: width shrinks with distance as
+  // D / (D + y). At D = 11 the rack was a strip a few pixels deep and the pins
+  // too small to see fall; at 22 the far end keeps over half the width.
+  var D = 22;
+  function view() {
+    // the slot the core sized for the lane (#359); before, 460px wide at most and the
+    // window's height less a guess for the rows below
+    var maxW = laneBox.clientWidth || 360, maxH = laneBox.clientHeight || maxW * 1.35;
+    var w = Math.floor(Math.min(maxW, maxH / 1.35)), h = Math.floor(w * 1.35);
+    var near = w * 0.56, yB = h * 0.94, yH = h * 0.11;
+    var s = function (y) { return D / (D + y); };
+    // the far end of the pit sits near the top
+    var top = s(E.PIT + 0.3), base = yH;
+    return {
+      w: w, h: h, near: near,
+      sx: function (x, y) { return w / 2 + x * near * s(y); },
+      sy: function (y) { return base + (yB - base) * (s(y) - top) / (1 - top); },
+      sc: function (y) { return s(y); },
+      // back from the screen to the lane, for the swipe
+      lane: function (px, py) {
+        var k = (py - base) / (yB - base) * (1 - top) + top, y = D / k - D;
+        return [(px - w / 2) / (near * k), y];
+      }
+    };
+  }
+
+  function colors() {
+    var cs = getComputedStyle(document.documentElement);
+    var v = function (k, f) { return cs.getPropertyValue(k).trim() || f; };
+    return { c: [v('--bw-c0', '#2F6FDE'), v('--bw-c1', '#8E4EC6')], bg: v('--c-surface-2', '#F7F1E8') };
+  }
+
+  function quad(g, V, x0, x1, y0, y1, fill) {
+    g.beginPath();
+    g.moveTo(V.sx(x0, y0), V.sy(y0)); g.lineTo(V.sx(x1, y0), V.sy(y0));
+    g.lineTo(V.sx(x1, y1), V.sy(y1)); g.lineTo(V.sx(x0, y1), V.sy(y1));
+    g.closePath(); g.fillStyle = fill; g.fill();
+  }
+
+  function paintLane(g, V, col) {
+    g.fillStyle = '#2B2622'; g.fillRect(0, 0, V.w, V.h);
+    var back = E.PIT + 0.3;
+    // gutters, then the wood with its boards, the arrows and the pin deck
+    quad(g, V, -0.72, 0.72, 0, back, '#3A3430');
+    quad(g, V, -0.5, 0.5, 0, E.HEAD + 0.95, '#D9B07A');
+    var lg = g.createLinearGradient(0, V.sy(0), 0, V.sy(E.HEAD));
+    lg.addColorStop(0, 'rgba(255,255,255,.22)'); lg.addColorStop(0.5, 'rgba(255,255,255,0)'); lg.addColorStop(1, 'rgba(0,0,0,.05)');
+    quad(g, V, -0.5, 0.5, 0, E.HEAD + 0.95, lg);
+    g.strokeStyle = 'rgba(120,80,40,.18)'; g.lineWidth = 1;
+    for (var b = 1; b < 13; b++) {
+      var x = -0.5 + b / 13;
+      g.beginPath(); g.moveTo(V.sx(x, 0), V.sy(0)); g.lineTo(V.sx(x, E.HEAD + 0.95), V.sy(E.HEAD + 0.95)); g.stroke();
+    }
+    quad(g, V, -0.5, 0.5, E.HEAD - 0.4, E.HEAD + 0.95, 'rgba(255,240,215,.35)');
+    quad(g, V, -0.72, 0.72, E.HEAD + 0.95, back, '#141210');
+    // foul line and the seven target arrows
+    quad(g, V, -0.5, 0.5, 0, 0.06, '#5C3B1E');
+    g.fillStyle = '#8A4F22';
+    for (var a = 0; a < 7; a++) {
+      var ax = -0.5 + (a + 3) / 13, ay = 4.3 + Math.abs(a - 3) * 0.35;
+      g.beginPath();
+      g.moveTo(V.sx(ax, ay + 0.5), V.sy(ay + 0.5)); g.lineTo(V.sx(ax - 0.025, ay), V.sy(ay)); g.lineTo(V.sx(ax + 0.025, ay), V.sy(ay));
+      g.closePath(); g.fill();
+    }
+  }
+
+  // A pin seen from behind: white body, red neck stripes, standing or lying
+  function paintPin(g, V, x, y, state) {
+    var k = V.sc(y), px = V.sx(x, y), py = V.sy(y), hgt = V.near * k * 0.36, wid = hgt * 0.34;
+    g.save();
+    g.translate(px, py);
+    if (state === 1) { g.rotate(x < 0 ? -1.25 : 1.25); g.globalAlpha = 0.85; }
+    g.fillStyle = 'rgba(0,0,0,.25)';
+    g.beginPath(); g.ellipse(0, 0, wid * 0.7, wid * 0.22, 0, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#FAF8F4';
+    g.beginPath();
+    g.moveTo(-wid * 0.38, 0);
+    g.bezierCurveTo(-wid * 0.62, -hgt * 0.3, -wid * 0.5, -hgt * 0.5, -wid * 0.2, -hgt * 0.62);
+    g.bezierCurveTo(-wid * 0.18, -hgt * 0.72, -wid * 0.36, -hgt * 0.92, 0, -hgt);
+    g.bezierCurveTo(wid * 0.36, -hgt * 0.92, wid * 0.18, -hgt * 0.72, wid * 0.2, -hgt * 0.62);
+    g.bezierCurveTo(wid * 0.5, -hgt * 0.5, wid * 0.62, -hgt * 0.3, wid * 0.38, 0);
+    g.closePath(); g.fill();
+    g.strokeStyle = 'rgba(0,0,0,.18)'; g.lineWidth = 1; g.stroke();
+    g.fillStyle = '#D23B3B';
+    g.fillRect(-wid * 0.22, -hgt * 0.7, wid * 0.44, hgt * 0.04);
+    g.fillRect(-wid * 0.22, -hgt * 0.64, wid * 0.44, hgt * 0.04);
+    g.restore();
+  }
+
+  function paintBall(g, V, x, y, colour) {
+    var k = V.sc(y), r = Math.max(3, E.BALL_R * V.near * k), px = V.sx(x, y), py = V.sy(y) - r * 0.9;
+    g.fillStyle = 'rgba(0,0,0,.3)';
+    g.beginPath(); g.ellipse(px, V.sy(y), r, r * 0.3, 0, 0, Math.PI * 2); g.fill();
+    var gr = g.createRadialGradient(px - r * 0.35, py - r * 0.35, r * 0.1, px, py, r);
+    gr.addColorStop(0, 'rgba(255,255,255,.65)'); gr.addColorStop(0.25, colour); gr.addColorStop(1, '#14161A');
+    g.fillStyle = gr;
+    g.beginPath(); g.arc(px, py, r, 0, Math.PI * 2); g.fill();
+    g.fillStyle = 'rgba(0,0,0,.6)';
+    [[-0.2, -0.25], [0.15, -0.3], [0, 0.05]].forEach(function (h) { g.beginPath(); g.arc(px + h[0] * r, py + h[1] * r, r * 0.09, 0, Math.PI * 2); g.fill(); });
+  }
+
+  function draw() {
+    if (!G) return;
+    var V = shown = view(), dpr = Math.min(2, window.devicePixelRatio || 1);
+    if (cv.width !== V.w * dpr || cv.height !== V.h * dpr) { cv.width = V.w * dpr; cv.height = V.h * dpr; }
+    cv.style.width = V.w + 'px'; cv.style.height = V.h + 'px';
+    var g = cv.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    var col = colors();
+    paintLane(g, V, col);
+    // pins: from the motion while it plays, else what stands (and, for a
+    // moment after the ball, what fell), the far ones first
+    var frame = anim ? anim.res.frames[Math.min(anim.i, anim.res.frames.length - 1)] : fallen, list = [];
+    for (var i = 0; i < 10; i++) {
+      if (frame) { var q = frame.p[i]; if (q[2] === 2 || (!G.s.standing[i] && !anim && !fallen)) continue; list.push([q[0], q[1], q[2]]); }
+      else if (G.s.standing[i]) list.push([E.PINS[i][0], E.PINS[i][1], 0]);
+    }
+    var ball = anim ? frame.b : null, seat = anim ? anim.seat : G.s.turn;
+    var items = list.map(function (p) { return { y: p[1], f: function () { paintPin(g, V, p[0], p[1], p[2]); } }; });
+    if (ball && ball[1] < E.PIT) items.push({ y: ball[1], f: function () { paintBall(g, V, ball[0], ball[1], col.c[seat]); } });
+    if (!anim && G.phase === 'aim') {
+      var aim = swipe ? swipe.preview : kbPreview();
+      var x0 = aim ? aim.x : G.stand[G.s.turn] || 0.25;
+      if (aim) {
+        g.setLineDash([4, 6]); g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 2;
+        g.beginPath(); g.moveTo(V.sx(x0, 0.4), V.sy(0.4));
+        for (var yy = 1; yy <= 12; yy++) { var ax = x0 + Math.tan(aim.angle) * yy; g.lineTo(V.sx(ax, yy), V.sy(yy)); }
+        g.stroke(); g.setLineDash([]);
+      }
+      items.push({ y: 0.2, f: function () { paintBall(g, V, x0, 0.25, col.c[G.s.turn]); } });
+    }
+    items.sort(function (a, b) { return b.y - a.y; }).forEach(function (it) { it.f(); });
+  }
+
+  function loop(now) {
+    raf = 0;
+    if (anim) {
+      // a frame's timestamp can come from just before the throw: clamp at the start
+      var res = anim.res, i = Math.max(0, Math.floor((now - anim.t0) / 1000 * 60 * anim.speed));
+      if (i >= res.frames.length) { settle(); draw(); return; }
+      // a knock for every newly struck pin, a few at most at once
+      var hits = res.frames[i].p.filter(function (q) { return q[2] >= 1; }).length;
+      if (hits > anim.hits) { C.feedback('pin'); if (hits - anim.hits > 2) setTimeout(function () { C.feedback('pin'); }, 45); anim.hits = hits; }
+      anim.i = i;
+    }
+    draw();
+    if ((anim || swipe) && !document.hidden) raf = requestAnimationFrame(loop);
+  }
+  function kick() { if (!raf) raf = requestAnimationFrame(loop); }
+
+  function cardPaint() {
+    var s = { standing: G.s.standing.slice() };
+    return function (g, W, H) {
+      var V0 = view(), side = Math.min(W, H / 1.35);
+      g.translate((W - side) / 2, (H - side * 1.35) / 2);
+      g.scale(side / V0.w, side / V0.w);
+      paintLane(g, V0, colors());
+      E.PINS.map(function (p, i) { return [p[0], p[1], i]; }).sort(function (a, b) { return b[1] - a[1]; })
+        .forEach(function (p) { if (s.standing[p[2]]) paintPin(g, V0, p[0], p[1], 0); });
+    };
+  }
+
+  function pname(seat) {
+    if (seat === 0) return C.state.profile.name || C.t('you');
+    if (isBot(seat)) return C.t('bot');
+    return C.t('playerN', { n: C.num(seat + 1) });
+  }
+
+  function drawCards() {
+    cards.innerHTML = '';
+    for (var seat = 0; seat < G.s.frames.length; seat++) {
+      var on = G.s.turn === seat && !G.done, fr = G.s.frames[seat], sc = E.score(fr);
+      var row = [el('div', { class: 'bw-card__who' }, [el('i'), el('span', { text: pname(seat) }), el('b', { text: C.num(E.total(fr)) })])];
+      for (var i = 0; i < 10; i++) {
+        var f = fr[i] || [], marks = [];
+        for (var k = 0; k < (i === 9 ? 3 : 2); k++) marks.push(el('em', { text: f[k] === undefined ? '' : num(E.mark(f, i, k)) }));
+        row.push(el('div', { class: 'bw-f' + (on && G.s.frame === i ? ' bw-f--now' : '') }, [
+          el('div', { class: 'bw-f__r' }, marks), el('div', { class: 'bw-f__t', text: sc[i] === null ? '' : C.num(sc[i]) })
+        ]));
+      }
+      var card = el('div', { class: 'bw-card' + (on ? ' bw-card--on' : ''), style: { '--pc': 'var(--bw-c' + seat + ')' } }, row);
+      if (on && isBot(seat)) card.classList.add('bw-thinking');
+      cards.appendChild(card);
+    }
+  }
+  function num(m) { return /^\d$/.test(m) ? C.num(+m) : m; }
+
+  function drawTop() {
+    top.innerHTML = '';
+    if (G.daily) {
+      top.appendChild(el('span', { class: 'ch-badge ch-badge--accent' },
+        [C.icon('calendar', 14), el('span', { text: C.t('dailyBowling') + ' — ' + C.num(G.daily) })]));
+      top.appendChild(el('span', { class: 'ch-badge', text: C.t('frameN', { n: C.num(Math.min(10, G.s.frame + 1)) }) }));
+      return;
+    }
+    var parts = [G.mode === 'bot' ? C.t('vsBot') + ' · ' + C.t(G.level) : C.t(G.mode === 'solo' ? 'solo' : 'people'), C.t('frameN', { n: C.num(Math.min(10, G.s.frame + 1)) })];
+    top.appendChild(el('button', { class: 'ch-badge ch-tap', type: 'button', onclick: askNew, text: parts.join(' · ') }));
+  }
+
+  function drawStatus() {
+    var who = G.s.turn === 0 ? C.t('yourTurn') : (isBot(G.s.turn) ? C.t('botRolls', { n: pname(G.s.turn) }) : C.t('turnOf', { n: pname(G.s.turn) }));
+    status.textContent = G.msg ? G.msg : (G.phase === 'aim' ? (G.mode === 'people' ? who + ' · ' : '') + C.t('swipe') : who);
+    var big = !!(G.big && G.msg);
+    if (big !== status.classList.contains('bw-status--big')) status.classList.toggle('bw-status--big', big);
+  }
+
+  function render() {
+    if (!G) return;
+    drawTop();
+    drawCards();
+    drawStatus();
+    draw();
+  }
+
+  /* -------------------------------------------------------------- input */
+
+  // A swipe: where it starts is where you stand, its direction (carried on to
+  // the pins) is the aim, its speed the ball's speed, and its bend the spin.
+  function canBowl() { return G && !G.done && G.phase === 'aim' && !anim && !isBot(G.s.turn) && !document.querySelector('.ch-scrim'); }
+  function local(e) { var r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top, performance.now()]; }
+
+  function readSwipe(pts) {
+    var V = shown || view(), a = pts[0], z = pts[pts.length - 1];
+    var start = V.lane(a[0], Math.max(a[1], V.sy(1.5)));
+    var x0 = Math.max(-0.4, Math.min(0.4, start[0]));
+    // carry the swipe's line on to the head pin's distance on screen
+    var dy = z[1] - a[1];
+    if (dy > -24) return null;
+    var hy = V.sy(E.HEAD), hx = a[0] + (z[0] - a[0]) * (hy - a[1]) / dy;
+    var tx = V.lane(hx, hy)[0], angle = Math.max(-0.06, Math.min(0.06, Math.atan2(tx - x0, E.HEAD)));
+    // speed from the last tenth of a second of the swipe, in px per ms
+    var j = pts.length - 1;
+    while (j > 0 && z[2] - pts[j][2] < 100) j--;
+    var v = Math.hypot(z[0] - pts[j][0], z[1] - pts[j][1]) / Math.max(16, z[2] - pts[j][2]);
+    var speed = Math.max(5.5, Math.min(9, 4.6 + v * 2.6));
+    // bend: how far the path bows off its chord, against the chord's length
+    var len = Math.hypot(z[0] - a[0], dy), bow = 0;
+    pts.forEach(function (p) {
+      var d = ((z[0] - a[0]) * (p[1] - a[1]) - dy * (p[0] - a[0])) / len;
+      if (Math.abs(d) > Math.abs(bow)) bow = d;
+    });
+    // a gentle bend is enough: at five times the bow a 14 px curve was full spin
+    var spin = Math.max(-1, Math.min(1, bow / len * 3));
+    return { x: x0, angle: angle, speed: speed, spin: spin };
+  }
+
+  cv.addEventListener('pointerdown', function (e) {
+    if (!canBowl()) return;
+    e.preventDefault();
+    swipe = { id: e.pointerId, pts: [local(e)], preview: null };
+    try { cv.setPointerCapture(e.pointerId); } catch (er) { /* old browsers */ }
+    kick();
+  });
+  cv.addEventListener('pointermove', function (e) {
+    if (!swipe || e.pointerId !== swipe.id) return;
+    swipe.pts.push(local(e));
+    if (swipe.pts.length > 60) swipe.pts.splice(1, 1);
+    swipe.preview = readSwipe(swipe.pts);
+  });
+  cv.addEventListener('pointerup', function (e) {
+    if (!swipe || e.pointerId !== swipe.id) return;
+    swipe.pts.push(local(e));
+    var t = readSwipe(swipe.pts);
+    swipe = null;
+    if (t && canBowl()) bowl(t); else draw();
+  });
+  cv.addEventListener('pointercancel', function () { swipe = null; draw(); });
+
+  function kbPreview() { return kb ? { x: kb.x, angle: kb.angle } : null; }
+  window.addEventListener('keydown', function (e) {
+    if (!canBowl()) return;
+    var k = e.key;
+    if (!kb && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'z', 'x', 'Z', 'X', ' ', 'Enter'].indexOf(k) >= 0) {
+      kb = { x: G.stand[G.s.turn] || 0.25, angle: 0, spin: 0 };
+    }
+    if (!kb) return;
+    if (k === 'ArrowLeft' || k === 'ArrowRight') { e.preventDefault(); kb.x = Math.max(-0.4, Math.min(0.4, kb.x + (k === 'ArrowLeft' ? -0.04 : 0.04))); }
+    else if (k === 'ArrowUp' || k === 'ArrowDown') { e.preventDefault(); kb.angle = Math.max(-0.06, Math.min(0.06, kb.angle + (k === 'ArrowUp' ? -0.002 : 0.002))); }
+    else if (C.keyIs(e, 'z') || C.keyIs(e, 'x')) { kb.spin = Math.max(-1, Math.min(1, kb.spin + (C.keyIs(e, 'z') ? 0.25 : -0.25))); G.msg = C.t('spinKey') + ': ' + C.num(Math.round(kb.spin * 100)) + '%'; drawStatus(); }
+    else if (k === ' ' || k === 'Enter') { e.preventDefault(); var t = { x: kb.x, angle: kb.angle, speed: 7.5, spin: kb.spin }; kb = null; bowl(t); return; }
+    draw();
+  });
+
+  // the lane follows its slot, which changes with the window and the side column (#359)
+  if (window.ResizeObserver) new ResizeObserver(function () { if (G) draw(); }).observe(laneBox);
+  else window.addEventListener('resize', function () { if (G) draw(); });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { if (G) draw(); });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && G) kick(); });
+  // A pause mid-roll finishes the roll at once when the game comes back
+  C.onPause(function () { stop(); swipe = null; });
+  C.onResume(function () {
+    if (!G || G.done) return;
+    if (anim) { anim.t0 = -1e9; kick(); return; }
+    fallen = null;
+    startTurn();
+  });
+
+  /* --------------------------------------------------------------- help */
+
+  function kbRow(k, what) {
+    return el('div', { class: 'ch-item' }, [el('div', { class: 'ch-item__label', text: what }), el('span', { class: 'ch-badge', text: k })]);
+  }
+  function showHelp() {
+    C.ui.modal({
+      title: C.t('help'),
+      body: [
+        el('p', { class: 'ch-dim', text: C.t('rules') }),
+        el('h3', { style: { 'margin-top': 'var(--s-4)' }, text: C.t('keyboard') }),
+        el('div', { class: 'ch-list' }, [kbRow('← →', C.t('moveKey')), kbRow('↑ ↓', C.t('aimKey')), kbRow('Z / X', C.t('spinKey')), kbRow('Space / Enter', C.t('throwKey'))])
+      ],
+      actions: [
+        { label: C.t('tutorial'), onClick: function () { ctx.showTutorial(TUT); } },
+        { label: C.t('done'), kind: 'primary' }
+      ]
+    });
+  }
+
+  function art(kind) {
+    var s = '<svg viewBox="0 0 220 120" width="100%">';
+    s += '<path d="M70 118L96 4h28l26 114z" fill="#D9B07A"/>';
+    var pins = '';
+    [[110, 14], [104, 11], [116, 11], [98, 8], [110, 8], [122, 8]].forEach(function (p) { pins += '<ellipse cx="' + p[0] + '" cy="' + p[1] + '" rx="2.6" ry="5" fill="#FAF8F4" stroke="#D23B3B" stroke-width=".8"/>'; });
+    if (kind === 1) {
+      s += pins + '<circle cx="128" cy="104" r="9" fill="var(--bw-c0)"/><path d="M128 92L116 30" stroke="#fff" stroke-width="2.5" stroke-dasharray="5 5"/>' +
+        '<path d="M170 110q-6-40 0-80" stroke="var(--c-text-faint)" stroke-width="3" fill="none" stroke-linecap="round"/><path d="M164 38l6-10 6 10" stroke="var(--c-text-faint)" stroke-width="3" fill="none" stroke-linecap="round"/>';
+    } else if (kind === 2) {
+      s += pins + '<path d="M132 104C130 70 132 50 112 22" stroke="var(--bw-c0)" stroke-width="3" fill="none" stroke-dasharray="4 4"/><circle cx="132" cy="104" r="9" fill="var(--bw-c0)"/>' +
+        '<rect x="72" y="60" width="76" height="58" fill="rgba(255,255,255,.25)"/>';
+    } else {
+      s += pins + '<circle cx="113" cy="18" r="6" fill="var(--bw-c0)"/><path d="M113 18l-12 -14M113 18l14 -12" stroke="#D23B3B" stroke-width="2"/>';
+    }
+    return s + '</svg>';
+  }
+  var TUT = [
+    { title: C.t('tutTitle1'), text: C.t('tutText1'), art: art(1) },
+    { title: C.t('tutTitle2'), text: C.t('tutText2'), art: art(2) },
+    { title: C.t('tutTitle3'), text: C.t('tutText3'), art: art(3) }
+  ];
+
+  /* -------------------------------------------------------------- start */
+
+  var saved = ctx.loadSave();
+  if (dailyDate) {
+    // The daily game has its own save slot, so a half-played day continues
+    if (validSave(saved) && saved.g.daily === dailyDate) restore(saved.g);
+    else newGame({ daily: dailyDate });
+    if (C.stats.dailyDone('bowling', dailyDate)) {
+      var rec = C.stats.dailyOf(dailyDate).bowling;
+      C.ui.toast({ icon: 'check', title: C.t('dailyDone'), sub: rec.label });
+    }
+    ctx.tutorialIfNew(TUT);
+  } else if (validSave(saved) && !saved.g.daily) {
+    if (saved.prefs) prefs = saved.prefs;
+    restore(saved.g);
+  } else {
+    newGame(fromPrefs());
+    ctx.tutorialIfNew(TUT);
+  }
+})();
+</script>
+</body>
+</html>

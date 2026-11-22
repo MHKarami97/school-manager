@@ -1,0 +1,1673 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#FBF6EF">
+<title>راه‌بندان — چوگان</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../lib/chogan.css">
+<script src="../../lib/early.js"></script>
+<style>
+  /* The lot is asphalt in both themes and the vehicles keep their paint: four pale neutrals and
+     the one red, all drawn in a single ink, so dark mode only deepens the lot and the paint */
+  :root {
+    --gl-lot: #2F3236; --gl-cell: #373B40; --gl-cell-exit: #383F39; --gl-curb: #9EA1A6; --gl-ink: #1A1816; --gl-glass: #2A2E33;
+    --gl-c0: #C6DAE9; --gl-c1: #EFEBE2; --gl-c2: #C9CCD0; --gl-c3: #E5D5B5; --gl-goal: #E34A40; --gl-goal-roof: #C73C33;
+    --gl-roof: rgba(255, 255, 255, .38); --gl-slat: rgba(255, 255, 255, .22); --gl-shadow: rgba(0, 0, 0, .42); --gl-mark: rgba(255, 255, 255, .92);
+    --gl-concrete: #8F8B85; --gl-concrete-top: #A8A49D; --gl-hint: #9DBB88;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --gl-lot: #232527; --gl-cell: #2A2D30; --gl-cell-exit: #2B312B; --gl-curb: #5F6267; --gl-ink: #121110; --gl-glass: #1D2024;
+      --gl-c0: #AEC5D8; --gl-c1: #DBD7CD; --gl-c2: #B3B7BC; --gl-c3: #D0BFA0; --gl-goal: #E3584D; --gl-goal-roof: #C9443B;
+      --gl-roof: rgba(255, 255, 255, .3); --gl-slat: rgba(255, 255, 255, .2); --gl-shadow: rgba(0, 0, 0, .5); --gl-mark: rgba(255, 255, 255, .92);
+      --gl-concrete: #75716B; --gl-concrete-top: #8B877F; --gl-hint: #9DBB88;
+    }
+  }
+  :root[data-theme="dark"] {
+    --gl-lot: #232527; --gl-cell: #2A2D30; --gl-cell-exit: #2B312B; --gl-curb: #5F6267; --gl-ink: #121110; --gl-glass: #1D2024;
+    --gl-c0: #AEC5D8; --gl-c1: #DBD7CD; --gl-c2: #B3B7BC; --gl-c3: #D0BFA0; --gl-goal: #E3584D; --gl-goal-roof: #C9443B;
+    --gl-roof: rgba(255, 255, 255, .3); --gl-slat: rgba(255, 255, 255, .2); --gl-shadow: rgba(0, 0, 0, .5); --gl-mark: rgba(255, 255, 255, .92);
+    --gl-concrete: #75716B; --gl-concrete-top: #8B877F; --gl-hint: #9DBB88;
+  }
+  .gl-wrap { width: 100%; display: flex; flex-direction: column; align-items: center; gap: var(--s-3); }
+  .gl-top { display: flex; flex-wrap: wrap; gap: var(--s-2); justify-content: center; align-items: center; min-height: 28px; }
+  /* Upright the badges, the board, the hint button and the line of text stack; on a short, wide
+     screen the board takes the left and they stand in a column beside it */
+  .gl-side { display: contents; }
+  .gl-top { order: 0; } .gl-frame { order: 1; } .gl-actions { order: 2; } .gl-status { order: 3; }
+  /* any wide game area, not only a short phone in landscape: a laptop has room beside the lot too (#359) */
+  @container game (min-aspect-ratio: 5 / 4) {
+    .gl-wrap { flex-direction: row; justify-content: center; align-items: center; gap: var(--s-5); }
+    .gl-side { display: flex; flex-direction: column; align-items: center; gap: var(--s-3); max-width: 220px; }
+  }
+  /* The lot is a physical place: it is not mirrored in RTL, the exit stays on the right */
+  .gl-frame { direction: ltr; touch-action: none; user-select: none; -webkit-user-select: none; }
+  .gl-board { display: block; cursor: grab; touch-action: none; }
+  .gl-lot { fill: var(--gl-lot); }
+  .gl-cell { fill: var(--gl-cell); }
+  .gl-cell--exit { fill: var(--gl-cell-exit); }
+  .gl-curb { fill: none; stroke: var(--gl-curb); stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
+  .gl-road { fill: var(--game-soft); }
+  /* still, until the red car's road is clear: then they run, the cue to flick it */
+  .gl-chev { fill: none; stroke: var(--game); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; opacity: .85; }
+  .gl-board--clear .gl-chev { animation: gl-run 1.6s var(--ease) infinite; }
+  .gl-board--clear .gl-chev:nth-of-type(2) { animation-delay: .25s; }
+  .gl-board--clear .gl-chev:nth-of-type(3) { animation-delay: .5s; }
+  @keyframes gl-run { 0% { opacity: .25; } 40% { opacity: 1; } 100% { opacity: .25; } }
+  .gl-wall { fill: var(--gl-concrete); stroke: var(--gl-ink); stroke-width: 2.5; stroke-linejoin: round; }
+  .gl-wall-top { fill: var(--gl-concrete-top); }
+  .gl-hatch { fill: none; stroke: var(--gl-ink); stroke-width: 2.5; stroke-linecap: round; }
+  /* A car is drawn lying down, nose to the right, 40 units to a cell; the board turns it */
+  .gl-car { transition: transform var(--t-slow) var(--ease); }
+  .gl-car--still { transition: none; }
+  .gl-car--out { transition: transform calc(var(--t-slow) * 2) ease-in, opacity var(--t-mid) ease-in calc(var(--t-slow) * 1.2); opacity: 0; }
+  /* one ink for the outline, the glass, the wheels and the mirrors; the roof is a lighter plate */
+  .gl-shadow { fill: var(--gl-shadow); }
+  .gl-wheel { fill: var(--gl-ink); }
+  .gl-body { stroke: var(--gl-ink); stroke-width: 2.5; stroke-linejoin: round; }
+  .gl-roof { fill: var(--gl-roof); }
+  .gl-glass { fill: var(--gl-glass); }
+  .gl-mirror { fill: var(--gl-ink); }
+  .gl-bed { fill: var(--gl-glass); }
+  .gl-slat { fill: none; stroke: var(--gl-slat); stroke-width: 2; stroke-linecap: round; }
+  .gl-mark { fill: none; stroke: var(--gl-mark); stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; }
+  .gl-p0 .gl-body { fill: var(--gl-c0); } .gl-p1 .gl-body { fill: var(--gl-c1); } .gl-p2 .gl-body { fill: var(--gl-c2); } .gl-p3 .gl-body { fill: var(--gl-c3); }
+  .gl-pg .gl-body { fill: var(--gl-goal); } .gl-pg .gl-roof { fill: var(--gl-goal-roof); }
+  /* The halo and the ghost use the accent and cover the whole vehicle (#244): a hint can't be missed */
+  .gl-halo { fill: var(--gl-hint); fill-opacity: 0; stroke: var(--gl-hint); stroke-width: 4; stroke-linejoin: round; stroke-opacity: 0; }
+  .gl-car--hint .gl-halo { fill-opacity: .3; stroke-opacity: 1; animation: gl-glow 1.4s var(--ease) infinite; }
+  @keyframes gl-glow { 50% { fill-opacity: .14; } }
+  /* during a hint the other cars sit under a veil: they are locked until the hinted car has moved */
+  .gl-dim { fill: var(--gl-lot); fill-opacity: .45; pointer-events: none; }
+  .gl-ghost { fill: var(--gl-hint); fill-opacity: .22; stroke: var(--gl-hint); stroke-width: 3; stroke-dasharray: 8 6; stroke-linejoin: round; pointer-events: none; }
+  .gl-cur { fill: none; stroke: var(--gl-hint); stroke-width: 3; stroke-linejoin: round; pointer-events: none; }
+  .gl-status { min-height: 1.6em; font-weight: 700; color: var(--c-text-dim); text-align: center; }
+  .gl-actions { display: flex; gap: var(--s-2); flex-wrap: wrap; justify-content: center; }
+  .gl-off:disabled { opacity: .4; cursor: default; }
+  .gl-tut { display: block; }
+</style>
+</head>
+<body>
+<script src="../../version.js"></script>
+<script src="../../lib/chogan.js"></script>
+
+<script>
+/* ==== ENGINE START ==== */
+/* Gridlock: a lot of cars and trucks, each sliding along its own lane. The goal car
+   (index 0) is horizontal, two cells long and sits in row 2; the exit is in the right
+   edge of that row. A car is {h, n, l, p}: h is 1 when it runs left to right, n its
+   length, l its lane (the row of a horizontal car, the column of a vertical one) and
+   p the first cell along the lane. A drag of any length is one move. The board is
+   solved when the goal car stands at column cols - 2.                              */
+function GridlockEngineFactory() {
+  'use strict';
+
+  // Math.imul and Math.floor are read once: a global lookup in the hot loops is slow in a test sandbox
+  var imul = Math.imul, floor = Math.floor;
+  var EXIT_ROW = 2, MAXV = 24, MAXW = 2, CAP = 40000, HINT_MOVES = 2, UNDO_MAX = 1500;
+  var SLOTS = 1 << 16, SLOT_MASK = SLOTS - 1;
+  var DX = [0, 1, 0, -1], DY = [-1, 0, 1, 0];
+  var PROBE_AT = [500, 1000, 1500, 2500, 4000, -1], PROBE_MAX = [1600, 2550, 3400, 4700, 6800];
+
+  function isInt(v) { return typeof v === 'number' && v === floor(v) && isFinite(v); }
+  function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+
+  /* ----------------------------------------------------- board checks */
+
+  // Is this a sound arrangement? Cars are {h, n, l, p}; walls are cell numbers.
+  function sound(rows, cols, walls, cars) {
+    var i, k, g;
+    if (!isInt(rows) || !isInt(cols) || rows < 5 || rows > 7 || cols < 5 || cols > 7) return false;
+    if (!Array.isArray(cars) || cars.length < 2 || cars.length > MAXV || !Array.isArray(walls) || walls.length > MAXW) return false;
+    g = [];
+    for (i = 0; i < rows * cols; i++) g.push(0);
+    for (i = 0; i < walls.length; i++) {
+      var w = walls[i];
+      if (!isInt(w) || w < 0 || w >= rows * cols || g[w] || floor(w / cols) === EXIT_ROW) return false;
+      g[w] = 1;
+    }
+    for (i = 0; i < cars.length; i++) {
+      var c = cars[i];
+      if (!c || (c.h !== 0 && c.h !== 1) || (c.n !== 2 && c.n !== 3) || !isInt(c.l) || !isInt(c.p)) return false;
+      var dim = c.h ? cols : rows;
+      if (c.l < 0 || c.l >= (c.h ? rows : cols) || c.p < 0 || c.p + c.n > dim) return false;
+      if (i === 0 ? !(c.h === 1 && c.n === 2 && c.l === EXIT_ROW) : (c.h === 1 && c.l === EXIT_ROW)) return false;
+      var cell = c.h ? c.l * cols + c.p : c.p * cols + c.l, st = c.h ? 1 : cols;
+      for (k = 0; k < c.n; k++, cell += st) {
+        if (g[cell]) return false;
+        g[cell] = 1;
+      }
+    }
+    return true;
+  }
+
+  function copyCars(cars) { return cars.map(function (c) { return { h: c.h, n: c.n, l: c.l, p: c.p }; }); }
+  function positions(cars) { return cars.map(function (c) { return c.p; }); }
+
+  // -1 empty, -2 wall, else the index of the car on the cell
+  function grid(S) {
+    var g = [], i, k;
+    for (i = 0; i < S.rows * S.cols; i++) g.push(-1);
+    for (i = 0; i < S.walls.length; i++) g[S.walls[i]] = -2;
+    for (i = 0; i < S.cars.length; i++) {
+      var c = S.cars[i], cell = c.h ? c.l * S.cols + c.p : c.p * S.cols + c.l, st = c.h ? 1 : S.cols;
+      for (k = 0; k < c.n; k++, cell += st) g[cell] = i;
+    }
+    return g;
+  }
+
+  function cellsOf(S, v) {
+    var c = S.cars[v], out = [], cell = c.h ? c.l * S.cols + c.p : c.p * S.cols + c.l, st = c.h ? 1 : S.cols;
+    for (var k = 0; k < c.n; k++, cell += st) out.push(cell);
+    return out;
+  }
+
+  /* --------------------------------------------- the whole state space */
+
+  // A position is a number from 0 to 6 per car, three bits each: cars 0 to 9 in one
+  // 30 bit word, cars 10 to 19 in a second, cars 20 to 23 in a third, so equal words are
+  // the same position and nothing is lost to a hash.
+  var spent = 0;   // positions handled by the last explore that gave up
+  var W = null;
+  function scratch() {
+    if (!W) {
+      W = { tbl: new Int32Array(SLOTS * 4), lo: new Int32Array(CAP), md: new Int32Array(CAP), hi: new Int32Array(CAP), off: new Int32Array(CAP + 1),
+        adj: new Int32Array(1 << 18), mv: new Uint8Array(1 << 18), dist: new Int16Array(CAP), queue: new Int32Array(CAP) };
+    }
+    return W;
+  }
+  function grow(Z, need) {
+    var size = Z.adj.length;
+    while (size < need) size *= 2;
+    var a = new Int32Array(size), m = new Uint8Array(size);
+    a.set(Z.adj); m.set(Z.mv);
+    Z.adj = a; Z.mv = m;
+  }
+  function slot(lo, md, hi) {
+    var x = imul(lo, 0x9E3779B1) ^ imul(md + 0x7F4A7C15, 0x85EBCA6B) ^ imul(hi + 0x165667B1, 0xC2B2AE35);
+    return ((x ^ (x >>> 15)) & SLOT_MASK) * 4;
+  }
+  // the three words of a list of positions
+  function words(pos) {
+    var w = [0, 0, 0];
+    for (var i = 0; i < pos.length; i++) w[(i / 10) | 0] += pos[i] << (3 * (i % 10));
+    return w;
+  }
+
+  // Bit masks of the cells every car covers at every position, so a position is a few ORs
+  function prep(rows, cols, walls, cars) {
+    var n = cars.length, G = { n: n, rows: rows, cols: cols, len: new Int32Array(n), dim: new Int32Array(n), shift: new Int32Array(n), word: new Int32Array(n),
+      bitA: new Int32Array(n * 8), bitB: new Int32Array(n * 8), mA: new Int32Array(n * 8), mB: new Int32Array(n * 8), wallA: 0, wallB: 0 };
+    function bit(c) { return c < 25 ? [1 << c, 0] : [0, 1 << (c - 25)]; }
+    walls.forEach(function (c) { var b = bit(c); G.wallA |= b[0]; G.wallB |= b[1]; });
+    cars.forEach(function (c, i) {
+      var step = c.h ? 1 : cols, base = c.h ? c.l * cols : c.l, dim = c.h ? cols : rows, k, p, q, b;
+      G.len[i] = c.n; G.dim[i] = dim; G.shift[i] = 3 * (i % 10); G.word[i] = (i / 10) | 0;
+      for (k = 0; k < dim; k++) { b = bit(base + k * step); G.bitA[i * 8 + k] = b[0]; G.bitB[i * 8 + k] = b[1]; }
+      for (p = 0; p + c.n <= dim; p++) {
+        var a = 0, bb = 0;
+        for (q = 0; q < c.n; q++) { b = bit(base + (p + q) * step); a |= b[0]; bb |= b[1]; }
+        G.mA[i * 8 + p] = a; G.mB[i * 8 + p] = bb;
+      }
+    });
+    return G;
+  }
+
+  // Every position reachable from pos, a slide of any length being one edge, and for each
+  // the number of moves to the nearest solved one. null when there are more than cap.
+  // The arrays live in scratch(); they hold until the next call.
+  function explore(G, pos, cap, probe) {
+    var Z = scratch(), n = G.n, tbl = Z.tbl, LO = Z.lo, MD = Z.md, HI = Z.hi, OFF = Z.off, ADJ = Z.adj, MV = Z.mv;
+    var len = G.len, dim = G.dim, shift = G.shift, word = G.word, bitA = G.bitA, bitB = G.bitB, mA = G.mA, mB = G.mB;
+    var p = new Int32Array(n), i, ec = 0, count = 1, s, pk = 0;
+    tbl.fill(0);
+    var w0 = words(pos);
+    LO[0] = w0[0]; MD[0] = w0[1]; HI[0] = w0[2];
+    var s0 = slot(w0[0], w0[1], w0[2]);
+    tbl[s0] = w0[0]; tbl[s0 + 1] = w0[1]; tbl[s0 + 2] = w0[2]; tbl[s0 + 3] = 1;
+    for (s = 0; s < count; s++) {
+      // a board that has found far more positions than it has handled is not going to be small
+      if (probe && s === PROBE_AT[pk]) { if (count > PROBE_MAX[pk]) { spent = s; return null; } pk++; }
+      OFF[s] = ec;
+      var l = LO[s], m = MD[s], h = HI[s], oA = G.wallA, oB = G.wallB;
+      for (i = 0; i < n; i++) {
+        var wd = word[i], pi = ((wd === 0 ? l : (wd === 1 ? m : h)) >> shift[i]) & 7;
+        p[i] = pi;
+        oA |= mA[i * 8 + pi]; oB |= mB[i * 8 + pi];
+      }
+      if (ec + n * 8 > ADJ.length) { grow(Z, ec + n * 8); ADJ = Z.adj; MV = Z.mv; }
+      for (i = 0; i < n; i++) {
+        var pj = p[i], ln = len[i], sh = shift[i], b8 = i * 8, wi = word[i], dm = dim[i], q, np, nl, nm, nh, idx, t, id;
+        for (q = pj - 1; q >= 0; q--) {
+          if ((oA & bitA[b8 + q]) | (oB & bitB[b8 + q])) break;
+          np = q;
+          nl = l; nm = m; nh = h;
+          if (wi === 0) nl += (np - pj) << sh; else if (wi === 1) nm += (np - pj) << sh; else nh += (np - pj) << sh;
+          idx = slot(nl, nm, nh);
+          for (;;) {
+            t = tbl[idx + 3];
+            if (!t) {
+              if (count >= cap) { spent = s; return null; }
+              id = count++; LO[id] = nl; MD[id] = nm; HI[id] = nh;
+              tbl[idx] = nl; tbl[idx + 1] = nm; tbl[idx + 2] = nh; tbl[idx + 3] = id + 1;
+              break;
+            }
+            if (tbl[idx] === nl && tbl[idx + 1] === nm && tbl[idx + 2] === nh) { id = t - 1; break; }
+            idx += 4;
+            if (idx >= SLOTS * 4) idx = 0;
+          }
+          ADJ[ec] = id; MV[ec] = b8 + np; ec++;
+        }
+        for (q = pj + ln; q < dm; q++) {
+          if ((oA & bitA[b8 + q]) | (oB & bitB[b8 + q])) break;
+          np = q - ln + 1;
+          nl = l; nm = m; nh = h;
+          if (wi === 0) nl += (np - pj) << sh; else if (wi === 1) nm += (np - pj) << sh; else nh += (np - pj) << sh;
+          idx = slot(nl, nm, nh);
+          for (;;) {
+            t = tbl[idx + 3];
+            if (!t) {
+              if (count >= cap) { spent = s; return null; }
+              id = count++; LO[id] = nl; MD[id] = nm; HI[id] = nh;
+              tbl[idx] = nl; tbl[idx + 1] = nm; tbl[idx + 2] = nh; tbl[idx + 3] = id + 1;
+              break;
+            }
+            if (tbl[idx] === nl && tbl[idx + 1] === nm && tbl[idx + 2] === nh) { id = t - 1; break; }
+            idx += 4;
+            if (idx >= SLOTS * 4) idx = 0;
+          }
+          ADJ[ec] = id; MV[ec] = b8 + np; ec++;
+        }
+      }
+    }
+    OFF[count] = ec;
+    // moves to the nearest solved position, from every solved one at once (a slide undoes itself)
+    var D = Z.dist, Q = Z.queue, qn = 0, goalAt = G.cols - 2;
+    for (s = 0; s < count; s++) { if ((LO[s] & 7) === goalAt) { D[s] = 0; Q[qn++] = s; } else D[s] = -1; }
+    for (var qi = 0; qi < qn; qi++) {
+      var u = Q[qi], du = D[u], e1 = OFF[u + 1];
+      for (var e = OFF[u]; e < e1; e++) { var v = ADJ[e]; if (D[v] < 0) { D[v] = du + 1; Q[qn++] = v; } }
+    }
+    return { count: count, edges: ec };
+  }
+
+  // the table of the position last explored for a board, kept for the hints and the checks
+  var memo = null;
+  function sigOf(rows, cols, walls, cars) {
+    return rows + 'x' + cols + ':' + walls.join(',') + ':' + cars.map(function (c) { return c.h + '' + c.n + c.l; }).join(',');
+  }
+  function keep(sig, r) {
+    var Z = scratch(), n = r.count;
+    memo = { sig: sig, count: n, tbl: new Int32Array(Z.tbl),
+      lo: new Int32Array(Z.lo.subarray(0, n)), md: new Int32Array(Z.md.subarray(0, n)), hi: new Int32Array(Z.hi.subarray(0, n)), off: new Int32Array(Z.off.subarray(0, n + 1)),
+      adj: new Int32Array(Z.adj.subarray(0, r.edges)), mv: new Uint8Array(Z.mv.subarray(0, r.edges)), dist: new Int16Array(Z.dist.subarray(0, n)) };
+  }
+  function find(m, pos) {
+    var w = words(pos), idx = slot(w[0], w[1], w[2]);
+    for (;;) {
+      var t = m.tbl[idx + 3];
+      if (!t) return -1;
+      if (m.tbl[idx] === w[0] && m.tbl[idx + 1] === w[1] && m.tbl[idx + 2] === w[2]) return t - 1;
+      idx += 4;
+      if (idx >= SLOTS * 4) idx = 0;
+    }
+  }
+  // the table for a board together with the number of the position pos in it; null if the
+  // board has more than CAP positions
+  function table(rows, cols, walls, cars, pos) {
+    var sig = sigOf(rows, cols, walls, cars), id;
+    if (memo && memo.sig === sig) {
+      id = find(memo, pos);
+      if (id >= 0) return { m: memo, id: id };
+    }
+    var r = explore(prep(rows, cols, walls, cars), pos, CAP);
+    if (!r) return null;
+    keep(sig, r);
+    return { m: memo, id: 0 };
+  }
+
+  /* --------------------------------------------------------------- state */
+
+  function defaultLook(n) {
+    var out = [];
+    for (var i = 0; i < n; i++) out.push((i % 4) * 2 + (i ? i % 2 : 1));
+    return out;
+  }
+
+  // A board from its starting arrangement. Walls are cell numbers (row * cols + col).
+  function make(rows, cols, walls, cars, level, look) {
+    if (!sound(rows, cols, walls, cars)) return null;
+    var pos = positions(cars), a = table(rows, cols, walls, cars, pos);
+    if (!a || a.m.dist[a.id] < 0) return null;
+    var S = { level: level || 1, rows: rows, cols: cols, walls: walls.slice(), cars: copyCars(cars), start: pos, best: a.m.dist[a.id],
+      moves: 0, stack: [], hint: null, hints: 0, merge: -1, done: false,
+      look: Array.isArray(look) && look.length === cars.length ? look.slice() : defaultLook(cars.length) };
+    S.done = solved(S);
+    return S;
+  }
+
+  function solved(S) { return S.cars[0].p === S.cols - 2; }
+
+  // The free stretch of the lane a car can slide along: positions lo to hi
+  function range(S, v) {
+    var c = S.cars[v], g = grid(S), step = c.h ? 1 : S.cols, base = c.h ? c.l * S.cols : c.l, dim = c.h ? S.cols : S.rows;
+    var lo = c.p, hi = c.p;
+    while (lo > 0 && g[base + (lo - 1) * step] === -1) lo--;
+    while (hi + c.n < dim && g[base + (hi + c.n) * step] === -1) hi++;
+    return { lo: lo, hi: hi };
+  }
+
+  // With a hint running only the hinted car may move
+  function locked(S, v) { return !!S.hint && S.hint.v !== v; }
+
+  // the goal car can drive straight out: nothing stands between it and the exit
+  function clear(S) { return !S.done && range(S, 0).hi === S.cols - 2 && S.cars[0].p < S.cols - 2; }
+
+  // The best next move from where the board is now: {v, to, dist}. Exact, from the table of
+  // the whole board, so a hint is always the start of a shortest way out.
+  function nextMove(S) {
+    var a = table(S.rows, S.cols, S.walls, S.cars, positions(S.cars));
+    if (!a) return null;
+    var m = a.m, d = m.dist[a.id];
+    if (d <= 0) return null;
+    for (var e = m.off[a.id]; e < m.off[a.id + 1]; e++) {
+      if (m.dist[m.adj[e]] === d - 1) return { v: m.mv[e] >> 3, to: m.mv[e] & 7, dist: d };
+    }
+    return null;
+  }
+  // moves to the nearest solved position from where the board is now
+  function dist(S) {
+    var a = table(S.rows, S.cols, S.walls, S.cars, positions(S.cars));
+    return a ? a.m.dist[a.id] : -1;
+  }
+
+  function aim(S, left) {
+    var nm = nextMove(S);
+    if (!nm) { S.hint = null; return null; }
+    S.hint = { v: nm.v, to: nm.to, left: Math.min(left, nm.dist) };
+    return S.hint;
+  }
+
+  // A move has been made: the hint counts it when the hinted car lands on the ghost
+  function afterMove(S, v, to) {
+    S.merge = S.merge === v ? S.merge : -1;
+    if (S.done) { S.hint = null; S.merge = -1; return false; }
+    if (S.hint && S.hint.v === v && S.hint.to === to) {
+      var left = S.hint.left - 1;
+      S.merge = -1;
+      if (left <= 0) S.hint = null; else aim(S, left);
+      return true;
+    }
+    return false;
+  }
+
+  function push(S, v, from) {
+    S.stack.push([v, from]);
+    S.moves++;
+    if (S.stack.length > UNDO_MAX) S.stack.shift();
+  }
+
+  // One drag: car v to position to, over free cells only. One move, however far.
+  function move(S, v, to) {
+    if (!S.cars[v] || !isInt(to) || S.done) return { ignored: true };
+    if (locked(S, v)) return { locked: true };
+    var c = S.cars[v], from = c.p, r = range(S, v);
+    if (to === from) return { ignored: true };
+    if (to < r.lo || to > r.hi) return { ignored: true, blocked: true };
+    push(S, v, from);
+    c.p = to;
+    S.merge = -1;
+    S.done = solved(S);
+    var hinted = afterMove(S, v, to);
+    return { moved: true, v: v, from: from, to: to, won: S.done, hinted: hinted };
+  }
+
+  // One key press: car v one cell along its lane (d is 1 or -1). Presses on the same car in a
+  // row make one move, and a car back where that move began has made no move.
+  function step(S, v, d) {
+    if (!S.cars[v] || S.done || (d !== 1 && d !== -1)) return { ignored: true };
+    if (locked(S, v)) return { locked: true };
+    var c = S.cars[v], from = c.p, to = from + d, r = range(S, v);
+    if (to < r.lo || to > r.hi) return { blocked: true };
+    var top = S.stack.length ? S.stack[S.stack.length - 1] : null;
+    if (S.merge === v && top && top[0] === v) {
+      c.p = to;
+      if (to === top[1]) { S.stack.pop(); S.moves--; S.merge = -1; }
+    } else {
+      push(S, v, from);
+      c.p = to;
+      S.merge = v;
+    }
+    S.done = solved(S);
+    var hinted = afterMove(S, v, to);
+    return { moved: true, v: v, from: from, to: to, won: S.done, hinted: hinted };
+  }
+
+  // Take the last slide back, however long. Free and unlimited, but not while a hint runs, and
+  // the slide stays counted: moves is every slide made, so trying and undoing is not free.
+  function undo(S) {
+    if (S.done || S.hint || !S.stack.length) return null;
+    var e = S.stack.pop(), c = S.cars[e[0]], from = c.p;
+    c.p = e[1];
+    S.merge = -1;
+    return { v: e[0], from: from, to: e[1] };
+  }
+
+  function restart(S) {
+    for (var i = 0; i < S.cars.length; i++) S.cars[i].p = S.start[i];
+    S.moves = 0; S.stack = []; S.hint = null; S.merge = -1;
+    S.done = solved(S);
+  }
+
+  // Ask for a hint: the best next move, kept in S.hint for two moves
+  function useHint(S, P) {
+    if (S.done || S.hint || !(P.hints > 0)) return -1;
+    if (!aim(S, HINT_MOVES)) return -1;
+    S.hints++; P.hints--;
+    S.merge = -1;
+    return S.hint.v;
+  }
+
+  // The car under a point given in cells (x across, y down). The cell itself wins; beside a
+  // car, within a third of a cell, the nearest car; a wall or empty ground picks nothing.
+  function pick(S, px, py) {
+    var g = grid(S), x = floor(px), y = floor(py);
+    if (x >= 0 && y >= 0 && x < S.cols && y < S.rows) {
+      var at = g[y * S.cols + x];
+      if (at >= 0) return at;
+      if (at === -2) return -1;
+    }
+    var best = -1, bd = 0.34;
+    for (var v = 0; v < S.cars.length; v++) {
+      var c = S.cars[v], x0 = c.h ? c.p : c.l, y0 = c.h ? c.l : c.p, x1 = x0 + (c.h ? c.n : 1), y1 = y0 + (c.h ? 1 : c.n);
+      var dx = Math.max(x0 - px, 0, px - x1), dy = Math.max(y0 - py, 0, py - y1), d = Math.sqrt(dx * dx + dy * dy);
+      if (d < bd) { bd = d; best = v; }
+    }
+    return best;
+  }
+
+  // The car to move a selection to from car v when an arrow key points direction d
+  // (0 up, 1 right, 2 down, 3 left): the nearest centre in that half plane
+  function nearest(S, v, d) {
+    var c = S.cars[v], cx = (c.h ? c.p + c.n / 2 : c.l + 0.5), cy = (c.h ? c.l + 0.5 : c.p + c.n / 2), best = -1, bs = 1e9;
+    for (var u = 0; u < S.cars.length; u++) {
+      if (u === v) continue;
+      var o = S.cars[u], ox = (o.h ? o.p + o.n / 2 : o.l + 0.5) - cx, oy = (o.h ? o.l + 0.5 : o.p + o.n / 2) - cy;
+      var along = ox * DX[d] + oy * DY[d], across = Math.abs(ox * DY[d]) + Math.abs(oy * DX[d]);
+      if (along <= 0.01) continue;
+      if (along + 2 * across < bs) { bs = along + 2 * across; best = u; }
+    }
+    return best;
+  }
+
+  // The next car in reading order (previous for a negative dir), wrapping round, so the
+  // keyboard can reach every car however the arrow keys fall; -1 starts from the first
+  function cycle(S, v, dir) {
+    var order = [], i, n = S.cars.length;
+    for (i = 0; i < n; i++) order.push(i);
+    order.sort(function (a, b) {
+      var A = S.cars[a], B = S.cars[b];
+      return (A.h ? A.l : A.p) - (B.h ? B.l : B.p) || (A.h ? A.p : A.l) - (B.h ? B.p : B.l) || a - b;
+    });
+    var at = order.indexOf(v);
+    if (at < 0) return order[dir < 0 ? n - 1 : 0];
+    return order[(at + (dir < 0 ? n - 1 : 1)) % n];
+  }
+
+  /* ------------------------------------------------------------ hints economy */
+
+  // Hint gifts: the first after 4 cleared levels, then every 5; a level number counts once
+  function progress() { return { level: 1, hints: 3, since: 0, gap: 4, last: 0 }; }
+  function levelDone(P, level) {
+    if (level <= P.last) return 0;
+    P.last = level;
+    P.level = Math.max(P.level, level + 1);
+    if (++P.since < P.gap) return 0;
+    P.since = 0; P.gap = Math.min(5, P.gap + 1); P.hints++;
+    return 1;
+  }
+
+  /* ------------------------------------------------------------ generator */
+
+  function mix(a, b) {
+    var x = imul(a, 374761393) + imul(b, 668265263) | 0;
+    x = imul(x ^ (x >>> 13), 1274126177);
+    return (x ^ (x >>> 16)) >>> 0;
+  }
+
+  // Level -> board and the band of fewest moves it should sit in
+  function plan(level) {
+    var L = Math.max(1, floor(level) || 1), rows, cols, top, spread, walls = 0, nlo, nhi, stuck;
+    if (L <= 2) { rows = 5; cols = 5; }
+    else if (L === 3) { rows = 6; cols = 5; }
+    else if (L <= 10) { rows = 6; cols = 6; }
+    else if (L <= 30) { rows = L % 3 === 0 ? 7 : 6; cols = 6; }
+    else if (L <= 80) { rows = 7; cols = mix(L, 3) % 100 < 20 + (L - 31) * 70 / 49 ? 7 : 6; }
+    else if (L <= 200) { rows = 7; cols = mix(L, 3) % 100 < 85 ? 7 : 6; }
+    else { rows = 7; cols = 7; }
+    if (L <= 3) top = [0, 2, 2, 3][L];
+    else if (L <= 10) top = 3 + floor((L - 4) / 2);
+    else if (L <= 30) top = 6 + Math.round((L - 11) * 4 / 19);
+    else if (L <= 80) top = 9 + Math.round((L - 31) * 5 / 49);
+    else if (L <= 200) top = 12 + Math.round((L - 81) * 5 / 119);
+    else top = 14;
+    if (L > 10) {
+      // not a wall of hard boards: a breather every fifth level, a peak every tenth
+      top += (mix(L, 1) % 3) - 1;
+      if (L % 5 === 0) top -= 2;
+      if (L % 10 === 0) top += 3;
+      if (L > 200) top += (mix(L, 5) % 4);
+      top = clamp(top, L <= 30 ? 5 : (L <= 80 ? 8 : (L <= 200 ? 11 : 13)), L <= 30 ? 10 : (L <= 80 ? 14 : (L <= 200 ? 18 : 20)));
+    }
+    if (rows * cols === 42) top = Math.min(top, 15);
+    spread = L <= 10 ? 1 : (L <= 30 ? 2 : 3);
+    if (L === 1) spread = 0;
+    if (L >= 12 && L % 4 === 0) walls = L > 80 && mix(L, 2) % 3 === 0 ? 2 : 1;
+    stuck = L <= 30 ? 0 : (L <= 80 ? 1 : 2);
+    if (L <= 3) { nlo = L === 1 ? 4 : 5; nhi = L === 1 ? 5 : 7; }
+    else if (L <= 10) { nlo = 7; nhi = 10; }
+    else {
+      // the lot fills up with the target, from a loose one to a packed one, so no level is a cliff
+      var f = clamp((top - 5) / 8, 0, 1), area = rows * cols;
+      var sp = area === 36 ? [8, 10] : (area === 42 ? [11, 13] : [14, 16]), de = area === 36 ? [13, 15] : (area === 42 ? [17, 18] : [21, 22]);
+      nlo = Math.round(sp[0] + (de[0] - sp[0]) * f); nhi = Math.round(sp[1] + (de[1] - sp[1]) * f);
+    }
+    return { level: L, rows: rows, cols: cols, walls: walls, lo: Math.max(2, top - spread), hi: Math.max(2, top), nlo: nlo, nhi: nhi, stuck: stuck,
+      climb: top >= 14 ? 6 : 0, cap: 16000, probe: true, work: 700000 };
+  }
+
+  function dailyPlan(rnd) {
+    var big = rnd() < 0.5;
+    return { level: 0, rows: big ? 7 : 6, cols: big ? 7 : 6, walls: big ? 1 : 0, lo: 12, hi: 16, nlo: big ? 21 : 13, nhi: big ? 22 : 15, stuck: 1, climb: 6, cap: 16000, probe: true, work: 700000 };
+  }
+
+  var KINDS = [[0.37, 1, 2], [0.73, 0, 2], [0.89, 1, 3], [1, 0, 3]];
+
+  // An arrangement with the goal car already at the exit (so it can be solved) and the other
+  // cars and walls scattered at random; the first attempt of a level is this, then explored.
+  function fill(P, rnd) {
+    var rows = P.rows, cols = P.cols, occ = [], cars = [{ h: 1, n: 2, l: EXIT_ROW, p: cols - 2 }], walls = [], i, t;
+    for (i = 0; i < rows * cols; i++) occ.push(0);
+    occ[EXIT_ROW * cols + cols - 2] = occ[EXIT_ROW * cols + cols - 1] = 1;
+    for (i = 0; i < P.walls; i++) {
+      for (t = 0; t < 20; t++) {
+        var r = floor(rnd() * rows), c = floor(rnd() * cols);
+        if (r !== EXIT_ROW && !occ[r * cols + c]) { occ[r * cols + c] = 1; walls.push(r * cols + c); break; }
+      }
+    }
+    var want = P.nlo + floor(rnd() * (P.nhi - P.nlo + 1)), tries = 0;
+    while (cars.length < want && tries++ < want * 25) {
+      var x = rnd(), k = 0;
+      while (x > KINDS[k][0]) k++;
+      var h = KINDS[k][1], n = KINDS[k][2];
+      var lane = floor(rnd() * (h ? rows : cols)), p = floor(rnd() * ((h ? cols : rows) - n + 1));
+      if (h && lane === EXIT_ROW) continue;
+      var cell = h ? lane * cols + p : p * cols + lane, st = h ? 1 : cols, free = true, q, cc;
+      for (q = 0, cc = cell; q < n; q++, cc += st) if (occ[cc]) { free = false; break; }
+      if (!free) continue;
+      for (q = 0, cc = cell; q < n; q++, cc += st) occ[cc] = 1;
+      cars.push({ h: h, n: n, l: lane, p: p });
+    }
+    return { cars: cars, walls: walls };
+  }
+
+  // The same arrangement with one car (never the goal car) put somewhere else
+  function mutate(P, b, rnd) {
+    var rows = P.rows, cols = P.cols, k = 1 + floor(rnd() * (b.cars.length - 1)), occ = [], i, t, q;
+    for (i = 0; i < rows * cols; i++) occ.push(0);
+    b.walls.forEach(function (w) { occ[w] = 1; });
+    b.cars.forEach(function (c, j) {
+      if (j === k) return;
+      var cell = c.h ? c.l * cols + c.p : c.p * cols + c.l, st = c.h ? 1 : cols;
+      for (q = 0; q < c.n; q++, cell += st) occ[cell] = 1;
+    });
+    for (t = 0; t < 30; t++) {
+      var x = rnd(), kind = 0;
+      while (x > KINDS[kind][0]) kind++;
+      var h = KINDS[kind][1], n = KINDS[kind][2];
+      var lane = floor(rnd() * (h ? rows : cols)), p = floor(rnd() * ((h ? cols : rows) - n + 1));
+      if (h && lane === EXIT_ROW) continue;
+      var cell0 = h ? lane * cols + p : p * cols + lane, st0 = h ? 1 : cols, free = true, cc;
+      for (q = 0, cc = cell0; q < n; q++, cc += st0) if (occ[cc]) { free = false; break; }
+      if (!free) continue;
+      var cars = copyCars(b.cars);
+      cars[k] = { h: h, n: n, l: lane, p: p };
+      return { cars: cars, walls: b.walls };
+    }
+    return null;
+  }
+
+  // cars cannot move in any position of the board: they act as walls
+  function stuckCount(G, edges) {
+    var Z = scratch(), seen = [], i, n = 0;
+    for (i = 0; i < G.n; i++) seen.push(false);
+    for (var e = 0; e < edges; e++) seen[Z.mv[e] >> 3] = true;
+    for (i = 0; i < G.n; i++) if (!seen[i]) n++;
+    return n;
+  }
+
+  // the cars of position number id of the table just explored
+  function decode(cars, id) {
+    var Z = scratch(), w = [Z.lo[id], Z.md[id], Z.hi[id]];
+    return cars.map(function (c, i) { return { h: c.h, n: c.n, l: c.l, p: (w[(i / 10) | 0] >> (3 * (i % 10))) & 7 }; });
+  }
+
+  // Paint and facing for every car: a colour (0 to 7) and which way its nose points. Cars
+  // that touch at the start never share a colour while a free one is left.
+  // Four pale paints, and cars that touch at the start never share one. A greedy pass can paint
+  // itself into a corner with only four, so the busiest cars go first and the search backs up
+  // when it must: vehicles are rectangles on a grid, their contact graph is planar, so four
+  // paints always suffice. The low bit is the facing; the red car always faces the exit.
+  function looks(rows, cols, walls, cars, rnd) {
+    var perm = [0, 1, 2, 3], i, j, k, out = [], col = [], adj = [], order = [], steps = 0;
+    var g = grid({ rows: rows, cols: cols, walls: walls, cars: cars });
+    for (i = 3; i > 0; i--) { j = floor(rnd() * (i + 1)); k = perm[i]; perm[i] = perm[j]; perm[j] = k; }
+    for (i = 0; i < cars.length; i++) { adj.push([]); col.push(-1); order.push(i); }
+    for (i = 0; i < cars.length; i++) {
+      cellsOf({ rows: rows, cols: cols, cars: cars }, i).forEach(function (cell) {
+        var x = cell % cols, y = (cell - x) / cols;
+        [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(function (d) {
+          var nx = x + d[0], ny = y + d[1];
+          if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) return;
+          var o = g[ny * cols + nx];
+          if (o >= 0 && o !== i && adj[i].indexOf(o) < 0) { adj[i].push(o); adj[o].push(i); }
+        });
+      });
+    }
+    order.sort(function (a, b) { return adj[b].length - adj[a].length || a - b; });
+    function fits(v, c) { for (var t = 0; t < adj[v].length; t++) if (col[adj[v][t]] === c) return false; return true; }
+    function paint(n) {
+      if (n === cars.length) return true;
+      var v = order[n];
+      for (var q = 0; q < 4; q++) {
+        var c = perm[(n + q) % 4];
+        if (!fits(v, c)) continue;
+        col[v] = c;
+        if (++steps > 20000 || paint(n + 1)) return true;
+        col[v] = -1;
+      }
+      return false;
+    }
+    paint(0);
+    for (i = 0; i < cars.length; i++) {
+      // the search gave up (it never does on a planar graph): the first paint no neighbour has
+      if (col[i] < 0) { col[i] = perm[i % 4]; for (k = 0; k < 4; k++) if (fits(i, perm[(i + k) % 4])) { col[i] = perm[(i + k) % 4]; break; } }
+      out.push(col[i] * 2 + (i ? (rnd() < 0.5 ? 1 : 0) : 1));
+    }
+    return out;
+  }
+
+  // A hand-built board that is always fine: three moves
+  function fallback(level) {
+    return make(5, 5, [], [{ h: 1, n: 2, l: 2, p: 0 }, { h: 0, n: 2, l: 3, p: 1 }, { h: 0, n: 2, l: 4, p: 2 }], level);
+  }
+
+  // Random arrangements, each explored whole; the first that holds a position in the band
+  // is the level, its start the position (preferring the top of the band) chosen at random.
+  // Attempts and work are counted, never time, so a level is the same everywhere.
+  function generate(level, rnd, daily) { return build(daily ? dailyPlan(rnd) : plan(level), rnd); }
+  function build(P, rnd) {
+    var work = 0, best = null, tries = 0, Z, base = null, baseMd = -1, since = 0, climb = P.climb || 0;
+    while (work < P.work && tries++ < 400) {
+      // a fresh arrangement, or a near miss with one car put somewhere else
+      var cand, fresh = false;
+      if (base && since < climb && (cand = mutate(P, base, rnd))) since++;
+      else { cand = fill(P, rnd); base = null; since = 0; fresh = true; }
+      var G = prep(P.rows, P.cols, cand.walls, cand.cars), r = explore(G, positions(cand.cars), P.cap, P.probe);
+      if (!r) { work += spent + 1; if (fresh) base = null; continue; }
+      work += r.count;
+      Z = scratch();
+      var md = -1, s;
+      for (s = 0; s < r.count; s++) if (Z.dist[s] > md) md = Z.dist[s];
+      if (md < 1) { if (fresh) base = null; continue; }
+      var stuck = stuckCount(G, r.edges), d = Math.min(md, P.hi);
+      if (md >= P.lo && stuck <= P.stuck) {
+        var start = pickState(cand.cars, r.count, d, rnd);
+        keep(sigOf(P.rows, P.cols, cand.walls, cand.cars), r);
+        return finish(P, cand.walls, start, rnd);
+      }
+      // remember the nearest miss in case the work runs out
+      if (stuck <= P.stuck + 1 && md >= 2 && (!best || md > best.md)) best = { md: md, cars: pickState(cand.cars, r.count, d, rnd), walls: cand.walls };
+      // a miss that is close is worth moving cars about in
+      if (fresh) { if (md >= P.lo - 4) { base = cand; baseMd = md; } }
+      else if (md >= baseMd) { if (md > baseMd) since = 0; base = cand; baseMd = md; }
+    }
+    if (best) {
+      var S1 = finish(P, best.walls, best.cars, rnd);
+      if (S1) return S1;
+    }
+    return fallback(P.level);
+  }
+  function pickState(cars, count, d, rnd) {
+    var Z = scratch(), k = 0, s, want;
+    for (s = 0; s < count; s++) if (Z.dist[s] === d) k++;
+    want = floor(rnd() * k);
+    for (s = 0; s < count; s++) if (Z.dist[s] === d && want-- === 0) return decode(cars, s);
+    return decode(cars, 0);
+  }
+  function finish(P, walls, cars, rnd) {
+    return make(P.rows, P.cols, walls, cars, P.level, looks(P.rows, P.cols, walls, cars, rnd));
+  }
+
+  /* ---------------------------------------------------------------- saves */
+
+  // Can car v slide to position to over free cells only, with the cars where they are?
+  function slides(rows, cols, walls, cars, v, to) {
+    var g = [], i, k;
+    for (i = 0; i < rows * cols; i++) g.push(0);
+    for (i = 0; i < walls.length; i++) g[walls[i]] = 1;
+    for (i = 0; i < cars.length; i++) {
+      if (i === v) continue;
+      var c = cars[i], cell = c.h ? c.l * cols + c.p : c.p * cols + c.l, st = c.h ? 1 : cols;
+      for (k = 0; k < c.n; k++, cell += st) g[cell] = 1;
+    }
+    var m = cars[v], step = m.h ? 1 : cols, base = m.h ? m.l * cols : m.l;
+    var a = Math.min(m.p, to), z = Math.max(m.p, to) + m.n - 1;
+    for (k = a; k <= z; k++) if (g[base + k * step]) return false;
+    return true;
+  }
+
+  // A save is taken back only if it is a sound board, solvable, with the cars at a position
+  // of that board and an undo stack that really leads back from there
+  function restore(o) {
+    if (!o || typeof o !== 'object' || !Array.isArray(o.cars) || !Array.isArray(o.start) || !Array.isArray(o.walls) || !Array.isArray(o.stack)) return null;
+    var n = o.cars.length, i, startCars = [], nowCars = [];
+    if (n < 2 || n > MAXV || o.start.length !== n) return null;
+    for (i = 0; i < n; i++) {
+      var c = o.cars[i];
+      if (!c || typeof c !== 'object') return null;
+      startCars.push({ h: c.h, n: c.n, l: c.l, p: o.start[i] });
+      nowCars.push({ h: c.h, n: c.n, l: c.l, p: c.p });
+    }
+    if (!sound(o.rows, o.cols, o.walls, nowCars) || !sound(o.rows, o.cols, o.walls, startCars)) return null;
+    if (!isInt(o.level) || o.level < 0 || o.level > 1000000) return null;
+    var S = make(o.rows, o.cols, o.walls, startCars, o.level, o.look);
+    if (!S) return null;
+    if (S.look.length !== n || !S.look.every(function (v) { return isInt(v) && v >= 0 && v < 16; })) S.look = defaultLook(n);
+    S.look[0] = S.look[0] | 1;
+    // the cars now must be a position of the same board
+    if (find(memo, positions(nowCars)) < 0) return null;
+    // the undo stack: every entry a legal slide, newest first, back to where the board began
+    if (o.stack.length > UNDO_MAX || !isInt(o.moves) || o.moves < o.stack.length || o.moves > 1000000) return null;
+    var walk = copyCars(nowCars);
+    for (i = o.stack.length - 1; i >= 0; i--) {
+      var e = o.stack[i];
+      if (!Array.isArray(e) || e.length !== 2 || !isInt(e[0]) || !isInt(e[1]) || e[0] < 0 || e[0] >= n) return null;
+      var m = walk[e[0]];
+      if (e[1] < 0 || e[1] + m.n > (m.h ? o.cols : o.rows) || e[1] === m.p || !slides(o.rows, o.cols, o.walls, walk, e[0], e[1])) return null;
+      m.p = e[1];
+    }
+    if (o.moves === o.stack.length && !walk.every(function (w, k) { return w.p === o.start[k]; })) return null;
+    S.cars = nowCars;
+    S.stack = o.stack.map(function (e) { return [e[0], e[1]]; });
+    S.moves = o.moves;
+    S.hints = isInt(o.hints) && o.hints >= 0 && o.hints <= 1000 ? o.hints : 0;
+    S.done = solved(S);
+    S.hint = null;
+    if (o.hint !== null && o.hint !== undefined) {
+      var hnt = o.hint;
+      if (typeof hnt !== 'object' || !isInt(hnt.v) || hnt.v < 0 || hnt.v >= n || !isInt(hnt.to) || !isInt(hnt.left) || hnt.left < 1 || hnt.left > HINT_MOVES) return null;
+      var rg = range(S, hnt.v);
+      if (S.done || hnt.to === S.cars[hnt.v].p || hnt.to < rg.lo || hnt.to > rg.hi) return null;
+      S.hint = { v: hnt.v, to: hnt.to, left: hnt.left };
+    }
+    return S;
+  }
+
+  var api = {
+    EXIT_ROW: EXIT_ROW, MAXV: MAXV, CAP: CAP, HINT_MOVES: HINT_MOVES, DX: DX, DY: DY,
+    sound: sound, grid: grid, cellsOf: cellsOf, make: make, solved: solved, range: range, locked: locked, clear: clear,
+    nextMove: nextMove, dist: dist, move: move, step: step, undo: undo, restart: restart, useHint: useHint, pick: pick, nearest: nearest, cycle: cycle,
+    progress: progress, levelDone: levelDone, plan: plan, dailyPlan: dailyPlan, generate: generate, restore: restore
+  };
+  if (typeof self !== 'undefined') self.GridlockEngine = api;
+  return api;
+}
+if (typeof module !== 'undefined' && module.exports) module.exports = GridlockEngineFactory;
+/* ==== ENGINE END ==== */
+</script>
+
+<script>
+(function () {
+  'use strict';
+  var C = window.Chogan, el = C.el;
+  var E = GridlockEngineFactory();
+
+  C.boot({});
+  var ctx = C.game({
+    id: 'gridlock',
+    name: { fa: 'راه‌بندان', en: 'Gridlock', zh: '堵车', de: 'Stau', es: 'Atasco', pl: 'W korku', fr: 'Embouteillage', ar: 'زحمة السير', hi: 'ट्रैफ़िक जाम' },
+    accent: '#647D54',
+    mood: 'sudoku',
+    strings: {
+      fa: {
+        level: 'مرحله', levelN: 'مرحله‌ی {n}', moves: 'حرکت', movesN: '{n} حرکت', fewestN: 'کمترین {n}', movesFewest: 'حرکت / کمترین',
+        restartLevel: 'شروع دوباره‌ی مرحله', dailyGl: 'راه‌بندان روزانه', undoMove: 'برگرداندن حرکت',
+        hintOn: 'ماشین درخشان را تا کادر خط‌چین ببر', hintPending: 'اول راهنمایی را تمام کن', moveHinted: 'اول ماشین درخشان را جابه‌جا کن',
+        noHints: 'راهنمایی نمانده', hintSoon: 'هر چند مرحله یک راهنمایی هدیه می‌گیری',
+        levelClear: 'مرحله تمام شد', nextLevel: 'مرحله‌ی بعد', giftHint: 'هدیه: یک راهنمایی',
+        board: 'پارکینگ راه‌بندان', keysMove: 'انتخاب و حرکت دادن ماشین', keysPick: 'انتخاب ماشین، هر سو',
+        rules: 'ماشین‌ها و کامیون‌ها را در راه خودشان بلغزان تا راه ماشین قرمزت باز شود، بعد آن را از دهانه‌ی سمت راست بیرون ببر. وسیله‌ها فقط روی خانه‌های خالی می‌روند؛ بلوک‌های بتنی ثابت‌اند. یک کشیدن، هر قدر بلند، یک حرکت است. با راه باز، یک ضربه‌ی تند ماشین قرمز را بیرون می‌فرستد. برگرداندن رایگان است، ولی حرکت شمرده می‌ماند. راهنمایی یک ماشین و جایش را نشان می‌دهد، دو حرکت را می‌پوشاند و بقیه را قفل می‌کند. با سه راهنمایی شروع می‌کنی و با گذراندن مرحله‌ها و بازی‌های روزانه بیشتر می‌گیری.',
+        tutTitle1: 'راه خروج', tutText1: 'ماشین قرمز را از دهانه‌ی لبه‌ی راست بیرون ببر.',
+        tutTitle2: 'در راه خودشان', tutText2: 'هر ماشین فقط جلو و عقب می‌رود و از هیچ وسیله‌ی دیگر یا بلوکی رد نمی‌شود. اول آن‌ها را کنار بزن.',
+        tutTitle3: 'یک کشیدن، یک حرکت', tutText3: 'ماشین را تا هر جا که می‌رود بکش: همین یک حرکت است. هر چه کمتر، بهتر. راهنمایی می‌گوید کدام را بجنبانی.'
+      },
+      en: {
+        level: 'Level', levelN: 'Level {n}', moves: 'Moves', movesN: '{n} moves', fewestN: 'Fewest {n}', movesFewest: 'Moves / fewest',
+        restartLevel: 'Restart level', dailyGl: 'Daily Gridlock', undoMove: 'Undo move',
+        hintOn: 'Slide the glowing car to the outline', hintPending: 'Finish the hint first', moveHinted: 'Move the highlighted car first',
+        noHints: 'No hints left', hintSoon: 'A free hint comes every few levels',
+        levelClear: 'Level cleared', nextLevel: 'Next level', giftHint: 'Gift: one hint',
+        board: 'Gridlock parking lot', keysMove: 'Pick a car, slide it', keysPick: 'Pick a car, any way',
+        rules: 'Slide cars and trucks along their lanes to clear the way for your red car, then drive it out through the gap on the right. Vehicles only move over free cells; concrete blocks never move. One drag, however long, is one move. On a clear road a quick flick sends the red car out. Undo is free, but moves stay counted. A hint shows a car and its goal, covers two moves and locks the others. You start with three hints and earn more as you clear levels and dailies.',
+        tutTitle1: 'The way out', tutText1: 'Drive the red car out through the opening in the right edge.',
+        tutTitle2: 'Along the lane', tutText2: 'Every car slides only forwards and back, and never through another vehicle or a block. Clear them out of the way.',
+        tutTitle3: 'One drag, one move', tutText3: 'Drag a car as far as it will go: that is a single move. Fewer is better. A hint shows which car to move next.'
+      },
+      pl: {
+        level: 'Poziom', levelN: 'Poziom {n}', moves: 'Ruchy', movesN: 'Ruchy: {n}', fewestN: 'Najmniej: {n}', movesFewest: 'Ruchy / najmniej',
+        restartLevel: 'Zrestartuj poziom', dailyGl: 'Codzienne W korku', undoMove: 'Cofnij ruch',
+        hintOn: 'Przesuń świecący samochód na wyznaczone miejsce', hintPending: 'Najpierw dokończ ruch ze wskazówki', moveHinted: 'Najpierw przesuń podświetlony samochód',
+        noHints: 'Brak wskazówek', hintSoon: 'Darmowa wskazówka pojawia się co kilka poziomów',
+        levelClear: 'Poziom ukończony', nextLevel: 'Następny poziom', giftHint: 'Prezent: jedna wskazówka',
+        board: 'Parking Gridlock', keysMove: 'Wybierz samochód i przesuń go', keysPick: 'Wybierz dowolny samochód',
+        rules: 'Przesuwaj samochody i ciężarówki wzdłuż ich pasów ruchu, aby oczyścić drogę dla swojego czerwonego samochodu, a następnie wyjedź nim przez lukę po prawej stronie. Pojazdy poruszają się wyłącznie po wolnych polach; betonowe bloki nigdy się nie ruszają. Jedno przeciągnięcie, niezależnie od odległości, to jeden ruch. Gdy droga jest wolna, szybkie pociągnięcie pozwala wyjechać czerwonym autem. Cofanie ruchów jest darmowe, ale ruchy są nadal zliczane. Wskazówka pokazuje samochód oraz miejsce, na które ma trafić, obejmuje dwa ruchy i blokuje pozostałe pojazdy. Zaczynasz z trzema wskazówkami, a kolejne zdobywasz za kończenie poziomów oraz wyzwań dziennych.',
+        tutTitle1: 'Droga wyjścia', tutText1: 'Wyjedź czerwonym samochodem przez otwór w prawej krawędzi planszy.',
+        tutTitle2: 'Wzdłuż pasa ruchu', tutText2: 'Każdy samochód przesuwa się tylko do przodu i do tyłu, i nigdy nie może przejechać przez inny pojazd lub blok. Usuń je z drogi.',
+        tutTitle3: 'Jeden ruch, jedno przeciągnięcie', tutText3: 'Przeciągnij samochód tak daleko, jak to możliwe: to liczy się jako jeden ruch. Im mniej ruchów, tym lepiej. Wskazówka pokazuje, który pojazd poruszyć jako następny.'
+      },
+      fr: {
+        level: 'Niveau', levelN: 'Niveau {n}', moves: 'Coups', movesN: '{n} coups', fewestN: 'Minimum {n}', movesFewest: 'Coups / minimum',
+        restartLevel: 'Recommencer le niveau', dailyGl: 'Embouteillage du jour', undoMove: 'Annuler le coup',
+        hintOn: 'Glisse la voiture qui brille jusqu’au contour', hintPending: 'Finis d’abord l’indice', moveHinted: 'Déplace d’abord la voiture en surbrillance',
+        noHints: 'Plus d’indices', hintSoon: 'Un indice gratuit arrive tous les quelques niveaux',
+        levelClear: 'Niveau réussi', nextLevel: 'Niveau suivant', giftHint: 'Cadeau : un indice',
+        board: 'Parking Embouteillage', keysMove: 'Choisis une voiture, glisse-la', keysPick: 'Choisis une voiture, dans n’importe quel sens',
+        rules: 'Fais glisser voitures et camions dans leur voie pour libérer le passage de ta voiture rouge, puis fais-la sortir par l’ouverture à droite. Les véhicules ne passent que sur des cases libres ; les blocs de béton ne bougent jamais. Un glissement, même long, compte pour un coup. Sur une route dégagée, un petit coup de doigt fait sortir la voiture rouge. Annuler est gratuit, mais les coups restent comptés. Un indice montre une voiture et sa cible, couvre deux coups et bloque les autres. Tu commences avec trois indices et en gagnes d’autres en réussissant des niveaux et des défis du jour.',
+        tutTitle1: 'La sortie', tutText1: 'Fais sortir la voiture rouge par l’ouverture du bord droit.',
+        tutTitle2: 'Dans sa voie', tutText2: 'Chaque voiture glisse seulement en avant et en arrière, jamais à travers un autre véhicule ou un bloc. Dégage-les du chemin.',
+        tutTitle3: 'Un glissement, un coup', tutText3: 'Glisse une voiture aussi loin qu’elle va : c’est un seul coup. Moins, c’est mieux. Un indice montre quelle voiture bouger ensuite.'
+      },
+      ar: {
+        level: 'المستوى', levelN: 'المستوى {n}', moves: 'الحركات', movesN: '{n} حركة', fewestN: 'الأقل {n}', movesFewest: 'الحركات / الأقل',
+        restartLevel: 'أعد المستوى', dailyGl: 'زحمة اليوم', undoMove: 'تراجع',
+        hintOn: 'حرّك السيارة المضيئة إلى الإطار', hintPending: 'أكمل التلميح أولًا', moveHinted: 'حرّك السيارة المميزة أولًا',
+        noHints: 'لا تلميحات متبقية', hintSoon: 'تلميح مجاني يأتي كل بضعة مستويات',
+        levelClear: 'اجتزت المستوى', nextLevel: 'المستوى التالي', giftHint: 'هدية: تلميح',
+        board: 'موقف زحمة السير', keysMove: 'اختر سيارة وحرّكها', keysPick: 'اختر سيارة، بأي اتجاه',
+        rules: 'حرّك السيارات والشاحنات على مساراتها لتفتح الطريق لسيارتك الحمراء، ثم أخرجها من الفتحة على اليمين. المركبات تتحرك فوق الخانات الفارغة فقط؛ والكتل الإسمنتية لا تتحرك أبدًا. سحبة واحدة، مهما طالت، حركة واحدة. وعلى طريق خالٍ تُخرج نقرة سريعة السيارة الحمراء. التراجع مجاني، لكن الحركات تبقى محسوبة. التلميح يُظهر سيارة وهدفها، ويغطي حركتين ويقفل البقية. تبدأ بثلاثة تلميحات وتكسب المزيد كلما اجتزت مستويات وتحديات يومية.',
+        tutTitle1: 'طريق الخروج', tutText1: 'أخرج السيارة الحمراء من الفتحة في الحافة اليمنى.',
+        tutTitle2: 'على المسار', tutText2: 'كل سيارة تتحرك للأمام والخلف فقط، ولا تمر أبدًا عبر مركبة أخرى أو كتلة. أبعدها عن الطريق.',
+        tutTitle3: 'سحبة واحدة، حركة واحدة', tutText3: 'اسحب السيارة إلى أبعد ما تستطيع: هذه حركة واحدة. الأقل أفضل. التلميح يُظهر أي سيارة تحرّك بعدها.'
+      },
+      hi: {
+        level: 'स्तर', levelN: 'स्तर {n}', moves: 'चालें', movesN: '{n} चालें', fewestN: 'न्यूनतम {n}', movesFewest: 'चालें / न्यूनतम',
+        restartLevel: 'स्तर फिर से शुरू', dailyGl: 'रोज़ का ट्रैफ़िक जाम', undoMove: 'चाल वापस',
+        hintOn: 'चमकती गाड़ी को रेखा तक खिसकाएँ', hintPending: 'पहले संकेत पूरा करें', moveHinted: 'पहले चमकाई गई गाड़ी खिसकाएँ',
+        noHints: 'कोई संकेत नहीं बचा', hintSoon: 'हर कुछ स्तरों पर एक मुफ़्त संकेत मिलता है',
+        levelClear: 'स्तर पूरा', nextLevel: 'अगला स्तर', giftHint: 'तोहफ़ा: एक संकेत',
+        board: 'ट्रैफ़िक जाम की पार्किंग', keysMove: 'गाड़ी चुनें, खिसकाएँ', keysPick: 'गाड़ी चुनें, किसी भी ओर',
+        rules: 'अपनी लाल गाड़ी के लिए रास्ता साफ़ करने को कारों और ट्रकों को उनकी लेन में खिसकाएँ, फिर उसे दाईं ओर के खुले रास्ते से बाहर निकालें। गाड़ियाँ सिर्फ़ ख़ाली खानों पर चलती हैं; कंक्रीट के ब्लॉक कभी नहीं हिलते। एक बार खींचना, चाहे कितना भी लंबा हो, एक चाल है। रास्ता साफ़ हो तो एक तेज़ झटका लाल गाड़ी को बाहर भेज देता है। वापस करना मुफ़्त है, पर चालें गिनी रहती हैं। संकेत एक गाड़ी और उसकी मंज़िल दिखाता है, दो चालों तक चलता है और बाक़ी गाड़ियों को रोक देता है। आप तीन संकेतों से शुरू करते हैं और स्तर व रोज़ की चुनौतियाँ पूरी करके और कमाते हैं।',
+        tutTitle1: 'बाहर का रास्ता', tutText1: 'लाल गाड़ी को दाएँ किनारे के खुले रास्ते से बाहर निकालें।',
+        tutTitle2: 'लेन के साथ-साथ', tutText2: 'हर गाड़ी सिर्फ़ आगे और पीछे खिसकती है, और कभी किसी दूसरी गाड़ी या ब्लॉक के आर-पार नहीं जाती। उन्हें रास्ते से हटाएँ।',
+        tutTitle3: 'एक खिंचाव, एक चाल', tutText3: 'गाड़ी को जितना दूर जा सके खींचें: यह एक ही चाल है। जितनी कम, उतना अच्छा। संकेत बताता है कि अगली कौन-सी गाड़ी चलानी है।'
+      },
+
+      zh: {
+        level: '关卡', levelN: '第 {n} 关', moves: '步数', movesN: '{n} 步', fewestN: '最少 {n} 步', movesFewest: '步数 / 最少',
+        restartLevel: '重玩本关', dailyGl: '每日堵车', undoMove: '撤销一步',
+        hintOn: '把发光的车滑到虚线框里', hintPending: '先完成提示', moveHinted: '先移动发光的那辆车',
+        noHints: '没有提示了', hintSoon: '每过几关会送一次提示',
+        levelClear: '过关', nextLevel: '下一关', giftHint: '赠送：一次提示',
+        board: '堵车停车场', keysMove: '选车并滑动', keysPick: '选车，不限方向',
+        rules: '让汽车和卡车沿各自的车道滑动，为红色小车让出路来，再把它从右边的缺口开出去。车只能在空格上移动，水泥块不会动。一次拖动，不管多长，都算一步。路通时，朝出口快速一甩，红车就会开出去。撤销免费，但这一步仍计入步数。提示会指出一辆车和它该去的位置，管两步，并锁住其他车。开始有三次提示，过关和完成每日挑战还能再得。',
+        tutTitle1: '开出去', tutText1: '把红车从右边缘的缺口开出去。',
+        tutTitle2: '沿着车道', tutText2: '每辆车只能前后滑动，不能穿过其他车辆或水泥块。先把它们挪开。',
+        tutTitle3: '一拖一步', tutText3: '把车拖到能去的最远处：这只算一步。越少越好。提示会告诉你该先动哪一辆。'
+      },
+      de: {
+        level: 'Level', levelN: 'Level {n}', moves: 'Züge', movesN: '{n} Züge', fewestN: 'Minimum {n}', movesFewest: 'Züge / Minimum',
+        restartLevel: 'Level neu starten', dailyGl: 'Stau des Tages', undoMove: 'Zug zurücknehmen',
+        hintOn: 'Schieb das leuchtende Auto in den Rahmen', hintPending: 'Bring den Tipp erst zu Ende', moveHinted: 'Bewege zuerst das leuchtende Auto',
+        noHints: 'Keine Tipps mehr', hintSoon: 'Alle paar Level gibt es einen Tipp geschenkt',
+        levelClear: 'Level geschafft', nextLevel: 'Nächstes Level', giftHint: 'Geschenk: ein Tipp',
+        board: 'Stau-Parkplatz', keysMove: 'Wählen und schieben', keysPick: 'Auto wählen',
+        rules: 'Schiebe Autos und Lkw in ihrer Spur, bis dein rotes Auto freie Fahrt hat, und fahr es rechts durch die Lücke hinaus. Nur freie Felder sind befahrbar, Betonblöcke bleiben stehen. Einmal ziehen ist ein Zug, egal wie weit. Auf freier Strecke fährt ein Wisch das rote Auto hinaus. Rückgängig ist kostenlos, die Züge bleiben gezählt. Ein Tipp zeigt Auto und Ziel für zwei Züge, die anderen sind gesperrt. Du startest mit drei Tipps, mehr gibt es für Level und Tagesrätsel.',
+        tutTitle1: 'Der Ausweg', tutText1: 'Fahr das rote Auto durch die Öffnung am rechten Rand hinaus.',
+        tutTitle2: 'In der Spur', tutText2: 'Jedes Auto fährt nur vor und zurück, nie durch ein anderes Fahrzeug oder einen Block. Schieb sie aus dem Weg.',
+        tutTitle3: 'Einmal ziehen, ein Zug', tutText3: 'Zieh ein Auto so weit, wie es fahren kann: Das ist nur ein Zug. Weniger ist besser. Ein Tipp zeigt, welches als Nächstes dran ist.'
+      },
+      es: {
+        level: 'Nivel', levelN: 'Nivel {n}', moves: 'Movimientos', movesN: '{n} movimientos', fewestN: 'Mínimo {n}', movesFewest: 'Movimientos / mínimo',
+        restartLevel: 'Reiniciar nivel', dailyGl: 'Atasco diario', undoMove: 'Deshacer movimiento',
+        hintOn: 'Desliza el coche brillante hasta el contorno', hintPending: 'Termina primero la pista', moveHinted: 'Mueve primero el coche resaltado',
+        noHints: 'No quedan pistas', hintSoon: 'Cada pocos niveles recibes una pista gratis',
+        levelClear: 'Nivel superado', nextLevel: 'Siguiente nivel', giftHint: 'Regalo: una pista',
+        board: 'Aparcamiento de Atasco', keysMove: 'Elegir y deslizar', keysPick: 'Elegir un coche',
+        rules: 'Desliza coches y camiones por su carril para despejar el paso al coche rojo y sácalo por el hueco de la derecha. Solo se pasa por casillas libres; el hormigón no se mueve. Un arrastre, por largo que sea, es un movimiento. Con vía libre, un toque rápido lo lanza fuera. Deshacer es gratis, pero el movimiento cuenta. Una pista señala un coche y su destino, vale por dos movimientos y bloquea el resto. Empiezas con tres pistas y ganas más jugando.',
+        tutTitle1: 'La salida', tutText1: 'Saca el coche rojo por la abertura del borde derecho.',
+        tutTitle2: 'Por el carril', tutText2: 'Cada coche solo se desliza hacia delante y hacia atrás, y nunca atraviesa otro vehículo ni un bloque. Apártalos del camino.',
+        tutTitle3: 'Un arrastre, un movimiento', tutText3: 'Arrastra un coche hasta donde llegue: eso cuenta como un solo movimiento. Cuantos menos, mejor. Una pista te dice qué coche mover.'
+      }
+    }
+  });
+
+  var params = new URLSearchParams(location.search);
+  var dailyDate = params.get('daily');
+  var U = 40, PAD = 8, ROAD = 46, SVGNS = 'http://www.w3.org/2000/svg';
+  var SNAP_MS = 360, DRIVE_MS = 720, FLING = 5, FLING_MS = 100, DRAG_PX = 8;
+
+  var prog = ctx.store.get('progress', null);
+  if (!prog || !(prog.level >= 1) || !(prog.hints >= 0)) prog = E.progress();
+
+  var S = null, nodes = [], busy = false, cur = -1, press = null, pending = null, gift = 0, snap = null;
+  var startedAt = Date.now(), pausedAt = 0;
+  var layerCars = null, layerOver = null, dim = null, ghost = null, dimFor = -1;
+
+  var top = el('div', { class: 'gl-top' });
+  var svg = document.createElementNS(SVGNS, 'svg');
+  svg.setAttribute('class', 'gl-board');
+  svg.setAttribute('role', 'group');
+  svg.setAttribute('aria-label', C.t('board'));
+  var frame = el('div', { class: 'gl-frame' }, [svg]);
+  var actions = el('div', { class: 'gl-actions' });
+  var status = el('div', { class: 'gl-status', 'aria-live': 'polite' });
+  var side = el('div', { class: 'gl-side' }, [top, actions, status]);
+  var wrap = el('div', { class: 'gl-wrap' }, [frame, side]);
+
+  ctx.stat('moves', C.t('moves'));
+  ctx.button({ icon: 'help', label: C.t('help'), onClick: showHelp });
+  var undoBtn = ctx.button({ icon: 'undo', label: C.t('undoMove'), onClick: undo });
+  var restartBtn = ctx.button({ icon: 'refresh', label: C.t('restartLevel'), onClick: askRestart });
+  undoBtn.classList.add('gl-off');
+  restartBtn.classList.add('gl-off');
+  ctx.main.appendChild(wrap);
+  ctx.mount();
+
+  /* --------------------------------------------------------- drawing */
+
+  function sv(tag, attrs) {
+    var n = document.createElementNS(SVGNS, tag);
+    for (var k in attrs) if (Object.prototype.hasOwnProperty.call(attrs, k)) n.setAttribute(k, attrs[k]);
+    return n;
+  }
+
+  // One vehicle lying down, nose to the right, in a box n cells long and one wide, 40 units to a
+  // cell. The board, the tutorial, the share card and the icon all draw from this one list: a
+  // sedan (two cells) or a pickup with a slatted bed (three), outline, glass, wheels and mirrors
+  // in one ink, a lighter roof plate, a soft shadow; the red car wears a chevron on its hood.
+  function parts(n, goal) {
+    var out = [];
+    if (n === 2) {
+      out.push(['rect', { class: 'gl-shadow', x: 8, y: 7.5, width: 72, height: 31, rx: 11 }]);
+      out.push(['path', { class: 'gl-wheel', d: 'M12 1h9v8h-9zM56 1h9v8h-9zM12 31h9v8h-9zM56 31h9v8h-9z' }]);
+      out.push(['path', { class: 'gl-body', d: 'M13 4.5H64.5C71.4 4.5 77 10.1 77 17V23C77 29.9 71.4 35.5 64.5 35.5H13C8.6 35.5 5 31.9 5 27.5V12.5C5 8.1 8.6 4.5 13 4.5Z' }]);
+      out.push(['rect', { class: 'gl-roof', x: 24, y: 8.5, width: 20, height: 23, rx: 3 }]);
+      out.push(['path', { class: 'gl-glass', d: 'M25 8.5H19.5C17.6 8.5 16 10.1 16 12V28C16 29.9 17.6 31.5 19.5 31.5H25Z' }]);
+      out.push(['path', { class: 'gl-glass', d: 'M43 8.5H53C55.2 8.5 57 10.3 57 12.5V27.5C57 29.7 55.2 31.5 53 31.5H43Z' }]);
+      out.push(['path', { class: 'gl-mirror', d: 'M44 1h4v5.5h-4zM44 33.5h4v5.5h-4z' }]);
+    } else {
+      out.push(['rect', { class: 'gl-shadow', x: 8, y: 7.5, width: 112, height: 31, rx: 10 }]);
+      out.push(['path', { class: 'gl-wheel', d: 'M16 1h9v8h-9zM99 1h9v8h-9zM16 31h9v8h-9zM99 31h9v8h-9z' }]);
+      out.push(['rect', { class: 'gl-body', x: 5, y: 5.5, width: 77, height: 29, rx: 5 }]);
+      out.push(['rect', { class: 'gl-bed', x: 9.5, y: 9.5, width: 68, height: 21, rx: 2.5 }]);
+      out.push(['path', { class: 'gl-slat', d: 'M20 12v16M31 12v16M42 12v16M53 12v16M64 12v16' }]);
+      out.push(['path', { class: 'gl-body', d: 'M80 4.5H104.5C111.4 4.5 117 10.1 117 17V23C117 29.9 111.4 35.5 104.5 35.5H80Z' }]);
+      out.push(['rect', { class: 'gl-roof', x: 81, y: 8.5, width: 13, height: 23, rx: 2.5 }]);
+      out.push(['path', { class: 'gl-glass', d: 'M93 8.5H101C103.2 8.5 105 10.3 105 12.5V27.5C105 29.7 103.2 31.5 101 31.5H93Z' }]);
+      out.push(['path', { class: 'gl-mirror', d: 'M94 1h4v5.5h-4zM94 33.5h4v5.5h-4z' }]);
+    }
+    if (goal) out.push(['path', { class: 'gl-mark', d: 'M63 14l6 6-6 6' }]);
+    return out;
+  }
+  // a concrete barrier in one cell: a rounded block with a hatched top, nothing like a car
+  function wallParts() {
+    return [
+      ['rect', { class: 'gl-wall', x: 4.5, y: 4.5, width: 31, height: 31, rx: 7 }],
+      ['rect', { class: 'gl-wall-top', x: 9.5, y: 9.5, width: 21, height: 21, rx: 3.5 }],
+      ['path', { class: 'gl-hatch', d: 'M13 27L27 13M13 19L19 13M21 27L27 21' }]
+    ];
+  }
+  function artNode(n, goal) {
+    var g = sv('g', {});
+    parts(n, goal).forEach(function (p) { g.appendChild(sv(p[0], p[1])); });
+    return g;
+  }
+  function artMarkup(n, goal) {
+    return parts(n, goal).map(function (p) {
+      var s = '<' + p[0];
+      for (var k in p[1]) if (Object.prototype.hasOwnProperty.call(p[1], k)) s += ' ' + k + '="' + p[1][k] + '"';
+      return s + '/>';
+    }).join('');
+  }
+  // lying down and nose first, or turned to stand along a column, or facing the other way
+  function artTurn(c, forward) {
+    var flip = forward ? '' : 'translate(' + (c.n * U) + ' 0) scale(-1 1)';
+    if (c.h) return flip;
+    return 'translate(' + U + ' 0) rotate(90)' + (flip ? ' ' + flip : '');
+  }
+  function paintClass(v) { return v === 0 ? 'gl-pg' : 'gl-p' + ((S.look[v] >> 1) & 3); }
+
+  function carNode(v) {
+    var c = S.cars[v], w = c.h ? c.n * U : U, h = c.h ? U : c.n * U;
+    var g = sv('g', { class: 'gl-car ' + paintClass(v) });
+    var wig = sv('g', { class: 'gl-wig' });
+    wig.appendChild(sv('rect', { class: 'gl-halo', x: -2, y: -2, width: w + 4, height: h + 4, rx: 14 }));
+    var art = artNode(c.n, v === 0);
+    art.setAttribute('transform', artTurn(c, v === 0 || (S.look[v] & 1) === 1));
+    wig.appendChild(art);
+    g.appendChild(wig);
+    g._wig = wig;
+    return g;
+  }
+
+  function wallNode(cell) {
+    var g = sv('g', { transform: 'translate(' + ((cell % S.cols) * U) + ' ' + (Math.floor(cell / S.cols) * U) + ')' });
+    wallParts().forEach(function (p) { g.appendChild(sv(p[0], p[1])); });
+    return g;
+  }
+
+  function lane(v, p) {
+    var c = S.cars[v];
+    return c.h ? [p * U, c.l * U] : [c.l * U, p * U];
+  }
+  function put(v, p, anim) {
+    var g = nodes[v], xy = lane(v, p);
+    g.classList.toggle('gl-car--still', !anim || C.ui.reduceMotion());
+    g.style.transform = 'translate(' + xy[0] + 'px,' + xy[1] + 'px)';
+  }
+  function putAll(anim) { for (var v = 0; v < nodes.length; v++) put(v, S.cars[v].p, anim); }
+
+  function build() {
+    svg.innerHTML = '';
+    var W = S.cols * U, H = S.rows * U, R = 18, r, c, y1 = 2 * U + 3, y2 = 3 * U - 3;
+    svg.setAttribute('viewBox', (-PAD) + ' ' + (-PAD) + ' ' + (W + 2 * PAD + ROAD) + ' ' + (H + 2 * PAD));
+    svg.appendChild(sv('rect', { class: 'gl-lot', x: 0, y: 0, width: W, height: H, rx: R }));
+    for (r = 0; r < S.rows; r++) {
+      for (c = 0; c < S.cols; c++) {
+        svg.appendChild(sv('rect', { class: 'gl-cell' + (r === E.EXIT_ROW ? ' gl-cell--exit' : ''), x: c * U + 2, y: r * U + 2, width: U - 4, height: U - 4, rx: 7 }));
+      }
+    }
+    // the kerb runs all the way round except for the opening in the exit row
+    svg.appendChild(sv('path', { class: 'gl-curb', d: 'M' + W + ' ' + y1 + 'V' + R + 'Q' + W + ' 0 ' + (W - R) + ' 0H' + R + 'Q0 0 0 ' + R + 'V' + (H - R) +
+      'Q0 ' + H + ' ' + R + ' ' + H + 'H' + (W - R) + 'Q' + W + ' ' + H + ' ' + W + ' ' + (H - R) + 'V' + y2 }));
+    svg.appendChild(sv('rect', { class: 'gl-road', x: W, y: 2 * U + 4, width: ROAD, height: U - 8, rx: 12 }));
+    for (var k = 0; k < 3; k++) {
+      var x = W + 11 + k * 12, y = 2.5 * U;
+      svg.appendChild(sv('path', { class: 'gl-chev', d: 'M' + (x - 4) + ' ' + (y - 8) + 'L' + (x + 4) + ' ' + y + 'L' + (x - 4) + ' ' + (y + 8) }));
+    }
+    S.walls.forEach(function (cell) { svg.appendChild(wallNode(cell)); });
+    layerCars = sv('g', {}); layerOver = sv('g', {});
+    dim = null; ghost = null; dimFor = -1;
+    svg.appendChild(layerCars); svg.appendChild(layerOver);
+    nodes = [];
+    S.cars.forEach(function (car, v) {
+      var g = carNode(v);
+      nodes.push(g);
+      layerCars.appendChild(g);
+    });
+    putAll(false);
+    fit();
+  }
+
+  // Cells as large as the main area allows, read from the shell like Way Out does
+  function fit() {
+    if (!S) return;
+    var ms = getComputedStyle(ctx.main), cs = getComputedStyle(wrap), gap = parseFloat(cs.rowGap) || 0;
+    var mainH = (ctx.main.clientHeight || (window.innerHeight || 640) - 60) - parseFloat(ms.paddingTop) - parseFloat(ms.paddingBottom);
+    var availW, availH;
+    if (cs.flexDirection === 'row') {
+      // beside the text on a short screen: all the height, the width less the column
+      availW = (wrap.clientWidth || 640) - side.offsetWidth - gap;
+      availH = mainH;
+    } else {
+      availW = wrap.clientWidth || 360;
+      availH = mainH - (top.offsetHeight + actions.offsetHeight + status.offsetHeight) - 3 * gap;
+    }
+    var VW = S.cols * U + 2 * PAD + ROAD, VH = S.rows * U + 2 * PAD;
+    // up to 3x: at 1.4 the lot stopped at 367px on any screen (#359)
+    var k = Math.min(availW / VW, Math.max(96, availH) / VH, 3);
+    svg.style.width = (VW * k) + 'px';
+    svg.style.height = (VH * k) + 'px';
+  }
+
+  function render() {
+    top.innerHTML = '';
+    if (S.daily) {
+      top.appendChild(el('span', { class: 'ch-badge ch-badge--accent' },
+        [C.icon('calendar', 14), el('span', { text: C.t('dailyGl') + ' — ' + C.num(S.daily) })]));
+    } else {
+      top.appendChild(el('span', { class: 'ch-badge ch-badge--accent', text: C.t('levelN', { n: C.num(S.level) }) }));
+    }
+    top.appendChild(el('span', { class: 'ch-badge', text: C.t('fewestN', { n: C.num(S.best) }) }));
+    actions.innerHTML = '';
+    var hb = el('button', { class: 'ch-btn ch-btn--soft', type: 'button' },
+      [C.icon('bulb', 18), el('span', { text: C.t('hint') }), el('span', { class: 'ch-badge', text: C.num(prog.hints) })]);
+    hb.disabled = !!S.hint || S.done || busy;
+    hb.addEventListener('click', showHint);
+    actions.appendChild(hb);
+    paint();
+    fit();
+  }
+
+  function frameRect(v, p, grow) {
+    var c = S.cars[v], xy = lane(v, p), w = c.h ? c.n * U : U, h = c.h ? U : c.n * U;
+    return { x: xy[0] - grow, y: xy[1] - grow, width: w + 2 * grow, height: h + 2 * grow };
+  }
+
+  function paint() {
+    nodes.forEach(function (g, v) { g.classList.toggle('gl-car--hint', !!S.hint && S.hint.v === v); });
+    layerOver.innerHTML = '';
+    if (S.hint) {
+      // the veil goes over every car, then the ghost, then the hinted car on top of both; a car
+      // already on top is left alone so a glide in progress is not cut short
+      if (!dim) dim = sv('rect', { class: 'gl-dim', x: 0, y: 0, width: S.cols * U, height: S.rows * U, rx: 18 });
+      if (!ghost) ghost = sv('rect', { class: 'gl-ghost', rx: 13 });
+      var gr = frameRect(S.hint.v, S.hint.to, 2);
+      ghost.setAttribute('x', gr.x); ghost.setAttribute('y', gr.y); ghost.setAttribute('width', gr.width); ghost.setAttribute('height', gr.height);
+      if (dim.parentNode !== layerCars || dimFor !== S.hint.v) {
+        layerCars.appendChild(dim);
+        layerCars.appendChild(ghost);
+        layerCars.appendChild(nodes[S.hint.v]);
+        dimFor = S.hint.v;
+      }
+    } else if (dim && dim.parentNode) {
+      dim.parentNode.removeChild(dim);
+      ghost.parentNode.removeChild(ghost);
+      dimFor = -1;
+    }
+    // (the hinted car already wears its halo, so the ring is for the other cars)
+    if (cur >= 0 && S.cars[cur] && !(S.hint && S.hint.v === cur)) {
+      var cr = frameRect(cur, S.cars[cur].p, 3);
+      layerOver.appendChild(sv('rect', { class: 'gl-cur', x: cr.x, y: cr.y, width: cr.width, height: cr.height, rx: 14 }));
+    }
+    // the way out pulses while the red car's road is clear: the moment to flick it
+    svg.classList.toggle('gl-board--clear', E.clear(S));
+    ctx.setStat('moves', S.moves);
+    undoBtn.disabled = S.done || busy || !!S.hint || !S.stack.length;
+    restartBtn.disabled = S.done || busy;
+  }
+
+  function say(k) { status.textContent = k ? C.t(k) : ''; }
+
+  /* ------------------------------------------------------------ moves */
+
+  // A move the engine accepted: the car glides to its cell, the rest follows from the engine
+  function moved(r) {
+    put(r.v, r.to, true);
+    C.feedback('place');
+    say(null);
+    if (S.done) { levelWon(); return; }
+    if (r.hinted && S.hint && cur >= 0) cur = S.hint.v;
+    save();
+    render();
+  }
+
+  // A locked car was touched during a hint: the hinted car nudges and a short note says why
+  function lockedTry() {
+    C.feedback('bad');
+    if (S.hint && nodes[S.hint.v]) C.ui.shake(nodes[S.hint.v]._wig);
+    C.ui.toast({ icon: 'bulb', title: C.t('moveHinted'), ms: 1800 });
+    say('moveHinted');
+  }
+
+  function showHint() {
+    if (!S || S.done || busy) return;
+    if (S.hint) { C.feedback('bad'); say('hintPending'); return; }
+    if (!(prog.hints > 0)) {
+      C.feedback('bad');
+      C.ui.toast({ icon: 'bulb', title: C.t('noHints'), sub: C.t('hintSoon') });
+      return;
+    }
+    var v = E.useHint(S, prog);
+    if (v < 0) { C.feedback('bad'); return; }
+    ctx.store.set('progress', prog);
+    C.feedback('select');
+    cur = v;
+    say('hintOn');
+    save();
+    render();
+  }
+
+  function undo() {
+    if (!S || S.done || busy) return;
+    if (S.hint) { C.feedback('bad'); say('hintPending'); return; }
+    var u = E.undo(S);
+    if (!u) { C.feedback('bad'); return; }
+    C.feedback('tap');
+    put(u.v, u.to, true);
+    say(null);
+    save();
+    render();
+  }
+
+  function restartLevel() {
+    if (!S) return;
+    E.restart(S);
+    cur = -1; startedAt = Date.now();
+    say(null);
+    putAll(true);
+    render();
+    save();
+  }
+
+  function askRestart() {
+    if (!S || S.done || busy) return;
+    if (!touched()) { restartLevel(); return; }
+    C.ui.confirm({ title: C.t('restartLevel'), body: C.t('resetWarn'), onOk: restartLevel });
+  }
+
+  // The logic is done at the last move; the car then drives off the board and the result follows
+  function levelWon() {
+    busy = true;
+    cur = -1;
+    snap = { rows: S.rows, cols: S.cols, walls: S.walls.slice(), cars: S.cars.map(function (c, v) { return { h: c.h, n: c.n, l: c.l, p: S.start[v] }; }), look: S.look.slice() };
+    gift = S.daily ? 0 : E.levelDone(prog, S.level);
+    ctx.store.set('progress', prog);
+    save();
+    render();
+    if (C.ui.reduceMotion()) { finish(); return; }
+    setTimeout(function () {
+      var g = nodes[0], c = S.cars[0];
+      g.classList.remove('gl-car--still');
+      g.classList.add('gl-car--out');
+      g.style.transform = 'translate(' + (c.p * U + 2 * U + ROAD) + 'px,' + (c.l * U) + 'px)';
+    }, SNAP_MS);
+    setTimeout(finish, SNAP_MS + DRIVE_MS + 60);
+  }
+
+  function finish() {
+    var elapsed = Date.now() - startedAt, perfect = S.moves <= S.best;
+    var base = 4 + Math.round(S.best / 3);
+    var coins = base + (perfect && !S.hints ? 3 : 0), points = base * 4;
+    var note = gift ? C.t('giftHint') : null;
+    var stars = perfect ? 3 : (S.moves <= Math.ceil(S.best * 1.5) ? 2 : 1);
+    C.achievements.unlock('gl-win');
+    if (!S.daily && S.level >= 50) C.achievements.unlock('gl-deep');
+    if (S.best >= 10 && perfect && !S.hints) C.achievements.unlock('gl-clean');
+    if (S.daily) {
+      coins += 8; points += 25;
+      // the first daily of each day also brings a hint
+      if (C.stats.daily('gridlock', S.daily, { label: C.t('movesN', { n: C.num(S.moves) }), ms: elapsed })) {
+        prog.hints++;
+        ctx.store.set('progress', prog);
+        note = C.t('giftHint');
+      } else { coins = Math.round(coins * 0.2); points = Math.round(points * 0.2); }
+    } else {
+      C.stats.best('gridlock', 'level', S.level, false);
+    }
+    ctx.clearSave();
+    ctx.finish({
+      won: true, title: C.t('levelClear'), note: note, stars: stars, timeMs: elapsed, coins: coins, points: points,
+      lines: [
+        S.daily ? { label: C.t('daily'), value: C.num(S.daily) } : { label: C.t('level'), value: C.num(S.level) },
+        { label: C.t('movesFewest'), value: C.num(S.moves) + ' / ' + C.num(S.best) },
+        { label: C.t('time'), value: C.time(elapsed) }
+      ],
+      shareText: 'چوگان · راه‌بندان' + (S.daily ? ('\nروزانه ' + S.daily) : ('\nمرحله‌ی ' + C.num(S.level))) + '\n' + C.num(S.moves) + ' / ' + C.num(S.best) + '\n' + C.time(elapsed),
+      paint: cardPaint(),
+      // the primary button opens the next level, so it says so
+      againLabel: S.daily ? null : C.t('nextLevel'),
+      onAgain: S.daily ? null : function () { newGame(prog.level); }
+    });
+    // the next board is made while the result is up, once the dialog and the confetti have had their
+    // moment, so Next level opens at once
+    if (!S.daily) setTimeout(function () { pending = { level: prog.level, S: E.generate(prog.level, levelRng(prog.level)) }; }, 700);
+  }
+
+  /* ------------------------------------------------------- share card */
+
+  function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#999'; }
+
+  // The card shows the lot as the level began, every vehicle drawn from the same list as the
+  // board: the tag names the shape, the class the colours, all in 40-unit cells scaled to the card
+  function cardInk(cls, paint, tk) {
+    switch (cls) {
+      case 'gl-shadow': return { fill: tk('--gl-shadow') };
+      case 'gl-wheel': case 'gl-mirror': return { fill: tk('--gl-ink') };
+      case 'gl-body': return { fill: paint === 'g' ? tk('--gl-goal') : tk('--gl-c' + paint), stroke: tk('--gl-ink'), width: 2.5 };
+      case 'gl-roof': return { fill: paint === 'g' ? tk('--gl-goal-roof') : tk('--gl-roof') };
+      case 'gl-glass': case 'gl-bed': return { fill: tk('--gl-glass') };
+      case 'gl-slat': return { stroke: tk('--gl-slat'), width: 2 };
+      case 'gl-mark': return { stroke: tk('--gl-mark'), width: 3.5 };
+      case 'gl-wall': return { fill: tk('--gl-concrete'), stroke: tk('--gl-ink'), width: 2.5 };
+      case 'gl-wall-top': return { fill: tk('--gl-concrete-top') };
+      case 'gl-hatch': return { stroke: tk('--gl-ink'), width: 2.5 };
+    }
+    return {};
+  }
+  function cardShapes(g, list, paint, tk) {
+    list.forEach(function (p) {
+      var a = p[1], ink = cardInk(a.class, paint, tk), path = null, pts, i;
+      g.beginPath();
+      if (p[0] === 'rect') C.rrect(g, a.x, a.y, a.width, a.height, a.rx || 0);
+      else if (p[0] === 'circle') g.arc(a.cx, a.cy, a.r, 0, 2 * Math.PI);
+      else if (p[0] === 'ellipse') g.ellipse(a.cx, a.cy, a.rx, a.ry, 0, 0, 2 * Math.PI);
+      else if (p[0] === 'polygon') { pts = String(a.points).trim().split(/[\s,]+/); for (i = 0; i + 1 < pts.length; i += 2) g[i ? 'lineTo' : 'moveTo'](+pts[i], +pts[i + 1]); g.closePath(); }
+      else if (p[0] === 'path') path = new Path2D(a.d);
+      if (ink.fill) { g.fillStyle = ink.fill; if (path) g.fill(path); else g.fill(); }
+      if (ink.stroke) { g.strokeStyle = ink.stroke; g.lineWidth = ink.width; g.lineCap = 'round'; g.lineJoin = 'round'; if (path) g.stroke(path); else g.stroke(); }
+    });
+  }
+  function cardPaint() {
+    var B = snap;
+    return function (g, w, h, col) {
+      var cs = Math.min(w / (B.cols + 0.6), h / (B.rows + 0.6)), ox = (w - B.cols * cs) / 2, oy = (h - B.rows * cs) / 2, i, k, u = cs / U;
+      var cache = {}, tk = function (name) { if (!cache[name]) cache[name] = cssVar(name); return cache[name]; };
+      // the lot as on the board: asphalt, faint bays, a kerb with the opening in the exit row
+      var X1 = ox + B.cols * cs, Y1 = oy + B.rows * cs, R = 18 * u, y1 = oy + E.EXIT_ROW * cs + 3 * u, y2 = oy + (E.EXIT_ROW + 1) * cs - 3 * u;
+      g.fillStyle = tk('--gl-lot');
+      C.rrect(g, ox, oy, B.cols * cs, B.rows * cs, R);
+      g.fill();
+      g.fillStyle = tk('--gl-cell');
+      for (i = 0; i < B.rows * B.cols; i++) {
+        if (Math.floor(i / B.cols) === E.EXIT_ROW) g.fillStyle = tk('--gl-cell-exit');
+        C.rrect(g, ox + (i % B.cols) * cs + 2 * u, oy + Math.floor(i / B.cols) * cs + 2 * u, cs - 4 * u, cs - 4 * u, 7 * u);
+        g.fill();
+        g.fillStyle = tk('--gl-cell');
+      }
+      g.lineWidth = 6 * u; g.lineCap = 'round'; g.lineJoin = 'round'; g.strokeStyle = tk('--gl-curb');
+      g.beginPath();
+      g.moveTo(X1, y1);
+      g.arcTo(X1, oy, ox, oy, R);
+      g.arcTo(ox, oy, ox, Y1, R);
+      g.arcTo(ox, Y1, X1, Y1, R);
+      g.arcTo(X1, Y1, X1, oy, R);
+      g.lineTo(X1, y2);
+      g.stroke();
+      g.lineWidth = cs * 0.12; g.strokeStyle = col.game;
+      for (k = 0; k < 2; k++) {
+        var cx = ox + B.cols * cs + cs * (0.55 + k * 0.35), cy = oy + (E.EXIT_ROW + 0.5) * cs;
+        g.beginPath(); g.moveTo(cx - cs * 0.1, cy - cs * 0.2); g.lineTo(cx + cs * 0.1, cy); g.lineTo(cx - cs * 0.1, cy + cs * 0.2); g.stroke();
+      }
+      B.walls.forEach(function (cell) {
+        g.save();
+        g.translate(ox + (cell % B.cols) * cs, oy + Math.floor(cell / B.cols) * cs);
+        g.scale(u, u);
+        cardShapes(g, wallParts(), '', tk);
+        g.restore();
+      });
+      B.cars.forEach(function (c, v) {
+        var x = ox + (c.h ? c.p : c.l) * cs, y = oy + (c.h ? c.l : c.p) * cs, len = c.n * cs;
+        var fwd = v === 0 || (B.look[v] & 1) === 1;
+        g.save();
+        g.translate(x, y);
+        // a vertical vehicle is a lying one turned a quarter; a backwards one is mirrored
+        if (!c.h) { g.translate(cs, 0); g.rotate(Math.PI / 2); }
+        if (!fwd) { g.translate(len, 0); g.scale(-1, 1); }
+        g.scale(u, u);
+        cardShapes(g, parts(c.n, v === 0), v === 0 ? 'g' : ((B.look[v] >> 1) & 3), tk);
+        g.restore();
+      });
+    };
+  }
+
+  /* ---------------------------------------------------------- saving */
+
+  // something to lose: a restart asks first. A hint is not counted: one spent on a board with no move
+  // made is still kept in the save (a reload keeps it running, the clean award needs it)
+  function touched() { return S.moves > 0 || S.stack.length > 0; }
+
+  ctx.autosave(function () {
+    if (!S || S.done || busy || !(touched() || !!S.hint || S.hints > 0)) return { inProgress: false };
+    return { s: JSON.parse(JSON.stringify(S)), daily: S.daily || null, elapsed: (pausedAt || Date.now()) - startedAt };
+  });
+  function save() { ctx.save(); }
+
+  // Level n is the same board for everyone, so an untouched level needs no save
+  function levelRng(L) { return C.rng((L * 2654435761 + 0x6e1d) >>> 0); }
+  function newGame(L, daily) {
+    var T;
+    if (!daily && pending && pending.level === L) T = pending.S;
+    else T = daily ? E.generate(0, C.daily('gridlock', daily).rng, true) : E.generate(L, levelRng(L));
+    pending = null;
+    S = T;
+    S.daily = daily || null;
+    startedAt = Date.now();
+    busy = false; cur = -1; gift = 0;
+    say(null);
+    build();
+    render();
+    save();
+  }
+
+  /* ------------------------------------------------------------ help */
+
+  function showHelp() {
+    var m = C.ui.modal({
+      title: C.t('help'),
+      body: [
+        el('p', { class: 'ch-dim', text: C.t('rules') }),
+        el('h3', { style: { 'margin-top': 'var(--s-4)' }, text: C.t('keyboard') }),
+        el('div', { class: 'ch-list' }, [
+          kb('← ↑ → ↓', C.t('keysMove')),
+          kb('Shift + ← ↑ → ↓ / Space', C.t('keysPick')),
+          kb('H', C.t('hint')),
+          kb('U / Ctrl+Z', C.t('undoMove')),
+          kb('R', C.t('restartLevel'))
+        ])
+      ],
+      actions: [
+        { label: C.t('tutorial'), onClick: function () { ctx.showTutorial(TUT); } },
+        { label: C.t('done'), kind: 'primary' }
+      ]
+    });
+    // focusing the button at the foot scrolls a long dialog past its title: it opens at the top
+    if (m && m.box) { m.box.scrollTop = 0; setTimeout(function () { m.box.scrollTop = 0; }, 80); }
+  }
+  function kb(k, what) {
+    return el('div', { class: 'ch-item' }, [
+      el('div', { class: 'ch-item__label', text: what }),
+      el('span', { class: 'ch-badge', text: k })
+    ]);
+  }
+
+  // Tutorial art: a small lot of 26 unit cells, vehicles drawn from the same list as the board
+  var TC = 26, TS = TC / U;
+  function tLot() {
+    var s = '<rect x="12" y="14" width="' + (5 * TC) + '" height="' + (3 * TC) + '" rx="12" fill="var(--gl-lot)" stroke="var(--gl-curb)" stroke-width="3" stroke-linejoin="round"/>';
+    for (var r = 0; r < 3; r++) for (var c = 0; c < 5; c++) {
+      s += '<rect x="' + (14 + c * TC) + '" y="' + (16 + r * TC) + '" width="' + (TC - 4) + '" height="' + (TC - 4) + '" rx="5" fill="' + (r === 1 ? 'var(--gl-cell-exit)' : 'var(--gl-cell)') + '"/>';
+    }
+    return s;
+  }
+  function tCar(n, cls, col, row, vertical, goal) {
+    var turn = vertical ? ' translate(' + TC + ' 0) rotate(90)' : '';
+    return '<g class="' + cls + '" transform="translate(' + (12 + col * TC) + ' ' + (14 + row * TC) + ')' + turn + ' scale(' + TS + ')">' + artMarkup(n, goal) + '</g>';
+  }
+  function tChevs() {
+    var s = '';
+    for (var k = 0; k < 3; k++) {
+      var x = 152 + k * 14;
+      s += '<path d="M' + (x - 4) + ' 45L' + (x + 4) + ' 53L' + (x - 4) + ' 61" fill="none" stroke="var(--game)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>';
+    }
+    return s;
+  }
+  function tPath(d) { return '<path d="' + d + '" fill="none" stroke="var(--gl-hint)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>'; }
+  var TUT = [
+    { title: C.t('tutTitle1'), text: C.t('tutText1'),
+      art: '<svg viewBox="0 0 200 110" width="100%" class="gl-tut">' + tLot() + tCar(2, 'gl-pg', 0, 1, false, true) + tChevs() + '</svg>' },
+    { title: C.t('tutTitle2'), text: C.t('tutText2'),
+      art: '<svg viewBox="0 0 200 110" width="100%" class="gl-tut">' + tLot() + tCar(2, 'gl-pg', 0, 1, false, true) + tCar(2, 'gl-p0', 3, 0, false, false) +
+        tCar(2, 'gl-p1', 3, 1, true, false) + tPath('M84 27H60M66 21l-6 6 6 6') + tChevs() + '</svg>' },
+    { title: C.t('tutTitle3'), text: C.t('tutText3'),
+      art: '<svg viewBox="0 0 200 110" width="100%" class="gl-tut">' + tLot() + tCar(2, 'gl-pg', 0, 1, false, true) +
+        '<rect x="66" y="16" width="76" height="22" rx="9" fill="var(--gl-hint)" fill-opacity=".22" stroke="var(--gl-hint)" stroke-width="3" stroke-dasharray="6 5" stroke-linejoin="round"/>' +
+        tCar(3, 'gl-p3', 0, 0, false, false) + tPath('M96 27h22m-6 -6l6 6 -6 6') + tChevs() + '</svg>' }
+  ];
+
+  /* ------------------------------------------------------------ input */
+
+  function cellAt(e) {
+    var m = svg.getScreenCTM();
+    if (!m) return null;
+    var p = svg.createSVGPoint();
+    p.x = e.clientX; p.y = e.clientY;
+    p = p.matrixTransform(m.inverse());
+    return { x: p.x / U, y: p.y / U };
+  }
+  function cellPx() {
+    var m = svg.getScreenCTM();
+    return m ? m.a * U : U;
+  }
+  function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+
+  svg.addEventListener('pointerdown', function (e) {
+    if (!S || S.done || busy || press) return;
+    // only the main mouse button drags a car
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    var p = cellAt(e);
+    if (!p) return;
+    var had = cur;
+    cur = -1;
+    var v = E.pick(S, p.x, p.y);
+    if (v < 0) { if (had >= 0) paint(); return; }
+    if (E.locked(S, v)) { lockedTry(); if (had >= 0) paint(); return; }
+    var r = E.range(S, v);
+    press = { id: e.pointerId, v: v, x: e.clientX, y: e.clientY, p0: S.cars[v].p, lo: r.lo, hi: r.hi, cell: cellPx(), moved: false, at: S.cars[v].p, trail: [] };
+    try { svg.setPointerCapture(e.pointerId); } catch (err) { /* older WebViews */ }
+    if (had >= 0) paint();
+  });
+  window.addEventListener('pointermove', function (e) {
+    if (!press || press.id !== e.pointerId) return;
+    var c = S.cars[press.v], dist = (c.h ? e.clientX - press.x : e.clientY - press.y) / press.cell;
+    if (!press.moved) {
+      if (Math.hypot(e.clientX - press.x, e.clientY - press.y) < DRAG_PX) return;
+      press.moved = true;
+      var g = nodes[press.v];
+      g.classList.add('gl-car--still');
+      // the car being dragged goes over the others
+      layerCars.appendChild(g);
+      C.haptic('tap');
+    }
+    // it follows the finger along its lane, held to the free cells on both sides
+    press.at = clamp(press.p0 + dist, press.lo, press.hi);
+    var now = Date.now();
+    press.trail.push([now, press.at]);
+    while (press.trail.length > 2 && now - press.trail[0][0] > 140) press.trail.shift();
+    var xy = lane(press.v, press.at);
+    nodes[press.v].style.transform = 'translate(' + xy[0] + 'px,' + xy[1] + 'px)';
+  });
+  function endPress(e, fire) {
+    if (!press || press.id !== e.pointerId) return;
+    var pr = press;
+    press = null;
+    if (!pr.moved) return;
+    var c = S.cars[pr.v], to = Math.round(pr.at);
+    // a quick flick of the goal car toward the exit, with the road clear, sends it out
+    // (the finger must still be moving at release: a pause before letting go is not a flick)
+    if (fire && pr.v === 0 && E.clear(S) && pr.trail.length > 1) {
+      var a = pr.trail[0], b = pr.trail[pr.trail.length - 1];
+      if (Date.now() - b[0] <= FLING_MS && b[0] > a[0] && (b[1] - a[1]) / ((b[0] - a[0]) / 1000) >= FLING) to = S.cols - 2;
+    }
+    to = clamp(to, pr.lo, pr.hi);
+    if (!fire || to === pr.p0) {
+      put(pr.v, c.p, true);
+      // a car with no room at all in its lane shakes, so it does not look like a missed drag
+      if (fire && pr.lo === pr.hi) { C.feedback('bad'); C.ui.shake(nodes[pr.v]._wig); }
+      return;
+    }
+    var r = E.move(S, pr.v, to);
+    if (!r.moved) { put(pr.v, c.p, true); C.feedback('bad'); return; }
+    moved(r);
+  }
+  window.addEventListener('pointerup', function (e) { endPress(e, true); });
+  window.addEventListener('pointercancel', function (e) { endPress(e, false); });
+  svg.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+  // A key step of the picked car; steps in a row on one car are a single move
+  function keyStep(v, d) {
+    var r = E.step(S, v, d);
+    if (r.locked) { lockedTry(); return; }
+    if (!r.moved) { C.feedback('bad'); return; }
+    put(v, r.to, true);
+    if (r.won) { moved(r); return; }
+    if (r.hinted && S.hint) cur = S.hint.v;
+    C.feedback('tap');
+    say(null);
+    save();
+    render();
+  }
+
+  function pickCar(v) {
+    if (v < 0) return;
+    cur = v;
+    C.feedback('select');
+    paint();
+  }
+
+  // Arrows across the lane pick the nearest car that way, along it they slide the picked car
+  // one cell; with Shift they pick whatever the direction, and Space goes through every car
+  function arrow(d, shift) {
+    if (cur < 0 || !S.cars[cur]) { cur = 0; paint(); return; }
+    var c = S.cars[cur], along = c.h ? (d === 1 || d === 3) : (d === 0 || d === 2);
+    if (along && !shift) { keyStep(cur, d === 1 || d === 2 ? 1 : -1); return; }
+    pickCar(E.nearest(S, cur, d));
+  }
+
+  window.addEventListener('keydown', function (e) {
+    if (!S || S.done || busy) return;
+    if (document.querySelector('.ch-scrim')) return;
+    var tg = e.target, tag = tg && tg.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (tg && tg.isContentEditable)) return;
+    if (tag === 'BUTTON' && (e.key === ' ' || e.key === 'Enter')) return;
+    if (C.undoKey(e)) { undo(); e.preventDefault(); return; }
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    var k = e.key;
+    if (C.keyIs(e, 'h')) { showHint(); e.preventDefault(); return; }
+    if (C.keyIs(e, 'r')) { askRestart(); e.preventDefault(); return; }
+    // the lot is not mirrored, so the arrow keys are geometric in every language
+    var d = { ArrowUp: 0, ArrowRight: 1, ArrowDown: 2, ArrowLeft: 3 }[k];
+    if (d !== undefined) { arrow(d, e.shiftKey); e.preventDefault(); return; }
+    if (k === ' ') { pickCar(E.cycle(S, cur, e.shiftKey ? -1 : 1)); e.preventDefault(); }
+  });
+
+  // time in the background is not time spent on the level
+  C.onPause(function () { if (!pausedAt) pausedAt = Date.now(); });
+  C.onResume(function () {
+    if (pausedAt) startedAt += Date.now() - pausedAt;
+    pausedAt = 0;
+  });
+
+  var resizeT = null;
+  window.addEventListener('resize', function () {
+    clearTimeout(resizeT);
+    resizeT = setTimeout(fit, 120);
+  });
+
+  /* ------------------------------------------------------------ start */
+
+  function restore(v, from) {
+    S = v;
+    S.daily = from.daily || null;
+    startedAt = Date.now() - (from.elapsed || 0);
+    busy = false; cur = -1;
+    build();
+    render();
+    if (S.done) levelWon();
+  }
+
+  var saved = ctx.loadSave();
+  // a save that fails its checks is dropped and the level starts fresh
+  var resume = saved && saved.s && (saved.daily || null) === (dailyDate || null) ? E.restore(saved.s) : null;
+  if (resume && !dailyDate && resume.level !== prog.level) resume = null;
+  if (resume) {
+    restore(resume, saved);
+  } else if (dailyDate) {
+    newGame(0, dailyDate);
+    if (C.stats.dailyDone('gridlock', dailyDate)) {
+      var rec = C.stats.dailyOf(dailyDate).gridlock;
+      C.ui.toast({ icon: 'check', title: C.t('dailyDone'), sub: rec.label });
+    }
+    ctx.tutorialIfNew(TUT);
+  } else {
+    newGame(prog.level);
+    ctx.tutorialIfNew(TUT);
+  }
+  setTimeout(fit, 30);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1135 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#FBF6EF">
+<title>ماهجونگ — چوگان</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../lib/chogan.css">
+<script src="../../lib/early.js"></script>
+<style>
+  /* کاشی شیء فیزیکی است و در هر دو تم رنگ عاج دارد تا نقش‌ها همیشه خوانا باشند */
+  :root { --mj-face: #FBF7EE; --mj-side: #D9CDB4; --mj-edge: #B9AB8E; }
+  .mj-wrap { width: 100%; display: flex; flex-direction: column; align-items: center; gap: var(--s-3); }
+  .mj-top { display: flex; flex-wrap: wrap; gap: var(--s-2); justify-content: center; align-items: center; }
+  .mj-clock { font-variant-numeric: tabular-nums; min-width: 52px; justify-content: center; }
+  .mj-clock--out { color: var(--c-bad); }
+  /* تخته در راست‌چین آینه نمی‌شود؛ جای کاشی‌ها بخشی از چیدمان است */
+  /* The view clips the board; zoom and pan move the board inside it (#167) */
+  .mj-view { position: relative; overflow: hidden; touch-action: none; margin: 6px auto; border-radius: var(--r-md); }
+  .mj-board { position: relative; direction: ltr; transform-origin: 0 0; }
+  /* above every tile: tiles stack at layer * 1000 + row * 10 + column */
+  .mj-spark { position: absolute; z-index: 100000; pointer-events: none; animation: mj-spark 380ms var(--ease) forwards; }
+  .mj-spark svg { display: block; }
+  /* The matched pair flies to the middle of the view and strikes there (#272); fixed to the
+     viewport, so the zoomed and panned board cannot clip or shift it */
+  .mj-fly { position: fixed; z-index: 100000; pointer-events: none; margin: 0; }
+  .mj-fly .mj-tile { position: absolute; top: 0; right: 0; bottom: 0; left: 0; transition: none; }
+  @keyframes mj-spark { from { opacity: 1; transform: scale(.4); } 60% { opacity: 1; } to { opacity: 0; transform: scale(1.25); } }
+  .mj-tile {
+    position: absolute; padding: 0; border: 0; cursor: pointer; border-radius: 6px;
+    background: var(--mj-face); box-shadow: 3px 3px 0 var(--mj-side), 4px 4px 0 var(--mj-edge), 4px 6px 8px rgba(0,0,0,.25);
+    transition: transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+  }
+  .mj-tile svg { width: 100%; height: 100%; display: block; pointer-events: none; }
+  @media (prefers-reduced-motion: no-preference) {
+    .mj-tile { transition: transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease), left .3s var(--ease), top .3s var(--ease), width .3s var(--ease), height .3s var(--ease); }
+  }
+  /* the Motion choice On (#881) animates although the system asks for less; Off stops it in the core */
+  :root[data-motion="on"] .mj-tile { transition: transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease), left .3s var(--ease), top .3s var(--ease), width .3s var(--ease), height .3s var(--ease); }
+  .mj-tile--sel { transform: translate(-2px, -3px); box-shadow: 0 0 0 3px var(--game), 5px 6px 0 var(--mj-side), 6px 7px 0 var(--mj-edge), 6px 10px 12px rgba(0,0,0,.3); }
+  .mj-tile--hint { box-shadow: 0 0 0 3px var(--c-good), 3px 3px 0 var(--mj-side), 4px 4px 0 var(--mj-edge); }
+  .mj-tile--cur { outline: 2px dashed var(--game); outline-offset: 3px; }
+  /* کاشی بسته کمی تیره‌تر است تا آزادها بی‌دردسر پیدا شوند */
+  .mj-tile--blocked { filter: brightness(.84) saturate(.8); }
+  .mj-status { min-height: 1.6em; font-weight: 700; color: var(--c-text-dim); text-align: center; }
+  .mj-actions { display: flex; gap: var(--s-2); flex-wrap: wrap; justify-content: center; }
+</style>
+</head>
+<body>
+<script src="../../version.js"></script>
+<script src="../../lib/chogan.js"></script>
+
+<script>
+/* ==== ENGINE START ==== */
+/* ماهجونگ تک‌نفره (جفت کردن کاشی‌ها). جای کاشی‌ها در واحد نیم‌کاشی است:
+   [x, y, z]، هر کاشی دو واحد پهنا و دو واحد بلندی دارد و z طبقه است.
+   نقش کاشی ۰ تا ۴۱: ۰..۸ دایره، ۹..۱۷ نی، ۱۸..۲۶ عدد، ۲۷..۳۰ باد، ۳۱..۳۳ اژدها،
+   ۳۴..۳۷ گل‌ها، ۳۸..۴۱ فصل‌ها. گل با هر گل و فصل با هر فصل جفت است. */
+function MahjongEngineFactory() {
+  'use strict';
+
+  function rect(cols, rows, x0, y0, z) {
+    var out = [];
+    for (var r = 0; r < rows; r++) for (var c = 0; c < cols; c++) out.push([x0 + c * 2, y0 + r * 2, z]);
+    return out;
+  }
+
+  var LAYOUTS = {
+    // هشت کاشی پهنا تا روی گوشی ۳۹۰ پیکسلی هر کاشی حدود ۴۴ پیکسل باشد
+    small: [].concat(rect(8, 6, 0, 0, 0), rect(6, 3, 2, 2, 1), rect(2, 3, 6, 2, 2)),
+    medium: [].concat(rect(8, 8, 0, 0, 0), rect(6, 6, 2, 2, 1), rect(4, 2, 4, 6, 2)),
+    turtle: (function () {
+      var t = [];
+      var rows = [[0, 2, 24], [2, 6, 20], [4, 4, 22], [6, 2, 24], [8, 2, 24], [10, 4, 22], [12, 6, 20], [14, 2, 24]];
+      rows.forEach(function (r) { for (var x = r[1]; x <= r[2]; x += 2) t.push([x, r[0], 0]); });
+      t.push([0, 7, 0], [26, 7, 0], [28, 7, 0]);
+      t = t.concat(rect(6, 6, 8, 2, 1), rect(4, 4, 10, 4, 2), rect(2, 2, 12, 6, 3));
+      t.push([13, 7, 4]);
+      return t;
+    })()
+  };
+
+  function matches(a, b) {
+    if (a === b) return true;
+    if (a >= 34 && a <= 37 && b >= 34 && b <= 37) return true;
+    if (a >= 38 && b >= 38) return true;
+    return false;
+  }
+
+  function overlap(a, b) { return Math.abs(a[0] - b[0]) < 2 && Math.abs(a[1] - b[1]) < 2; }
+
+  // آزاد: چیزی رویش نیست و چپ یا راستش در همان طبقه باز است
+  function freeIn(pos, alive, i) {
+    var p = pos[i], left = false, right = false;
+    for (var j = 0; j < pos.length; j++) {
+      if (j === i || !alive[j]) continue;
+      var q = pos[j];
+      if (q[2] === p[2] + 1 && overlap(p, q)) return false;
+      if (q[2] === p[2] && Math.abs(q[1] - p[1]) < 2) {
+        if (q[0] === p[0] - 2) left = true;
+        if (q[0] === p[0] + 2) right = true;
+      }
+    }
+    return !(left && right);
+  }
+
+  function shuffle(a, rnd) {
+    for (var i = a.length - 1; i > 0; i--) {
+      var k = Math.floor(rnd() * (i + 1));
+      var t = a[i]; a[i] = a[k]; a[k] = t;
+    }
+    return a;
+  }
+
+  // جفت‌های قابل استفاده برای تعداد کاشی: هر نقش معمولی دو جفت، گل‌ها و فصل‌ها هر کدام دو جفت
+  function pairPool(rnd) {
+    var pool = [];
+    for (var t = 0; t < 34; t++) { pool.push([t, t]); pool.push([t, t]); }
+    pool.push([34, 35], [36, 37], [38, 39], [40, 41]);
+    return shuffle(pool, rnd);
+  }
+
+  // پخش برعکس: از چیدمان پر، هر بار دو کاشی آزاد برداشته و یک جفت به آن‌ها داده می‌شود.
+  // همین ترتیب برداشتن یک راه حل است، پس هر دستی حل‌شدنی است.
+  function assign(pos, idx, pairs, rnd) {
+    for (var tries = 0; tries < 60; tries++) {
+      var alive = pos.map(function (_, i) { return idx.indexOf(i) >= 0; });
+      var faces = {}, order = [], ok = true, k = 0;
+      for (var left = idx.length; left > 0; left -= 2) {
+        var free = [];
+        for (var i = 0; i < pos.length; i++) if (alive[i] && freeIn(pos, alive, i)) free.push(i);
+        if (free.length < 2) { ok = false; break; }
+        var a = free.splice(Math.floor(rnd() * free.length), 1)[0];
+        var b = free[Math.floor(rnd() * free.length)];
+        var pr = pairs[k++];
+        var flip = rnd() < 0.5;
+        faces[a] = flip ? pr[1] : pr[0];
+        faces[b] = flip ? pr[0] : pr[1];
+        alive[a] = alive[b] = false;
+        order.push([a, b]);
+      }
+      if (ok) return { faces: faces, order: order };
+    }
+    return null;
+  }
+
+  function deal(layout, rnd) {
+    var pos = LAYOUTS[layout];
+    var all = pos.map(function (_, i) { return i; });
+    var pairs = pairPool(rnd).slice(0, pos.length / 2);
+    var r = assign(pos, all, pairs, rnd);
+    var faces = pos.map(function (_, i) { return r.faces[i]; });
+    return { layout: layout, faces: faces, gone: pos.map(function () { return false; }),
+      history: [], shuffles: 0, hints: 0, undos: 0, done: false, solution: r.order };
+  }
+
+  function alive(S) { return S.gone.map(function (g) { return !g; }); }
+  function isFree(S, i) { return !S.gone[i] && freeIn(LAYOUTS[S.layout], alive(S), i); }
+  function freeTiles(S) {
+    var al = alive(S), pos = LAYOUTS[S.layout], out = [];
+    for (var i = 0; i < pos.length; i++) if (al[i] && freeIn(pos, al, i)) out.push(i);
+    return out;
+  }
+  function freePairs(S) {
+    var f = freeTiles(S), out = [];
+    for (var i = 0; i < f.length; i++) for (var j = i + 1; j < f.length; j++) {
+      if (matches(S.faces[f[i]], S.faces[f[j]])) out.push([f[i], f[j]]);
+    }
+    return out;
+  }
+  function left(S) { return S.gone.filter(function (g) { return !g; }).length; }
+
+  // The box around the tiles still on the table, in half-tile units (#167). The
+  // page sizes tiles to this box, so they grow as pairs come off; sized to the
+  // whole layout, the turtle's tiles stayed tiny on a phone until the end.
+  function bounds(S) {
+    var pos = LAYOUTS[S.layout], b = null;
+    for (var i = 0; i < pos.length; i++) {
+      if (S.gone[i]) continue;
+      var p = pos[i];
+      if (!b) b = { minX: p[0], maxX: p[0], minY: p[1], maxY: p[1], maxZ: p[2] };
+      b.minX = Math.min(b.minX, p[0]); b.maxX = Math.max(b.maxX, p[0]);
+      b.minY = Math.min(b.minY, p[1]); b.maxY = Math.max(b.maxY, p[1]);
+      b.maxZ = Math.max(b.maxZ, p[2]);
+    }
+    return b || { minX: 0, maxX: 0, minY: 0, maxY: 0, maxZ: 0 };
+  }
+
+  function remove(S, i, j) {
+    if (i === j || S.done || !isFree(S, i) || !isFree(S, j) || !matches(S.faces[i], S.faces[j])) return false;
+    S.gone[i] = S.gone[j] = true;
+    S.history.push({ pair: [i, j] });
+    if (!left(S)) S.done = true;
+    return true;
+  }
+
+  function undo(S) {
+    var h = S.history.pop();
+    if (!h) return false;
+    if (h.pair) { S.gone[h.pair[0]] = S.gone[h.pair[1]] = false; S.done = false; }
+    else if (h.faces) { S.faces = h.faces; if (h.gone) S.gone = h.gone; S.shuffles--; }
+    S.undos++;
+    return true;
+  }
+
+  // As many ground-floor places as there are tiles left, nearest the middle of those tiles;
+  // ties broken at random so a retry can pick another set
+  function groundSpots(pos, idx, rnd) {
+    var cx = 0, cy = 0;
+    idx.forEach(function (i) { cx += pos[i][0]; cy += pos[i][1]; });
+    cx /= idx.length; cy /= idx.length;
+    var ground = [];
+    for (var i = 0; i < pos.length; i++) if (pos[i][2] === 0) ground.push({ i: i, d: Math.abs(pos[i][0] - cx) + Math.abs(pos[i][1] - cy) + rnd() * 0.5 });
+    if (ground.length < idx.length) return null;
+    ground.sort(function (a, b) { return a.d - b.d; });
+    return ground.slice(0, idx.length).map(function (g) { return g.i; }).sort(function (a, b) { return a - b; });
+  }
+
+  // بُر زدن کاشی‌های مانده، دوباره با پخش برعکس تا باز هم حل‌شدنی بماند
+  function reshuffle(S, rnd) {
+    var pos = LAYOUTS[S.layout], idx = [];
+    for (var i = 0; i < pos.length; i++) if (!S.gone[i]) idx.push(i);
+    if (idx.length < 2) return false;
+    // نقش‌های مانده دوبه‌دو جفت می‌شوند: هم‌نقش‌ها با هم، گل‌ها با گل‌ها، فصل‌ها با فصل‌ها
+    var rest = idx.map(function (i) { return S.faces[i]; }).sort(function (a, b) { return a - b; });
+    var pairs = [], used = rest.map(function () { return false; });
+    for (var a = 0; a < rest.length; a++) {
+      if (used[a]) continue;
+      for (var b = a + 1; b < rest.length; b++) {
+        if (!used[b] && matches(rest[a], rest[b])) { used[a] = used[b] = true; pairs.push([rest[a], rest[b]]); break; }
+      }
+    }
+    if (pairs.length * 2 !== idx.length) return false;
+    shuffle(pairs, rnd);
+    var r = assign(pos, idx, pairs, rnd), spots = idx;
+    // Some sets of places have no solvable deal at all: two last tiles stacked one on
+    // the other leave only one free, so the shuffle did nothing and the game could not
+    // be finished (#452). Then the tiles left are laid out again on the ground floor,
+    // on the places nearest to where they were.
+    if (!r) {
+      spots = groundSpots(pos, idx, rnd);
+      r = spots && assign(pos, spots, pairs, rnd);
+      if (!r) return false;
+    }
+    S.history.push({ faces: S.faces.slice(), gone: S.gone.slice() });
+    if (spots !== idx) {
+      idx.forEach(function (i) { S.gone[i] = true; });
+      spots.forEach(function (i) { S.gone[i] = false; });
+    }
+    spots.forEach(function (i) { S.faces[i] = r.faces[i]; });
+    S.shuffles++;
+    // ترتیب حل را برمی‌گرداند تا تست بتواند حل‌شدنی ماندن را واقعاً بازی کند
+    return r.order;
+  }
+
+  var api = {
+    LAYOUTS: LAYOUTS, matches: matches, deal: deal, isFree: isFree, freeTiles: freeTiles, freePairs: freePairs,
+    left: left, remove: remove, undo: undo, reshuffle: reshuffle, freeIn: freeIn, bounds: bounds
+  };
+  if (typeof self !== 'undefined') self.MahjongEngine = api;
+  return api;
+}
+if (typeof module !== 'undefined' && module.exports) module.exports = MahjongEngineFactory;
+/* ==== ENGINE END ==== */
+</script>
+
+<script>
+(function () {
+  'use strict';
+  var C = window.Chogan, el = C.el;
+  var E = MahjongEngineFactory();
+
+  C.boot({});
+  var ctx = C.game({
+    id: 'mahjong',
+    name: { fa: 'ماهجونگ', en: 'Mahjong Solitaire', zh: '麻将接龙', de: 'Mahjong', es: 'Mahjong', pl: 'Mahjong', fr: 'Mahjong', ar: 'ماهجونغ', hi: 'माहजोंग' },
+    accent: '#1F8A82',
+    mood: 'menu',
+    strings: {
+      fa: {
+        small: 'کوچک', medium: 'متوسط', turtle: 'لاک‌پشت', left: 'مانده', pairs: 'جفت آزاد',
+        untimed: 'بی‌زمان', timed: 'با زمان', timeUp: 'زمان تمام شد', timeUpSub: 'بازی ادامه دارد؛ فقط جایزه‌ی سرعت را نمی‌گیری.', speedBonus: 'جایزه‌ی سرعت',
+        shuffle: 'بُر زدن', shufflesLeft: '{n} بُر مانده', hintKey: 'راهنمایی', undoMove: 'برگرداندن',
+        newDeal: 'دست تازه', noPairs: 'جفت آزادی نمانده', noPairsSub: 'بُر بزن یا چند حرکت برگردان.',
+        blocked: 'این کاشی آزاد نیست', dailyMj: 'ماهجونگ روزانه', turtleNote: 'با دو انگشت بزرگ‌نمایی کن و بکش', fit: 'نمای کامل',
+        tile: 'کاشی', board: 'تخته‌ی ماهجونگ', move: 'جابه‌جایی بین کاشی‌های آزاد', select: 'انتخاب کاشی',
+        rules: 'دو کاشی یکسان را که هر دو آزادند بزن تا برداشته شوند. کاشی آزاد است اگر چیزی رویش نباشد و دست‌کم چپ یا راستش باز باشد. هر گل با هر گل و هر فصل با هر فصل جفت می‌شود. همه‌ی کاشی‌ها را بردار تا ببری. هر دست حل‌شدنی است؛ اگر گیر کردی بُر بزن یا برگردان.',
+        tutTitle1: 'جفت آزاد', tutText1: 'دو کاشی یکسان را بزن. هر دو باید آزاد باشند: چیزی رویشان نباشد و چپ یا راستشان باز باشد.',
+        tutTitle2: 'گل و فصل', tutText2: 'گل‌ها با هم جفت می‌شوند و فصل‌ها هم با هم، حتی اگر شکلشان فرق کند.',
+        tutTitle3: 'گیر کردی؟', tutText3: 'هر دست راه حل دارد. راهنمایی یک جفت نشان می‌دهد، بُر زدن کاشی‌های مانده را حل‌شدنی می‌چیند و برگرداندن بی‌حد است.'
+      },
+      en: {
+        small: 'Small', medium: 'Medium', turtle: 'Turtle', left: 'Left', pairs: 'Free pairs',
+        untimed: 'No clock', timed: 'Timed', timeUp: 'Time is up', timeUpSub: 'Keep playing; only the speed bonus is gone.', speedBonus: 'Speed bonus',
+        shuffle: 'Shuffle', shufflesLeft: '{n} shuffles left', hintKey: 'Hint', undoMove: 'Undo',
+        newDeal: 'New deal', noPairs: 'No free pairs left', noPairsSub: 'Shuffle, or undo a few moves.',
+        blocked: 'That tile isn’t free', dailyMj: 'Daily mahjong', turtleNote: 'Pinch to zoom, drag to move', fit: 'Fit board',
+        tile: 'Tile', board: 'Mahjong board', move: 'Move between free tiles', select: 'Pick a tile',
+        rules: 'Tap two matching tiles that are both free to remove them. A tile is free when nothing lies on it and its left or right side is open. Any flower matches any flower, and any season matches any season. Clear every tile to win. Every deal can be solved; if you get stuck, shuffle or undo.',
+        tutTitle1: 'Free pairs', tutText1: 'Tap two matching tiles. Both must be free: nothing on top, and the left or right side open.',
+        tutTitle2: 'Flowers and seasons', tutText2: 'Flowers match each other and seasons match each other, even when the pictures differ.',
+        tutTitle3: 'Stuck?', tutText3: 'Every deal has a solution. A hint shows a pair, a shuffle re-deals the tiles left so they can still be solved, and undo is unlimited.'
+      },
+      pl: {
+        small: 'Mała', medium: 'Średnia', turtle: 'Żółw', left: 'Pozostało', pairs: 'Wolne pary',
+        untimed: 'Bez czasu', timed: 'Na czas', timeUp: 'Czas minął', timeUpSub: 'Graj dalej; przepada tylko bonus za prędkość.', speedBonus: 'Bonus za prędkość',
+        shuffle: 'Przetasuj', shufflesLeft: 'Pozostałe przetasowania: {n}', hintKey: 'Podpowiedź', undoMove: 'Cofnij',
+        newDeal: 'Nowe rozdanie', noPairs: 'Brak wolnych par', noPairsSub: 'Przetasuj lub cofnij kilka ruchów.',
+        blocked: 'Ta płytka nie jest wolna', dailyMj: 'Codzienny Mahjong', turtleNote: 'Uszczypnij, aby przybliżyć, przeciągnij, aby przesunąć', fit: 'Dopasuj planszę',
+        tile: 'Płytka', board: 'Plansza do mahjonga', move: 'Przemieść między wolnymi płytkami', select: 'Wybierz płytkę',
+        rules: 'Dotknij dwóch pasujących do siebie płytek, które są wolne, aby je usunąć. Płytka jest wolna, gdy nic na niej nie leży, a jej lewy lub prawy bok jest odsłonięty. Każdy kwiat pasuje do każdego kwiatu, a każda pora roku pasuje do każdej pory roku. Usuń wszystkie płytki, aby wygrać. Każde rozdanie da się rozwiązać; jeśli utkniesz, użyj przetasowania lub cofnij ruch.',
+        tutTitle1: 'Wolne pary', tutText1: 'Dotknij dwóch pasujących płytek. Obie muszą być wolne: nic na nich nie leży, a ich lewy lub prawy bok jest odsłonięty.',
+        tutTitle2: 'Kwiaty i pory roku', tutText2: 'Kwiaty pasują do siebie nawzajem, a pory roku pasują do siebie nawzajem, nawet jeśli obrazki się różnią.',
+        tutTitle3: 'Utknąłeś?', tutText3: 'Każde rozdanie ma rozwiązanie. Podpowiedź wskazuje parę, przetasowanie zmienia układ pozostałych płytek tak, że nadal da się je rozwiązać, a liczba cofnięć ruchów jest nieograniczona.'
+      },
+      fr: {
+        small: 'Petit', medium: 'Moyen', turtle: 'Tortue', left: 'Restantes', pairs: 'Paires libres',
+        untimed: 'Sans chrono', timed: 'Chronométré', timeUp: 'Temps écoulé', timeUpSub: 'Continue ; seul le bonus de vitesse est perdu.', speedBonus: 'Bonus de vitesse',
+        shuffle: 'Mélanger', shufflesLeft: 'Encore {n} mélanges', hintKey: 'Indice', undoMove: 'Annuler',
+        newDeal: 'Nouvelle donne', noPairs: 'Plus de paire libre', noPairsSub: 'Mélange, ou annule quelques coups.',
+        blocked: 'Cette tuile n’est pas libre', dailyMj: 'Mahjong du jour', turtleNote: 'Pince pour zoomer, glisse pour déplacer', fit: 'Ajuster',
+        tile: 'Tuile', board: 'Plateau de mahjong', move: 'Aller d’une tuile libre à l’autre', select: 'Choisir une tuile',
+        rules: 'Touche deux tuiles identiques et libres pour les retirer. Une tuile est libre quand rien n’est posé dessus et que son côté gauche ou droit est dégagé. Toute fleur va avec toute fleur, et toute saison avec toute saison. Retire toutes les tuiles pour gagner. Chaque donne a une solution ; si tu bloques, mélange ou annule.',
+        tutTitle1: 'Paires libres', tutText1: 'Touche deux tuiles identiques. Les deux doivent être libres : rien dessus, et le côté gauche ou droit dégagé.',
+        tutTitle2: 'Fleurs et saisons', tutText2: 'Les fleurs vont ensemble et les saisons aussi, même si les dessins diffèrent.',
+        tutTitle3: 'Bloqué ?', tutText3: 'Chaque donne a une solution. Un indice montre une paire, un mélange redistribue les tuiles restantes en gardant une solution, et l’annulation est illimitée.'
+      },
+      ar: {
+        small: 'صغيرة', medium: 'متوسطة', turtle: 'السلحفاة', left: 'الباقي', pairs: 'أزواج حرة',
+        untimed: 'بلا وقت', timed: 'بالوقت', timeUp: 'انتهى الوقت', timeUpSub: 'تابع اللعب؛ لم تخسر إلا مكافأة السرعة.', speedBonus: 'مكافأة السرعة',
+        shuffle: 'خلط', shufflesLeft: 'بقي {n} خلطات', hintKey: 'تلميح', undoMove: 'تراجع',
+        newDeal: 'توزيع جديد', noPairs: 'لا أزواج حرة', noPairsSub: 'اخلط، أو تراجع بضع حركات.',
+        blocked: 'هذه القطعة ليست حرة', dailyMj: 'ماهجونغ اليوم', turtleNote: 'اقرص للتكبير، واسحب للتحريك', fit: 'ملاءمة',
+        tile: 'قطعة', board: 'لوحة ماهجونغ', move: 'تنقّل بين القطع الحرة', select: 'اختر قطعة',
+        rules: 'انقر قطعتين متطابقتين حرتين لإزالتهما. تكون القطعة حرة إذا لم يكن فوقها شيء وكان جانبها الأيسر أو الأيمن مفتوحًا. أي زهرة تطابق أي زهرة، وأي فصل يطابق أي فصل. أزل كل القطع لتفوز. لكل توزيع حل؛ وإن علقت فاخلط أو تراجع.',
+        tutTitle1: 'أزواج حرة', tutText1: 'انقر قطعتين متطابقتين. يجب أن تكون كلتاهما حرة: لا شيء فوقها، وجانبها الأيسر أو الأيمن مفتوح.',
+        tutTitle2: 'الأزهار والفصول', tutText2: 'الأزهار تتطابق فيما بينها والفصول كذلك، حتى لو اختلفت الصور.',
+        tutTitle3: 'علقت؟', tutText3: 'لكل توزيع حل. التلميح يُظهر زوجًا، والخلط يعيد توزيع القطع الباقية مع بقاء الحل ممكنًا، والتراجع بلا حدود.'
+      },
+      hi: {
+        small: 'छोटा', medium: 'मध्यम', turtle: 'कछुआ', left: 'बाक़ी', pairs: 'खुले जोड़े',
+        untimed: 'बिना घड़ी', timed: 'समय के साथ', timeUp: 'समय ख़त्म', timeUpSub: 'खेलते रहें; बस तेज़ी का बोनस गया।', speedBonus: 'तेज़ी का बोनस',
+        shuffle: 'फेंटें', shufflesLeft: '{n} बार फेंटना बाक़ी', hintKey: 'संकेत', undoMove: 'वापस',
+        newDeal: 'नई बाज़ी', noPairs: 'कोई खुला जोड़ा नहीं बचा', noPairsSub: 'फेंटें, या कुछ चालें वापस लें।',
+        blocked: 'यह टाइल खुली नहीं है', dailyMj: 'रोज़ का माहजोंग', turtleNote: 'ज़ूम के लिए चुटकी, खिसकाने के लिए खींचें', fit: 'बोर्ड फ़िट करें',
+        tile: 'टाइल', board: 'माहजोंग बोर्ड', move: 'खुली टाइलों के बीच जाएँ', select: 'टाइल चुनें',
+        rules: 'दो मिलती-जुलती खुली टाइलें छुएँ, वे हट जाएँगी। टाइल तब खुली है जब उस पर कुछ न रखा हो और उसका बायाँ या दायाँ किनारा खुला हो। कोई भी फूल किसी भी फूल से मिलता है, और कोई भी मौसम किसी भी मौसम से। जीतने के लिए सारी टाइलें हटाएँ। हर बाज़ी हल हो सकती है; अटक जाएँ तो फेंटें या वापस लें।',
+        tutTitle1: 'खुले जोड़े', tutText1: 'दो मिलती-जुलती टाइलें छुएँ। दोनों खुली होनी चाहिए: ऊपर कुछ न हो, और बायाँ या दायाँ किनारा खुला हो।',
+        tutTitle2: 'फूल और मौसम', tutText2: 'फूल आपस में मिलते हैं और मौसम आपस में, चाहे तस्वीरें अलग हों।',
+        tutTitle3: 'अटक गए?', tutText3: 'हर बाज़ी का हल है। संकेत एक जोड़ा दिखाता है, फेंटने से बची टाइलें ऐसे बिछती हैं कि फिर भी हल हो सकें, और वापस लेने की कोई सीमा नहीं।'
+      },
+      zh: {
+        small: '小', medium: '中', turtle: '乌龟', left: '剩余', pairs: '可配对',
+        untimed: '不计时', timed: '计时', timeUp: '时间到', timeUpSub: '可以继续玩，只是没有速度奖励了。', speedBonus: '速度奖励',
+        shuffle: '洗牌', shufflesLeft: '还能洗 {n} 次', hintKey: '提示', undoMove: '撤销',
+        newDeal: '新一局', noPairs: '没有可配对的牌了', noPairsSub: '洗牌，或者撤销几步。',
+        blocked: '这张牌还不能拿', dailyMj: '每日麻将', turtleNote: '双指缩放，单指拖动', fit: '全图',
+        tile: '牌', board: '麻将牌桌', move: '在可拿的牌之间移动', select: '选择牌',
+        rules: '点两张相同且都可拿的牌即可消除。上面没有牌、并且左边或右边空着的牌才可以拿。任意两张花牌可以配对，任意两张季节牌也可以配对。消除所有牌即获胜。每一局都有解；卡住时可以洗牌或撤销。',
+        tutTitle1: '可拿的一对', tutText1: '点两张相同的牌。两张都必须可拿：上面没有牌，左边或右边空着。',
+        tutTitle2: '花与季节', tutText2: '花牌之间可以互相配对，季节牌之间也可以，即使图案不同。',
+        tutTitle3: '卡住了？', tutText3: '每一局都有解。提示会显示一对牌，洗牌会把剩下的牌重新排成仍然可解，撤销不限次数。'
+      },
+      de: {
+        small: 'Klein', medium: 'Mittel', turtle: 'Schildkröte', left: 'Übrig', pairs: 'Freie Paare',
+        untimed: 'Ohne Uhr', timed: 'Mit Zeit', timeUp: 'Zeit ist um', timeUpSub: 'Spiel weiter; nur der Tempo-Bonus ist weg.', speedBonus: 'Tempo-Bonus',
+        shuffle: 'Mischen', shufflesLeft: 'Noch {n}× mischen', hintKey: 'Tipp', undoMove: 'Zurück',
+        newDeal: 'Neues Spiel', noPairs: 'Keine freien Paare mehr', noPairsSub: 'Misch oder nimm ein paar Züge zurück.',
+        blocked: 'Dieser Stein ist nicht frei', dailyMj: 'Tägliches Mahjong', turtleNote: 'Mit zwei Fingern zoomen, mit einem verschieben', fit: 'Ganzes Brett',
+        tile: 'Stein', board: 'Mahjong-Brett', move: 'Zwischen freien Steinen wechseln', select: 'Stein wählen',
+        rules: 'Tippe zwei gleiche Steine an, die beide frei sind, um sie zu entfernen. Ein Stein ist frei, wenn nichts auf ihm liegt und seine linke oder rechte Seite offen ist. Jede Blume passt zu jeder Blume, jede Jahreszeit zu jeder Jahreszeit. Räum alle Steine ab, um zu gewinnen. Jedes Spiel ist lösbar; wenn du feststeckst, misch oder nimm Züge zurück.',
+        tutTitle1: 'Freie Paare', tutText1: 'Tippe zwei gleiche Steine an. Beide müssen frei sein: nichts darauf und links oder rechts offen.',
+        tutTitle2: 'Blumen und Jahreszeiten', tutText2: 'Blumen passen zueinander und Jahreszeiten auch, selbst wenn die Bilder verschieden sind.',
+        tutTitle3: 'Feststecken?', tutText3: 'Jedes Spiel hat eine Lösung. Ein Tipp zeigt ein Paar, Mischen verteilt die übrigen Steine lösbar neu, und Zurück ist unbegrenzt.'
+      },
+      es: {
+        small: 'Pequeño', medium: 'Mediano', turtle: 'Tortuga', left: 'Quedan', pairs: 'Parejas libres',
+        untimed: 'Sin reloj', timed: 'Con tiempo', timeUp: 'Se acabó el tiempo', timeUpSub: 'Sigue jugando; solo pierdes el bonus de rapidez.', speedBonus: 'Bonus de rapidez',
+        shuffle: 'Barajar', shufflesLeft: 'Quedan {n} barajadas', hintKey: 'Pista', undoMove: 'Deshacer',
+        newDeal: 'Nueva partida', noPairs: 'No quedan parejas libres', noPairsSub: 'Baraja o deshaz algunos movimientos.',
+        blocked: 'Esa ficha no está libre', dailyMj: 'Mahjong diario', turtleNote: 'Pellizca para hacer zoom y arrastra para moverte', fit: 'Ver todo',
+        tile: 'Ficha', board: 'Tablero de mahjong', move: 'Moverse entre fichas libres', select: 'Elegir una ficha',
+        rules: 'Toca dos fichas iguales que estén libres para quitarlas. Una ficha está libre si no tiene nada encima y su lado izquierdo o derecho está abierto. Cualquier flor empareja con cualquier flor y cualquier estación con cualquier estación. Quita todas las fichas para ganar. Todas las partidas tienen solución; si te atascas, baraja o deshaz.',
+        tutTitle1: 'Parejas libres', tutText1: 'Toca dos fichas iguales. Las dos deben estar libres: nada encima y el lado izquierdo o derecho abierto.',
+        tutTitle2: 'Flores y estaciones', tutText2: 'Las flores emparejan entre sí y las estaciones también, aunque los dibujos sean distintos.',
+        tutTitle3: '¿Atascado?', tutText3: 'Todas las partidas tienen solución. Una pista muestra una pareja, barajar reparte las fichas restantes de forma que se puedan resolver, y deshacer no tiene límite.'
+      }
+    }
+  });
+
+  var params = new URLSearchParams(location.search);
+  var dailyDate = params.get('daily');
+  var prefs = ctx.store.get('prefs', { layout: 'small' });
+  var MAX_SHUFFLES = 3;
+  // Optional timed mode (#227), off by default: finishing inside the time adds a speed
+  // bonus; running out only loses the bonus, the game goes on. The daily has no clock.
+  var TIME_LIMIT = { small: 5 * 60000, medium: 9 * 60000, turtle: 15 * 60000 };
+  var clockTimer = null, timeUpShown = false, pausedAt = 0;
+
+  var S = null, sel = -1, hint = null, cur = -1, nodes = [], tw = 44, th = 58, depth = 4;
+
+  var top = el('div', { class: 'mj-top' });
+  var board = el('div', { class: 'mj-board', role: 'group', 'aria-label': C.t('board') });
+  var actions = el('div', { class: 'mj-actions' });
+  var status = el('div', { class: 'mj-status', 'aria-live': 'polite' });
+  var view = el('div', { class: 'mj-view' }, [board]);
+  var wrap = el('div', { class: 'mj-wrap' }, [top, view, actions, status]);
+
+  ctx.stat('left', C.t('left'));
+  ctx.stat('pairs', C.t('pairs'));
+  ctx.button({ icon: 'help', label: C.t('help'), onClick: showHelp });
+  ctx.button({ icon: 'undo', label: C.t('undoMove'), onClick: undo });
+  ctx.button({ icon: 'refresh', label: C.t('newDeal'), onClick: askNew });
+  ctx.main.appendChild(wrap);
+  ctx.mount();
+
+  /* ------------------------------------------------------- نقش کاشی */
+
+  var NUM_ZH = ['一', '二', '三', '四', '五', '六', '七', '八', '九'];
+  var DOTS = [
+    [[20, 26]], [[20, 14], [20, 38]], [[10, 12], [20, 26], [30, 40]],
+    [[11, 14], [29, 14], [11, 38], [29, 38]], [[11, 12], [29, 12], [20, 26], [11, 40], [29, 40]],
+    [[11, 12], [29, 12], [11, 26], [29, 26], [11, 40], [29, 40]],
+    [[10, 9], [20, 13], [30, 17], [11, 31], [29, 31], [11, 43], [29, 43]],
+    [[11, 9], [29, 9], [11, 20], [29, 20], [11, 32], [29, 32], [11, 43], [29, 43]],
+    [[10, 12], [20, 12], [30, 12], [10, 26], [20, 26], [30, 26], [10, 40], [20, 40], [30, 40]]
+  ];
+  var LAYER_FACE = ['#E9DFC8', '#F2EBDB', '#F8F3E8', '#FCF9F2', '#FFFDF8'];
+  var CJK = 'Noto Serif CJK SC, Noto Sans CJK SC, PingFang SC, Microsoft YaHei, serif';
+  var faceCache = {};
+
+  /* ---------------------------------------- flowers and seasons (#227) */
+  // Own ink-painting art, drawn for this game: the four gentlemen of Chinese painting
+  // (plum, orchid, chrysanthemum, bamboo) and a scene for each season, with the
+  // tile's number and character in the corners. Replaces a plain flower and sun.
+  var INK = '#2B2622';
+  function leaf(x1, y1, x2, y2, w, bend, col) {
+    // a tapered blade from (x1,y1) to (x2,y2), widest in the middle, bent to one side
+    var mx = (x1 + x2) / 2, my = (y1 + y2) / 2, dx = x2 - x1, dy = y2 - y1, L = Math.sqrt(dx * dx + dy * dy) || 1;
+    var nx = -dy / L, ny = dx / L, bx = mx + nx * bend, by = my + ny * bend;
+    var f = function (v) { return v.toFixed(1); };
+    return '<path d="M' + f(x1) + ' ' + f(y1) + ' Q' + f(bx + nx * w) + ' ' + f(by + ny * w) + ' ' + f(x2) + ' ' + f(y2) +
+      ' Q' + f(bx - nx * w) + ' ' + f(by - ny * w) + ' ' + f(x1) + ' ' + f(y1) + 'Z" fill="' + col + '"/>';
+  }
+  function blossom(x, y, r, col, eye) {
+    var s = '';
+    for (var a = 0; a < 5; a++) {
+      var t = (a * 72 - 90) * Math.PI / 180;
+      s += '<circle cx="' + (x + Math.cos(t) * r * 0.62).toFixed(1) + '" cy="' + (y + Math.sin(t) * r * 0.62).toFixed(1) + '" r="' + (r * 0.5).toFixed(1) + '" fill="' + col + '"/>';
+    }
+    return s + '<circle cx="' + x + '" cy="' + y + '" r="' + (r * 0.28).toFixed(1) + '" fill="' + (eye || '#F2C14E') + '"/>';
+  }
+  function stroke(d, w, col, op) {
+    return '<path d="' + d + '" fill="none" stroke="' + (col || INK) + '" stroke-width="' + w + '" stroke-linecap="round" stroke-linejoin="round"' + (op ? ' opacity="' + op + '"' : '') + '/>';
+  }
+  function corner(n, ch, col) {
+    return '<text x="6" y="10" font-family="Vazirmatn, sans-serif" font-size="8" font-weight="700" fill="' + col + '">' + n + '</text>' +
+      '<text x="34" y="11" text-anchor="end" font-family="Noto Serif CJK SC, Noto Sans CJK SC, PingFang SC, Microsoft YaHei, serif" font-size="9" font-weight="700" fill="' + INK + '">' + ch + '</text>';
+  }
+  var ART = [
+    // 1 plum 梅: a dark crooked branch with red blossoms
+    function () {
+      return stroke('M6 46 C12 40 14 36 13 30 C12 25 16 21 22 19 C26 18 28 16 30 16', 2.6) + stroke('M14 32 C19 32 23 35 27 39', 1.6) +
+        blossom(22, 19, 7, '#D24D57') + blossom(30, 18, 5, '#E07A82') + blossom(26, 38, 6, '#D24D57') + blossom(12, 27, 4.5, '#E07A82') +
+        '<circle cx="17" cy="36" r="1.4" fill="#D24D57"/><circle cx="34" cy="24" r="1.2" fill="#D24D57"/>' + corner(1, '梅', '#B8323C');
+    },
+    // 2 orchid 蘭: long arching leaves and a small violet flower
+    function () {
+      return leaf(18, 47, 6, 18, 2.2, -6, INK) + leaf(19, 47, 34, 14, 2, 5, INK) + leaf(20, 47, 27, 22, 1.8, -3, '#3E3833') + leaf(17, 47, 12, 30, 1.5, 3, '#3E3833') +
+        leaf(25, 27, 31, 21, 2.6, 1, '#8A6BB8') + leaf(25, 27, 30, 31, 2.4, -1, '#A58ACB') + leaf(25, 27, 20, 22, 2.4, -1, '#8A6BB8') +
+        '<circle cx="25" cy="27" r="1.6" fill="#E8C35A"/>' + corner(2, '蘭', '#6A4C9C');
+    },
+    // 3 chrysanthemum 菊: a full yellow head of thin petals and two leaves
+    function () {
+      var s = stroke('M20 47 C19 41 21 36 20 30', 1.8) + leaf(20, 40, 9, 36, 3.4, 1, '#4E6B3A') + leaf(20, 37, 31, 34, 3, -1, '#5E7D45');
+      for (var a = 0; a < 18; a++) {
+        var t = a * 20 * Math.PI / 180;
+        s += '<line x1="20" y1="22" x2="' + (20 + Math.cos(t) * 10.5).toFixed(1) + '" y2="' + (22 + Math.sin(t) * 10.5).toFixed(1) + '" stroke="' + (a % 2 ? '#E8A33A' : '#F2C14E') + '" stroke-width="2.4" stroke-linecap="round"/>';
+      }
+      return s + '<circle cx="20" cy="22" r="3.6" fill="#C9752A"/>' + corner(3, '菊', '#B86A12');
+    },
+    // 4 bamboo 竹: two jointed stalks with blade leaves
+    function () {
+      var s = '';
+      [[14, 46, 12, 15], [25, 47, 27, 15]].forEach(function (b) {
+        s += stroke('M' + b[0] + ' ' + b[1] + ' L' + b[2] + ' ' + b[3], 3.4, '#3F6B3A');
+        for (var k = 1; k < 4; k++) {
+          var y = b[1] + (b[3] - b[1]) * k / 4, x = b[0] + (b[2] - b[0]) * k / 4;
+          s += stroke('M' + (x - 2.2) + ' ' + y + ' L' + (x + 2.2) + ' ' + y, 1.2, '#1F3A1E');
+        }
+      });
+      return s + leaf(13, 20, 3, 15, 2, 1, '#2F5A2C') + leaf(13, 21, 6, 27, 1.8, -1, '#3F6B3A') + leaf(26, 24, 36, 19, 2, -1, '#2F5A2C') +
+        leaf(26, 25, 35, 30, 1.8, 1, '#3F6B3A') + leaf(26, 16, 33, 9, 1.6, -1, '#2F5A2C') + corner(4, '竹', '#2F6B2A');
+    }
+  ];
+  var SEASONS = [
+    // 1 spring 春: drooping willow strands and a swallow
+    function () {
+      var s = stroke('M5 17 C14 15 26 15 35 19', 1.6, '#5B4636');
+      [11, 16, 21, 26, 31].forEach(function (x, k) {
+        s += stroke('M' + x + ' ' + (16 + k * 0.4) + ' C' + (x - 1) + ' ' + (24 + k) + ' ' + (x + 1) + ' ' + (32 + k * 2) + ' ' + (x - 1) + ' ' + (37 + k * 2), 1.1, '#6E9A4A');
+      });
+      s += '<path d="M12 44 L18 41 L24 44 L19 43.6 L18 47 L17 43.6 Z" fill="' + INK + '"/>';
+      return s + corner(1, '春', '#4E8A3A');
+    },
+    // 2 summer 夏: a pink lotus over a round leaf and water
+    function () {
+      return stroke('M6 44 C14 42 26 46 34 43', 1.1, '#5E8FA8') + '<ellipse cx="27" cy="38" rx="8" ry="3.4" fill="#4E7A3E"/>' + stroke('M20 46 L20 30', 1.6, '#4E7A3E') +
+        leaf(20, 30, 20, 14, 3.4, 0, '#E58AA6') + leaf(20, 30, 11, 18, 3.2, 1, '#EFA2B8') + leaf(20, 30, 29, 18, 3.2, -1, '#EFA2B8') +
+        leaf(20, 31, 9, 26, 2.6, 1, '#F3B9C9') + leaf(20, 31, 31, 26, 2.6, -1, '#F3B9C9') + corner(2, '夏', '#C2577A');
+    },
+    // 3 autumn 秋: a pale full moon and red maple leaves on a twig
+    function () {
+      function maple(x, y, r, col) {
+        var s = '';
+        [-90, -40, -140, 10, 170].forEach(function (d, k) {
+          var t = d * Math.PI / 180, l = k < 3 ? r : r * 0.7;
+          s += leaf(x, y, x + Math.cos(t) * l, y + Math.sin(t) * l, l * 0.32, 0, col);
+        });
+        return s;
+      }
+      return '<circle cx="25" cy="19" r="9" fill="#F4E3B5"/>' + stroke('M6 44 C12 38 18 36 26 35', 1.6, '#5B4636') +
+        maple(14, 39, 7, '#C8462E') + maple(25, 34, 6, '#D9682F') + maple(10, 27, 5, '#B8382A') + corner(3, '秋', '#B8462A');
+    },
+    // 4 winter 冬: a snowy pine on a white slope
+    function () {
+      var s = '<path d="M4 46 C14 40 26 42 36 46 Z" fill="#DCE6EE"/>' + stroke('M20 46 L20 38', 2.2, '#5B4636');
+      [[20, 12, 9], [20, 20, 11], [20, 28, 13]].forEach(function (t) {
+        s += '<path d="M' + t[0] + ' ' + t[1] + ' L' + (t[0] - t[2]) + ' ' + (t[1] + 10) + ' L' + (t[0] + t[2]) + ' ' + (t[1] + 10) + ' Z" fill="#2F5A3C"/>' +
+          '<path d="M' + t[0] + ' ' + t[1] + ' L' + (t[0] - t[2] * 0.5) + ' ' + (t[1] + 5) + ' Q' + t[0] + ' ' + (t[1] + 3) + ' ' + (t[0] + t[2] * 0.5) + ' ' + (t[1] + 5) + ' Z" fill="#F7FAFC"/>';
+      });
+      s += '<circle cx="8" cy="18" r="1.2" fill="#9FB4C4"/><circle cx="33" cy="15" r="1" fill="#9FB4C4"/><circle cx="31" cy="30" r="1.2" fill="#9FB4C4"/>';
+      return s + corner(4, '冬', '#3F6E8C');
+    }
+  ];
+
+  function faceSvg(f) {
+    if (faceCache[f]) return faceCache[f];
+    var s = '<svg viewBox="0 0 40 52" xmlns="http://www.w3.org/2000/svg">';
+    var txt = function (x, y, size, color, t, w) {
+      return '<text x="' + x + '" y="' + y + '" text-anchor="middle" font-family="' + CJK + '" font-size="' + size + '" font-weight="' + (w || 700) + '" fill="' + color + '">' + t + '</text>';
+    };
+    if (f < 9) {
+      var n = f + 1, r = n === 1 ? 9 : (n <= 4 ? 5.5 : 4.6);
+      DOTS[f].forEach(function (p, k) {
+        var col = n === 1 ? '#C0392B' : (k % 3 === 0 ? '#1F6FB2' : (k % 3 === 1 ? '#2E8B57' : '#C0392B'));
+        s += '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="' + r + '" fill="none" stroke="' + col + '" stroke-width="2.2"/><circle cx="' + p[0] + '" cy="' + p[1] + '" r="' + (r * 0.35) + '" fill="' + col + '"/>';
+      });
+    } else if (f < 18) {
+      var m = f - 8;
+      if (m === 1) {
+        s += '<rect x="16" y="8" width="8" height="36" rx="4" fill="#2E8B57"/><rect x="16" y="24" width="8" height="3" fill="#FBF7EE"/><circle cx="20" cy="10" r="4" fill="#C0392B"/>';
+      } else {
+        DOTS[m - 1].forEach(function (p, k) {
+          var col = (m === 5 || m === 7 || m === 9) && k === Math.floor(m / 2) ? '#C0392B' : '#2E8B57';
+          s += '<rect x="' + (p[0] - 2.3) + '" y="' + (p[1] - 6) + '" width="4.6" height="12" rx="2.2" fill="' + col + '"/><rect x="' + (p[0] - 2.3) + '" y="' + (p[1] - 0.6) + '" width="4.6" height="1.2" fill="#FBF7EE"/>';
+        });
+      }
+    } else if (f < 27) {
+      s += txt(20, 22, 17, '#1F3A5F', NUM_ZH[f - 18]) + txt(20, 45, 18, '#C0392B', '萬');
+    } else if (f < 31) {
+      s += txt(20, 35, 24, '#1F3A5F', ['東', '南', '西', '北'][f - 27]);
+    } else if (f === 31) {
+      s += txt(20, 36, 26, '#C0392B', '中');
+    } else if (f === 32) {
+      s += txt(20, 36, 26, '#2E8B57', '發');
+    } else if (f === 33) {
+      s += '<rect x="8" y="10" width="24" height="32" rx="3" fill="none" stroke="#1F6FB2" stroke-width="3"/><rect x="13" y="15" width="14" height="22" rx="2" fill="none" stroke="#1F6FB2" stroke-width="1.5"/>';
+    } else if (f < 38) {
+      s += ART[f - 34]();
+    } else {
+      s += SEASONS[f - 38]();
+    }
+    s += '</svg>';
+    faceCache[f] = s;
+    return s;
+  }
+
+  function faceName(f) {
+    if (f < 9) return (f + 1) + ' ●';
+    if (f < 18) return (f - 8) + ' |';
+    if (f < 27) return NUM_ZH[f - 18] + '萬';
+    if (f < 31) return ['東', '南', '西', '北'][f - 27];
+    if (f < 34) return ['中', '發', '□'][f - 31];
+    return f < 38 ? ['梅', '蘭', '菊', '竹'][f - 34] + ' ' + (f - 33) : ['春', '夏', '秋', '冬'][f - 38] + ' ' + (f - 37);
+  }
+
+  /* --------------------------------------------------------- ساخت */
+
+  function newGame(layout, daily) {
+    var rnd = daily ? C.daily('mahjong', daily).rng : Math.random;
+    S = E.deal(layout, rnd);
+    delete S.solution;
+    Z = { z: 1, x: 0, y: 0 };
+    S.daily = daily || null;
+    S.timed = !daily && !!prefs.timed;
+    S.startedAt = Date.now();
+    sel = -1; hint = null; cur = -1;
+    timeUpShown = false;
+    build();
+    render();
+    save();
+  }
+
+  function timeLeft() { return S.timed ? TIME_LIMIT[S.layout] - (Date.now() - S.startedAt) : null; }
+  function tickClock() {
+    var badge = top.querySelector('.mj-clock');
+    if (!S || !S.timed || !badge) return;
+    var left = S.done ? Math.max(0, TIME_LIMIT[S.layout] - (S.endedAt - S.startedAt)) : Math.max(0, timeLeft());
+    badge.textContent = C.time(left);
+    badge.classList.toggle('mj-clock--out', left <= 0);
+    if (left <= 0 && !S.done && !timeUpShown) {
+      timeUpShown = true;
+      C.ui.toast({ icon: 'bolt', title: C.t('timeUp'), sub: C.t('timeUpSub') });
+    }
+  }
+
+  function layoutSize() {
+    var b = E.bounds(S);
+    return { cols: (b.maxX - b.minX) / 2 + 1, rows: (b.maxY - b.minY) / 2 + 1, z: b.maxZ, ox: b.minX, oy: b.minY };
+  }
+
+  // Tiles as large as the screen allows (#167): the width is the page's, the
+  // height is what is left under the top bar once the buttons and status below
+  // the board are counted, instead of a fixed guess that wasted a third of a phone.
+  function sizeBoard(L) {
+    // the whole width and tiles up to 110px wide: 980px and 72px kept a big screen's board at 600px (#359)
+    var avail = (wrap.clientWidth || 360) - 8;
+    depth = 4;
+    for (var it = 0; it < 2; it++) {
+      tw = Math.max(18, Math.min(110, Math.floor((avail - L.z * depth - 6) / L.cols)));
+      depth = Math.max(3, Math.round(tw * 0.14));
+    }
+    th = Math.round(tw * 1.3);
+    // The main area is vertically centred, so the board's own position moves with
+    // its size; count the space from the main area instead: its height less the
+    // padding, the rows around the board, the three gaps and the board's margin.
+    var mainH = ctx.main.clientHeight || (window.innerHeight || 640) - 60;
+    var around = top.offsetHeight + actions.offsetHeight + status.offsetHeight;
+    var availH = Math.max(200, mainH - 24 - around - 3 * 12 - 12);
+    if (L.rows * th + L.z * depth + 8 > availH) {
+      th = Math.max(22, Math.floor((availH - L.z * depth - 8) / L.rows));
+      tw = Math.round(th / 1.3);
+      depth = Math.max(3, Math.round(tw * 0.14));
+    }
+    var bh = L.rows * th + L.z * depth + 8;
+    board.style.width = view.style.width = (L.cols * tw + L.z * depth + 6) + 'px';
+    board.style.height = bh + 'px';
+    // The view takes all the height there is, so zooming in shows more than the
+    // strip the whole board needs; at 1x the board sits centred in it
+    view.style.height = Math.max(bh, Math.min(availH, bh * 3)) + 'px';
+  }
+
+  /* ------------------------------------------------- zoom and pan */
+  // A phone fits the turtle's fifteen columns only at about 20px a tile, too small
+  // to tell tiles apart (#167). Pinch zooms around the fingers, one finger pans,
+  // Ctrl+wheel zooms on a desktop, and "Fit board" returns to the whole board.
+  var Z = { z: 1, x: 0, y: 0 }, fitBtn = null;
+  function applyZoom() {
+    var W = view.clientWidth, H = view.clientHeight;
+    Z.z = Math.min(3, Math.max(1, Z.z));
+    var bw = board.offsetWidth * Z.z, bh = board.offsetHeight * Z.z;
+    // an axis the board doesn't fill is centred; one it overfills can't show empty space
+    Z.x = bw <= W ? (W - bw) / 2 : Math.min(0, Math.max(W - bw, Z.x));
+    Z.y = bh <= H ? (H - bh) / 2 : Math.min(0, Math.max(H - bh, Z.y));
+    board.style.transform = 'translate(' + Z.x + 'px,' + Z.y + 'px) scale(' + Z.z + ')';
+    // the button keeps its place when hidden, so the row never reflows mid-gesture
+    if (fitBtn) fitBtn.style.visibility = Z.z <= 1.01 ? 'hidden' : 'visible';
+  }
+  function zoomAt(px, py, nz) {
+    nz = Math.min(3, Math.max(1, nz));
+    Z.x = px - (px - Z.x) * (nz / Z.z);
+    Z.y = py - (py - Z.y) * (nz / Z.z);
+    Z.z = nz;
+    applyZoom();
+  }
+  function fitBoard() { Z = { z: 1, x: 0, y: 0 }; applyZoom(); }
+  // keeps a tile on screen when it is reached from the keyboard while zoomed in
+  function showTile(i) {
+    if (Z.z <= 1 || !nodes[i]) return;
+    var l = parseFloat(nodes[i].style.left) * Z.z + Z.x, t = parseFloat(nodes[i].style.top) * Z.z + Z.y;
+    var W = view.clientWidth, H = view.clientHeight, w = tw * Z.z, hh = th * Z.z;
+    if (l < 0 || l + w > W) Z.x -= l - (W - w) / 2;
+    if (t < 0 || t + hh > H) Z.y -= t - (H - hh) / 2;
+    applyZoom();
+  }
+  var touches = {}, gesture = null, moved = false, eatClick = false;
+  function pts() { return Object.keys(touches).map(function (k) { return touches[k]; }); }
+  function rel(p) { var r = view.getBoundingClientRect(); return { x: p.x - r.left, y: p.y - r.top }; }
+  view.addEventListener('pointerdown', function (e) {
+    touches[e.pointerId] = { x: e.clientX, y: e.clientY };
+    var ps = pts();
+    if (ps.length === 1) { moved = false; gesture = { last: ps[0], start: ps[0] }; }
+    if (ps.length === 2) {
+      var m = rel({ x: (ps[0].x + ps[1].x) / 2, y: (ps[0].y + ps[1].y) / 2 });
+      gesture = { pinch: true, d: Math.hypot(ps[0].x - ps[1].x, ps[0].y - ps[1].y) || 1, z: Z.z, m: m };
+      moved = true;
+    }
+  });
+  window.addEventListener('pointermove', function (e) {
+    if (!touches[e.pointerId] || !gesture) return;
+    touches[e.pointerId] = { x: e.clientX, y: e.clientY };
+    var ps = pts();
+    if (gesture.pinch && ps.length >= 2) {
+      var m = rel({ x: (ps[0].x + ps[1].x) / 2, y: (ps[0].y + ps[1].y) / 2 });
+      Z.x += m.x - gesture.m.x; Z.y += m.y - gesture.m.y; gesture.m = m;
+      zoomAt(m.x, m.y, gesture.z * Math.hypot(ps[0].x - ps[1].x, ps[0].y - ps[1].y) / gesture.d);
+    } else if (!gesture.pinch && ps.length === 1) {
+      var p = ps[0];
+      if (Math.hypot(p.x - gesture.start.x, p.y - gesture.start.y) > 8) moved = true;
+      if (moved && Z.z > 1) { Z.x += p.x - gesture.last.x; Z.y += p.y - gesture.last.y; applyZoom(); }
+      gesture.last = p;
+    }
+  });
+  function endTouch(e) {
+    if (!touches[e.pointerId]) return;
+    delete touches[e.pointerId];
+    if (!pts().length) {
+      // a drag or pinch must not also pick the tile it ended on
+      if (moved) { eatClick = true; setTimeout(function () { eatClick = false; }, 350); }
+      gesture = null;
+    } else if (gesture && gesture.pinch) {
+      gesture = { last: pts()[0], start: pts()[0] };
+    }
+  }
+  window.addEventListener('pointerup', endTouch);
+  window.addEventListener('pointercancel', endTouch);
+  view.addEventListener('click', function (e) {
+    if (eatClick) { e.stopPropagation(); e.preventDefault(); eatClick = false; }
+  }, true);
+  view.addEventListener('wheel', function (e) {
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+    var p = rel({ x: e.clientX, y: e.clientY });
+    zoomAt(p.x, p.y, Z.z * Math.exp(-e.deltaY * 0.0025));
+  }, { passive: false });
+
+  // Sizes and positions every tile from the current bounds; runs after every change
+  function place() {
+    var L = layoutSize(), pos = E.LAYOUTS[S.layout];
+    sizeBoard(L);
+    nodes.forEach(function (b, i) {
+      var p = pos[i];
+      b.style.width = (tw - 2) + 'px';
+      b.style.height = (th - 2) + 'px';
+      // higher layers sit a little up and left so their height shows
+      b.style.left = ((p[0] - L.ox) / 2 * tw + Math.max(0, L.z - p[2]) * depth) + 'px';
+      b.style.top = ((p[1] - L.oy) / 2 * th + Math.max(0, L.z - p[2]) * depth) + 'px';
+    });
+    applyZoom();
+  }
+
+  function build() {
+    board.innerHTML = '';
+    nodes = [];
+    var pos = E.LAYOUTS[S.layout];
+    pos.forEach(function (p, i) {
+      var b = el('button', { class: 'mj-tile', type: 'button' });
+      // higher layer on top, and within a layer the right and lower tile later, so shadows fall right
+      b.style.zIndex = String(p[2] * 1000 + p[1] * 10 + p[0]);
+      // each layer a little lighter than the one below
+      b.style.background = LAYER_FACE[Math.min(p[2], LAYER_FACE.length - 1)];
+      b.addEventListener('click', function () { tap(i); });
+      board.appendChild(b);
+      nodes.push(b);
+    });
+    place();
+  }
+
+  function render() {
+    top.innerHTML = '';
+    if (S.daily) {
+      top.appendChild(el('span', { class: 'ch-badge ch-badge--accent' },
+        [C.icon('calendar', 14), el('span', { text: C.t('dailyMj') + ' — ' + C.num(S.daily) })]));
+    } else {
+      top.appendChild(C.ui.segmented([
+        { value: 'small', label: C.t('small') }, { value: 'medium', label: C.t('medium') }, { value: 'turtle', label: C.t('turtle') }
+      ], S.layout, function (v) {
+        if (v === S.layout) return;
+        var go = function () { prefs.layout = v; ctx.store.set('prefs', prefs); newGame(v); };
+        if (S.history.length && !S.done) {
+          C.ui.confirm({ title: C.t('newDeal'), body: C.t('resetWarn'), onOk: go, onCancel: function () { render(); } });
+          render();
+          return;
+        }
+        go();
+      }));
+      top.appendChild(C.ui.segmented([
+        { value: 0, label: C.t('untimed') }, { value: 1, label: C.t('timed') }
+      ], S.timed ? 1 : 0, function (v) {
+        if (!!v === !!S.timed) return;
+        var go = function () { prefs.timed = !!v; ctx.store.set('prefs', prefs); newGame(S.layout); };
+        if (S.history.length && !S.done) {
+          C.ui.confirm({ title: C.t('newDeal'), body: C.t('resetWarn'), onOk: go, onCancel: function () { render(); } });
+          render();
+          return;
+        }
+        go();
+      }));
+      if (S.timed) top.appendChild(el('span', { class: 'ch-badge mj-clock' }));
+    }
+    clearInterval(clockTimer);
+    if (S.timed) { tickClock(); clockTimer = setInterval(tickClock, 1000); }
+    actions.innerHTML = '';
+    var hb = el('button', { class: 'ch-btn ch-btn--soft', type: 'button' }, [C.icon('bulb', 18), el('span', { text: C.t('hintKey') })]);
+    hb.addEventListener('click', showHint);
+    var sb = el('button', { class: 'ch-btn ch-btn--soft', type: 'button' }, [C.icon('refresh', 18),
+      // نقطه‌ی جداکننده در فارسی شبیه صفر است و «۳ ·» خوانده می‌شد «۳۰»
+      el('span', { text: C.t('shuffle') + ' (' + C.num(MAX_SHUFFLES - S.shuffles) + ')' })]);
+    sb.disabled = S.shuffles >= MAX_SHUFFLES || S.done;
+    sb.addEventListener('click', doShuffle);
+    actions.appendChild(hb);
+    actions.appendChild(sb);
+    // icon only: three labelled buttons don't fit one row on a 390px phone
+    fitBtn = el('button', { class: 'ch-btn ch-btn--soft', type: 'button', 'aria-label': C.t('fit'), title: C.t('fit') }, [C.icon('expand', 18)]);
+    fitBtn.addEventListener('click', fitBoard);
+    fitBtn.style.visibility = Z.z <= 1.01 ? 'hidden' : 'visible';
+    actions.appendChild(fitBtn);
+    paint();
+  }
+
+  function paint() {
+    place();
+    var free = {};
+    E.freeTiles(S).forEach(function (i) { free[i] = 1; });
+    nodes.forEach(function (b, i) {
+      if (S.gone[i]) { b.style.display = 'none'; b.className = 'mj-tile'; return; }
+      b.style.display = '';
+      var f = S.faces[i];
+      if (b.getAttribute('data-f') !== String(f)) { b.innerHTML = faceSvg(f); b.setAttribute('data-f', String(f)); }
+      b.className = 'mj-tile' + (i === sel ? ' mj-tile--sel' : '') + (hint && hint.indexOf(i) >= 0 ? ' mj-tile--hint' : '') +
+        (i === cur ? ' mj-tile--cur' : '') + (free[i] ? '' : ' mj-tile--blocked');
+      b.setAttribute('aria-label', C.t('tile') + ' ' + faceName(f) + (free[i] ? '' : ' · ' + C.t('blocked')));
+    });
+    var pairs = E.freePairs(S).length;
+    ctx.setStat('left', E.left(S));
+    ctx.setStat('pairs', pairs);
+    var msg = '';
+    if (!S.done && !pairs) msg = C.t('noPairs');
+    else if (S.layout === 'turtle' && window.innerWidth < 600) msg = C.t('turtleNote');
+    status.textContent = msg;
+  }
+
+  /* --------------------------------------------------------- حرکت */
+
+  function tap(i) {
+    if (!S || S.done || S.gone[i]) return;
+    if (!E.isFree(S, i)) { C.feedback('bad'); C.ui.shake(nodes[i]); return; }
+    // راهنما تا برداشتن همان جفت روشن می‌ماند؛ قبلاً با زدن کاشی اول خاموش می‌شد
+    // و بازیکن باید جای کاشی دوم را از حفظ می‌دانست
+    if (hint && hint.indexOf(i) < 0) hint = null;
+    if (sel < 0 || sel === i) { sel = sel === i ? -1 : i; C.feedback(sel < 0 ? 'tap' : 'select'); paint(); return; }
+    if (E.matches(S.faces[sel], S.faces[i])) {
+      clash(sel, i);
+      E.remove(S, sel, i);
+      sel = -1; hint = null;
+      save();
+      paint();
+      if (S.done) { finish(); return; }
+      if (!E.freePairs(S).length) stuck();
+      return;
+    }
+    // کاشی دوم جور نبود: انتخاب به همین کاشی می‌رود
+    sel = i;
+    C.feedback('tap');
+    paint();
+  }
+
+  // A matched pair strikes like flint (#227). The tiles used to spark where they lay,
+  // which the reporter found artificial (#272): now both fly in from their places,
+  // grow on the way, meet side by side in the middle of the view, strike with a flint
+  // sound and throw sparks from the seam, then fade. The game state has already moved
+  // on, so play is never held up. With reduced motion: the sound only.
+  var FLY_MS = 360, HOLD_MS = 220;
+  function clash(a, b) {
+    var ta = nodes[a], tb = nodes[b];
+    if (C.ui.reduceMotion() || !ta || !tb || !ta.getBoundingClientRect) { C.feedback('flint'); return; }
+    var ra = ta.getBoundingClientRect(), rb = tb.getBoundingClientRect(), rv = view.getBoundingClientRect();
+    // Grow to a size that reads on a phone, but never past a fifth of the view's width
+    var w = Math.min(Math.max(ra.width * 1.8, 44), rv.width / 5, 96), h = w * ra.height / ra.width;
+    var cx = rv.left + rv.width / 2, cy = rv.top + rv.height / 2;
+    // The tile that sits further left lands on the left, so the paths do not cross
+    var pair = ra.left <= rb.left ? [[ta, ra], [tb, rb]] : [[tb, rb], [ta, ra]];
+    pair.forEach(function (p, k) {
+      var r = p[1], fly = el('div', { class: 'mj-fly' });
+      var copy = p[0].cloneNode(true);
+      // The board places tiles with inline left/top/z-index; the copy fills its own box instead
+      copy.removeAttribute('style');
+      copy.className = 'mj-tile';
+      fly.appendChild(copy);
+      fly.style.left = r.left + 'px'; fly.style.top = r.top + 'px';
+      fly.style.width = r.width + 'px'; fly.style.height = r.height + 'px';
+      document.body.appendChild(fly);
+      var tx = (k ? cx : cx - w) - r.left, ty = cy - h / 2 - r.top, sc = w / r.width;
+      // Each tile stops a little short, then snaps the last few pixels into the other: the knock
+      var back = (k ? 1 : -1) * w * 0.12;
+      var anim = fly.animate([
+        { transform: 'translate(0,0) scale(1)', transformOrigin: '0 0', offset: 0 },
+        { transform: 'translate(' + (tx + back) + 'px,' + ty + 'px) scale(' + sc + ')', transformOrigin: '0 0', offset: 0.78 },
+        { transform: 'translate(' + tx + 'px,' + ty + 'px) scale(' + sc + ')', transformOrigin: '0 0', offset: 1 }
+      ], { duration: FLY_MS, easing: 'cubic-bezier(.3,.7,.4,1)', fill: 'forwards' });
+      anim.onfinish = function () {
+        fly.animate([{ opacity: 1 }, { opacity: 1, offset: 0.5 }, { opacity: 0 }], { duration: HOLD_MS + 160, fill: 'forwards' })
+          .onfinish = function () { fly.remove(); };
+      };
+    });
+    setTimeout(function () {
+      C.feedback('flint');
+      burst(cx, cy, h);
+    }, FLY_MS);
+  }
+
+  // Gold sparks from the seam between the two tiles, gone in a third of a second
+  function burst(x, y, h) {
+    var r = Math.max(28, h * 0.9);
+    var s = '<svg viewBox="-20 -20 40 40" width="' + (r * 2) + '" height="' + (r * 2) + '"><circle r="4" fill="#FFF6D8"/>';
+    for (var q = 0; q < 10; q++) {
+      var ang = (q * 36 + 18) * Math.PI / 180, l = q % 2 ? 15 : 19;
+      s += '<line x1="' + (Math.cos(ang) * 6).toFixed(1) + '" y1="' + (Math.sin(ang) * 6).toFixed(1) + '" x2="' + (Math.cos(ang) * l).toFixed(1) + '" y2="' + (Math.sin(ang) * l).toFixed(1) +
+        '" stroke="' + (q % 2 ? '#F2C14E' : '#E8913A') + '" stroke-width="2.2" stroke-linecap="round"/>';
+    }
+    var fx = el('div', { class: 'mj-spark', html: s + '</svg>' });
+    fx.style.position = 'fixed';
+    fx.style.left = (x - r) + 'px'; fx.style.top = (y - r) + 'px';
+    document.body.appendChild(fx);
+    setTimeout(function () { fx.remove(); }, 400);
+  }
+
+  function stuck() {
+    var acts = [{ label: C.t('undoMove'), onClick: function () { undo(); } }];
+    if (S.shuffles < MAX_SHUFFLES) acts.push({ label: C.t('shuffle'), kind: 'primary', onClick: doShuffle });
+    else acts.push({ label: C.t('newDeal'), kind: 'primary', onClick: function () { newGame(S.layout, S.daily); } });
+    C.ui.modal({ title: C.t('noPairs'), body: [el('p', { class: 'ch-dim', text: C.t('noPairsSub') })], actions: acts });
+  }
+
+  function showHint() {
+    if (!S || S.done) return;
+    var ps = E.freePairs(S);
+    if (!ps.length) { stuck(); return; }
+    hint = ps[0];
+    S.hints++;
+    C.feedback('select');
+    save();
+    paint();
+  }
+
+  function doShuffle() {
+    if (!S || S.done || S.shuffles >= MAX_SHUFFLES) { C.feedback('bad'); return; }
+    var rnd = S.daily ? C.daily('mahjong', S.daily + '|s' + S.shuffles).rng : Math.random;
+    if (!E.reshuffle(S, rnd)) { C.feedback('bad'); return; }
+    sel = -1; hint = null;
+    C.audio.sfx('chain');
+    save();
+    render();
+  }
+
+  function undo() {
+    if (!S || S.done) return;
+    if (!E.undo(S)) { C.feedback('bad'); return; }
+    sel = -1; hint = null;
+    C.feedback('tap');
+    save();
+    render();
+  }
+
+  function finish() {
+    var elapsed = Date.now() - S.startedAt;
+    S.endedAt = Date.now();
+    clearInterval(clockTimer);
+    tickClock();
+    var base = { small: 8, medium: 14, turtle: 22 }[S.layout] || 10;
+    var clean = !S.hints && !S.undos && !S.shuffles;
+    var coins = base + (clean ? 4 : 0) + (S.daily ? 8 : 0);
+    var points = base * 4 + (S.daily ? 25 : 0);
+    // a point for every six seconds to spare, and a coin for every minute
+    var spare = S.timed ? Math.max(0, TIME_LIMIT[S.layout] - elapsed) : 0;
+    var bonus = Math.round(spare / 6000);
+    points += bonus;
+    coins += Math.floor(spare / 60000);
+    C.achievements.unlock('mj-win');
+    if (S.layout === 'turtle') C.achievements.unlock('mj-turtle');
+    if (clean) C.achievements.unlock('mj-clean');
+    C.stats.best('mahjong', 'time-' + S.layout, elapsed, true);
+    if (S.daily) {
+      var first = C.stats.daily('mahjong', S.daily, { label: C.time(elapsed), ms: elapsed });
+      if (!first) { coins = Math.round(coins * 0.2); points = Math.round(points * 0.2); }
+    }
+    ctx.clearSave();
+    ctx.finish({
+      won: true, timeMs: elapsed, coins: coins, points: points,
+      lines: [
+        { label: C.t('time'), value: C.time(elapsed) },
+        { label: C.t('hints'), value: C.num(S.hints) },
+        { label: C.t('shuffle'), value: C.num(S.shuffles) }
+      ].concat(S.timed ? [{ label: C.t('speedBonus'), value: bonus ? '+' + C.num(bonus) : C.t('timeUp') }] : []),
+      shareText: 'چوگان · ماهجونگ' + (S.daily ? ('\nروزانه ' + S.daily) : '') + '\n' + C.time(elapsed),
+      onAgain: S.daily ? null : function () { newGame(S.layout); }
+    });
+  }
+
+  /* --------------------------------------------------------- ذخیره */
+
+  ctx.autosave(function () {
+    if (!S || S.done || !S.history.length) return { inProgress: false };
+    var copy = JSON.parse(JSON.stringify(S));
+    copy.elapsed = Date.now() - S.startedAt;
+    return { s: copy, prefs: prefs };
+  });
+  function save() { ctx.save(); }
+
+  function askNew() {
+    var go = function () { newGame(S ? S.layout : prefs.layout, S ? S.daily : null); };
+    if (!S || S.done || !S.history.length) { go(); return; }
+    C.ui.confirm({ title: C.t('newDeal'), body: C.t('resetWarn'), onOk: go });
+  }
+
+  function showHelp() {
+    C.ui.modal({
+      title: C.t('help'),
+      body: [
+        el('p', { class: 'ch-dim', text: C.t('rules') }),
+        el('h3', { style: { 'margin-top': 'var(--s-4)' }, text: C.t('keyboard') }),
+        el('div', { class: 'ch-list' }, [
+          kb('← →', C.t('move')),
+          kb('Space / Enter', C.t('select')),
+          kb('H', C.t('hintKey')),
+          kb('S', C.t('shuffle')),
+          kb('U / Ctrl+Z', C.t('undoMove'))
+        ])
+      ],
+      actions: [
+        { label: C.t('tutorial'), onClick: function () { ctx.showTutorial(TUT); } },
+        { label: C.t('done'), kind: 'primary' }
+      ]
+    });
+  }
+  function kb(k, what) {
+    return el('div', { class: 'ch-item' }, [
+      el('div', { class: 'ch-item__label', text: what }),
+      el('span', { class: 'ch-badge', text: k })
+    ]);
+  }
+
+  function artTile(x, y, f, ring) {
+    return '<g transform="translate(' + x + ' ' + y + ')"><rect x="2" y="2" width="40" height="52" rx="5" fill="#D9CDB4"/>' +
+      '<rect width="40" height="52" rx="5" fill="#FBF7EE" stroke="' + (ring ? 'var(--game)' : '#B9AB8E') + '" stroke-width="' + (ring ? 3 : 1) + '"/>' +
+      faceSvg(f).replace('<svg ', '<svg width="40" height="52" ') + '</g>';
+  }
+  var TUT = [
+    { title: C.t('tutTitle1'), text: C.t('tutText1'),
+      art: '<svg viewBox="0 0 200 110" width="100%">' + artTile(20, 30, 4, true) + artTile(62, 30, 12, false) + artTile(104, 30, 31, false) + artTile(146, 30, 4, true) + '</svg>' },
+    { title: C.t('tutTitle2'), text: C.t('tutText2'),
+      art: '<svg viewBox="0 0 200 110" width="100%">' + artTile(10, 30, 34, true) + artTile(56, 30, 36, true) + artTile(104, 30, 38, true) + artTile(150, 30, 41, true) + '</svg>' },
+    { title: C.t('tutTitle3'), text: C.t('tutText3'),
+      art: '<svg viewBox="0 0 200 110" width="100%">' + artTile(56, 34, 27, false) + artTile(70, 26, 20, false) + artTile(104, 30, 33, true) + '</svg>' }
+  ];
+
+  /* --------------------------------------------------------- ورودی */
+
+  window.addEventListener('keydown', function (e) {
+    if (!S || S.done) return;
+    if (document.querySelector('.ch-scrim')) return;
+    var tg = e.target, tag = tg && tg.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (tg && tg.isContentEditable)) return;
+    if (tag === 'BUTTON' && (e.key === ' ' || e.key === 'Enter')) return;
+    var k = e.key;
+    if (C.undoKey(e)) { undo(); e.preventDefault(); return; }
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (C.keyIs(e, 'h')) { showHint(); e.preventDefault(); return; }
+    if (C.keyIs(e, 's')) { doShuffle(); e.preventDefault(); return; }
+    if (k === 'ArrowLeft' || k === 'ArrowRight') {
+      var pos = E.LAYOUTS[S.layout];
+      var free = E.freeTiles(S).sort(function (a, b) { return pos[a][0] - pos[b][0] || pos[a][1] - pos[b][1] || pos[b][2] - pos[a][2]; });
+      if (!free.length) return;
+      var at = free.indexOf(cur);
+      at = at < 0 ? 0 : (at + (k === 'ArrowRight' ? 1 : free.length - 1)) % free.length;
+      cur = free[at];
+      showTile(cur);
+      paint(); e.preventDefault(); return;
+    }
+    if ((k === ' ' || k === 'Enter') && cur >= 0) {
+      tap(cur);
+      if (S.gone[cur]) cur = -1;
+      e.preventDefault();
+    }
+  });
+
+  var resizeT = null;
+  window.addEventListener('resize', function () {
+    clearTimeout(resizeT);
+    resizeT = setTimeout(function () { if (S) { build(); paint(); } }, 120);
+  });
+
+  // time in the background is not time spent on the board, so the clock stops too
+  C.onPause(function () { if (!pausedAt) pausedAt = Date.now(); });
+  C.onResume(function () {
+    if (pausedAt && S && !S.done) S.startedAt += Date.now() - pausedAt;
+    pausedAt = 0;
+    tickClock();
+  });
+
+  /* ---------------------------------------------------------- شروع */
+
+  function restore(v) {
+    S = v;
+    S.startedAt = Date.now() - (v.elapsed || 0);
+    sel = -1; hint = null; cur = -1;
+    timeUpShown = S.timed && timeLeft() <= 0;
+    build();
+    render();
+  }
+
+  var saved = ctx.loadSave();
+  // هسته برای هر روز خانه‌ی ذخیره‌ی جدا دارد؛ روزانه‌ی نیمه‌کاره هم ادامه می‌یابد
+  var resume = saved && saved.s && saved.s.faces && saved.s.history && saved.s.history.length && !saved.s.done &&
+    (saved.s.daily || null) === (dailyDate || null) && E.LAYOUTS[saved.s.layout];
+  if (resume) {
+    if (saved.prefs && !dailyDate) prefs = saved.prefs;
+    restore(saved.s);
+  } else if (dailyDate) {
+    newGame('medium', dailyDate);
+    if (C.stats.dailyDone('mahjong', dailyDate)) {
+      var rec = C.stats.dailyOf(dailyDate).mahjong;
+      C.ui.toast({ icon: 'check', title: C.t('dailyDone'), sub: rec.label });
+    }
+    ctx.tutorialIfNew(TUT);
+  } else {
+    newGame(prefs.layout || 'small');
+    ctx.tutorialIfNew(TUT);
+  }
+})();
+</script>
+</body>
+</html>

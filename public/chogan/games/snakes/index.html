@@ -1,0 +1,823 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#FBF6EF">
+<title>مار و پله — چوگان</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../lib/chogan.css">
+<script src="../../lib/early.js"></script>
+<style>
+  /* Player colours tell the tokens apart and stay the same in both themes; green
+     is left out because the snakes are green. */
+  :root { --sl-c0: #E5484D; --sl-c1: #2F6FDE; --sl-c2: #E8A317; --sl-c3: #8E4EC6; }
+  .sl-top { display: flex; gap: var(--s-2); flex-wrap: wrap; justify-content: center; width: 100%; max-width: 560px; }
+  .sl-top .ch-tap { border: 0; font: inherit; font-size: var(--fs-sm); font-weight: 700; min-height: 44px; padding-inline: var(--s-4); cursor: pointer; }
+  .sl-players { width: 100%; max-width: 560px; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: var(--s-2); }
+  .sl-player {
+    display: flex; align-items: center; gap: 6px; min-width: 0;
+    background: var(--c-surface); border-radius: var(--r-md); padding: 6px 10px;
+    box-shadow: var(--sh-1); border: 2px solid transparent; min-height: 44px;
+    transition: border-color var(--t-mid) var(--ease), transform var(--t-mid) var(--ease);
+  }
+  .sl-player--on { border-color: var(--pc); transform: translateY(-2px); box-shadow: var(--sh-2); }
+  .sl-player__dot { width: 16px; height: 16px; border-radius: 50%; flex: 0 0 16px; background: var(--pc); }
+  .sl-player__name { flex: 1; min-width: 0; font-weight: 700; font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sl-player__n { font-size: var(--fs-xs); color: var(--c-text-dim); font-variant-numeric: tabular-nums; }
+  .sl-players--many .sl-player { display: grid; grid-template-columns: 14px minmax(0, 1fr); column-gap: 6px; padding: 5px 8px; }
+  .sl-players--many .sl-player__dot { width: 14px; height: 14px; }
+  .sl-players--many .sl-player__n { grid-column: 2; line-height: 1.1; }
+  .sl-thinking { animation: sl-blink 900ms infinite; }
+  @keyframes sl-blink { 50% { opacity: .55; } }
+  .ch-fit > .sl-boardbox { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
+  .sl-wrap > .ch-fit { --fit-ar: calc(10 / 10.9); }
+  .sl-canvas { display: block; border-radius: var(--r-md); box-shadow: var(--sh-2); }
+  .sl-bar { display: flex; align-items: center; justify-content: center; gap: var(--s-3); width: 100%; max-width: 560px; }
+  .sl-status { flex: 1; min-width: 0; font-weight: 700; font-size: var(--fs-sm); color: var(--c-text-dim); text-align: center; }
+  /* The margin holds the nudge below (turn 8°, grow 5%, about 6px past the box);
+     without it the scrolling side column showed both scrollbars on desktop (#513). */
+  .sl-die {
+    width: 64px; height: 64px; flex: 0 0 64px; margin: 6px; border: 0; padding: 0; border-radius: 16px; cursor: pointer;
+    background: var(--c-surface); box-shadow: var(--sh-2), inset 0 0 0 3px var(--pc, var(--c-line));
+    display: grid; place-items: center; touch-action: manipulation;
+    transition: transform var(--t-fast) var(--ease), opacity var(--t-fast) var(--ease);
+  }
+  .sl-die:disabled { cursor: default; opacity: .75; }
+  .sl-die--ready { animation: sl-nudge 1.4s var(--ease) infinite; }
+  .sl-die--roll svg { animation: sl-spin 120ms linear infinite; }
+  @keyframes sl-nudge { 0%, 70%, 100% { transform: none; } 80% { transform: rotate(-8deg) scale(1.05); } 90% { transform: rotate(8deg) scale(1.05); } }
+  @keyframes sl-spin { to { transform: rotate(90deg); } }
+  @media (prefers-reduced-motion: reduce) { :root:not([data-motion="on"]) .sl-die--ready, :root:not([data-motion="on"]) .sl-die--roll svg { animation: none; } }
+</style>
+</head>
+<body>
+<script src="../../version.js"></script>
+<script src="../../lib/chogan.js"></script>
+<script>
+/* ==== ENGINE START ==== */
+function SnakesEngineFactory() {
+  'use strict';
+
+  // Our own board, found by a search that kept every ladder and snake a cell or
+  // more from the others (the first draft had them crossing into a tangle) and
+  // a two-player game at a median of about 36 rolls: classic boards with an
+  // exact finish ran past 60 and dragged on at the very end.
+  var LADDERS = { 4: 45, 15: 35, 18: 38, 32: 70, 40: 59, 72: 91, 75: 97 };
+  var SNAKES = { 30: 10, 47: 8, 77: 55, 81: 61, 87: 68, 99: 63 };
+  var JUMP = {};
+  Object.keys(LADDERS).forEach(function (k) { JUMP[k] = LADDERS[k]; });
+  Object.keys(SNAKES).forEach(function (k) { JUMP[k] = SNAKES[k]; });
+  var END = 100;
+
+  // Square n (1..100) as [column, row] on a 10×10 grid with row 0 at the top:
+  // 1 is bottom left and the rows run back and forth.
+  function cell(n) {
+    var r = Math.floor((n - 1) / 10), i = (n - 1) % 10;
+    return [r % 2 ? 9 - i : i, 9 - r];
+  }
+
+  // exact: the roll must land on 100, and a roll that goes past bounces back
+  // by the rest. Without it, reaching or passing 100 wins: the bounce made the
+  // last few squares the longest part of the game.
+  function newGame(players, exact) {
+    var pos = [];
+    for (var i = 0; i < players; i++) pos.push(0);
+    return { pos: pos, exact: !!exact, turn: 0, winner: -1, rolls: 0 };
+  }
+
+  function copy(S) {
+    return { pos: S.pos.slice(), exact: S.exact, turn: S.turn, winner: S.winner, rolls: S.rolls };
+  }
+
+  // Moves the player to move by the roll. Returns the new state, the squares
+  // walked (for the animation), the ladder or snake taken, and whether the
+  // player rolls again (after a six).
+  function play(S, roll) {
+    if (S.winner >= 0 || roll < 1 || roll > 6) return null;
+    var N = copy(S), me = N.turn, steps = [], to = N.pos[me], dir = 1;
+    for (var k = 0; k < roll; k++) {
+      // past 100 an exact game walks back, a plain one stops on 100
+      if (to === END) { if (!N.exact) break; dir = -1; }
+      to += dir;
+      steps.push(to);
+    }
+    var bounced = dir < 0, jump = null;
+    if (JUMP[to]) { jump = { from: to, to: JUMP[to], kind: LADDERS[to] ? 'ladder' : 'snake' }; to = JUMP[to]; }
+    N.pos[me] = to;
+    if (to === END) N.winner = me;
+    var again = N.winner < 0 && roll === 6;
+    N.rolls++;
+    if (!again) N.turn = (N.turn + 1) % N.pos.length;
+    return { state: N, steps: steps, jump: jump, bounced: bounced, again: again };
+  }
+
+  function roll(rnd) { return 1 + Math.floor(rnd() * 6); }
+
+  var api = {
+    LADDERS: LADDERS, SNAKES: SNAKES, JUMP: JUMP, END: END, cell: cell,
+    newGame: newGame, copy: copy, play: play, roll: roll
+  };
+  if (typeof self !== 'undefined') self.SnakesEngine = api;
+  return api;
+}
+if (typeof module !== 'undefined' && module.exports) module.exports = SnakesEngineFactory;
+/* ==== ENGINE END ==== */
+</script>
+
+<script>
+(function () {
+  'use strict';
+  var C = window.Chogan, el = C.el;
+  var E = SnakesEngineFactory();
+
+  C.boot({});
+  var ctx = C.game({
+    id: 'snakes',
+    name: { fa: 'مار و پله', en: 'Snakes and Ladders', zh: '蛇梯棋', de: 'Schlangen und Leitern', es: 'Serpientes y escaleras', pl: 'Węże i drabiny', fr: 'Serpents et échelles', ar: 'السلالم والثعابين', hi: 'साँप-सीढ़ी' },
+    accent: '#5A7716',
+    mood: 'menu',
+    strings: {
+      fa: {
+        players: 'بازیکن', vsBots: 'با ربات', people: 'چند نفره', you: 'تو', playerN: 'بازیکن {n}', bot: 'ربات',
+        plainEnd: 'رسیدن به ۱۰۰', exactEnd: 'پایان دقیق', newMatch: 'دست تازه', resetWarn: 'دست فعلی تمام می‌شود. ادامه؟',
+        boardLabel: 'صفحه‌ی مار و پله', roll: 'تاس بریز', sixAgain: 'شش آوردی؛ دوباره تاس بریز',
+        ladderUp: 'نردبان! بالا رفت', snakeDown: 'مار! پایین آمد', bounced: 'از ۱۰۰ گذشت و برگشت',
+        turnOf: 'نوبت {n}', yourTurn: 'نوبت توست',
+        rollsLabel: 'تاس‌های تو', laddersLabel: 'نردبان‌هایی که رفتی', snakesLabel: 'مارهایی که خوردی', playerWon: '{n} برد',
+        rules: 'به نوبت تاس بریزید و مهره را همان‌قدر جلو ببرید؛ همه از بیرون صفحه شروع می‌کنند. پای نردبان که بنشینی بالا می‌روی و روی سر مار که بنشینی تا دمش پایین می‌آیی. شش یک تاس دیگر می‌دهد. چند مهره می‌توانند در یک خانه باشند. اولین کسی که به خانه‌ی ۱۰۰ برسد می‌برد. در «پایان دقیق» عدد تاس باید درست روی ۱۰۰ بنشیند و اضافه‌اش برمی‌گردد.',
+        keyboard: 'صفحه‌کلید', rollKey: 'ریختن تاس',
+        tutTitle1: 'تاس بریز', tutText1: 'تاس بریز تا مهره‌ات همان‌قدر جلو برود. شش یک تاس دیگر هم می‌دهد.',
+        tutTitle2: 'نردبان بالا، مار پایین', tutText2: 'پای نردبان بنشینی بالا می‌روی. روی سر مار بنشینی تا دمش سُر می‌خوری.',
+        tutTitle3: 'برو تا ۱۰۰', tutText3: 'اولین کسی که به خانه‌ی ۱۰۰ برسد برنده است. بازی کاملاً شانسی است؛ فقط لذتش را ببر.'
+      },
+      en: {
+        players: 'players', vsBots: 'Versus bots', people: 'Pass and play', you: 'You', playerN: 'Player {n}', bot: 'Bot',
+        plainEnd: 'Reach 100', exactEnd: 'Exact finish', newMatch: 'New game', resetWarn: 'This ends the current game. Continue?',
+        boardLabel: 'Snakes and ladders board', roll: 'Roll the die', sixAgain: 'A six: roll again',
+        ladderUp: 'A ladder: up!', snakeDown: 'A snake: down!', bounced: 'Past 100 and back',
+        turnOf: "{n}'s turn", yourTurn: 'Your turn',
+        rollsLabel: 'Your rolls', laddersLabel: 'Ladders climbed', snakesLabel: 'Snakes hit', playerWon: '{n} wins',
+        rules: 'Take turns rolling the die and move your token that many squares; everyone starts off the board. Land at the foot of a ladder to climb it, land on a snake\'s head to slide down to its tail. A six gives another roll. Tokens can share a square. The first to reach square 100 wins. With "Exact finish" the roll must land on 100 exactly, and the rest bounces back.',
+        keyboard: 'Keyboard', rollKey: 'Roll the die',
+        tutTitle1: 'Roll the die', tutText1: 'Roll and your token moves that many squares. A six gives you another roll.',
+        tutTitle2: 'Ladders up, snakes down', tutText2: 'Land at the foot of a ladder to climb it. Land on a snake\'s head and you slide down to its tail.',
+        tutTitle3: 'On to 100', tutText3: 'The first to reach square 100 wins. It is all luck, so just enjoy the ride.'
+      },
+      pl: {
+        players: 'gracze', vsBots: 'Przeciwko botom', people: 'Podaj i graj', you: 'Ty', playerN: 'Gracz {n}', bot: 'Bot',
+        plainEnd: 'Dotrzyj do 100', exactEnd: 'Dokładny finał', newMatch: 'Nowa gra', resetWarn: 'To zakończy obecną grę. Kontynuować?',
+        boardLabel: 'Plansza do węży i drabin', roll: 'Rzuć kostką', sixAgain: 'Szóstka: rzuć ponownie',
+        ladderUp: 'Drabina: w górę!', snakeDown: 'Wąż: w dół!', bounced: 'Przekroczono 100 – powrót',
+        turnOf: 'Kolej gracza {n}', yourTurn: 'Twoja kolej',
+        rollsLabel: 'Twoje rzuty', laddersLabel: 'Pokonane drabiny', snakesLabel: 'Trafione węże', playerWon: '{n} wygrywa',
+        rules: 'Gracze na zmianę rzucają kostką i przesuwają swój pionek o wskazaną liczbę pól; wszyscy zaczynają poza planszą. Stanęcie u dołu drabiny pozwala się po niej wspiąć, a stanęcie na głowie węża powoduje zjazd w dół aż do jego ogona. Szóstka daje dodatkowy rzut. Pionki mogą dzielić to samo pole. Wygrywa ten, kto jako pierwszy dotrze do pola 100. Przy włączonym trybie „Dokładny finał” wyrzucona liczba oczek musi pozwolić na stanięcie idealnie na polu 100, a nadmiar punktów cofa pionek o odpowiednią liczbę pól.',
+        keyboard: 'Klawiatura', rollKey: 'Rzuć kostką',
+        tutTitle1: 'Rzuć kostką', tutText1: 'Rzuć kostką, a Twój pionek przesunie się o tyle pól, ile oczek wypadło. Szóstka daje dodatkowy rzut.',
+        tutTitle2: 'Drabiny w górę, węże w dół', tutText2: 'Stań u dołu drabiny, aby się po niej wspiąć. Jeśli staniesz na głowie węża, zjedziesz w dół aż do jego ogona.',
+        tutTitle3: 'Kierunek: 100', tutText3: 'Wygrywa ten, kto jako pierwszy dotrze do pola 100. Wszystko zależy od szczęścia, więc po prostu ciesz się grą.'
+      },
+      fr: {
+        players: 'joueurs', vsBots: 'Contre les robots', people: 'À tour de rôle', you: 'Toi', playerN: 'Joueur {n}', bot: 'Robot',
+        plainEnd: 'Atteindre 100', exactEnd: 'Arrivée exacte', newMatch: 'Nouvelle partie', resetWarn: 'La partie en cours va se terminer. Continuer ?',
+        boardLabel: 'Plateau de serpents et échelles', roll: 'Lance le dé', sixAgain: 'Un six : relance',
+        ladderUp: 'Une échelle : ça monte !', snakeDown: 'Un serpent : ça descend !', bounced: 'Au-delà de 100, retour',
+        turnOf: 'Au tour de {n}', yourTurn: 'À toi de jouer',
+        rollsLabel: 'Tes lancers', laddersLabel: 'Échelles montées', snakesLabel: 'Serpents rencontrés', playerWon: '{n} gagne',
+        rules: 'Lancez le dé à tour de rôle et avancez votre pion d’autant de cases ; tout le monde part de l’extérieur du plateau. Qui arrive au pied d’une échelle y grimpe ; qui tombe sur la tête d’un serpent glisse jusqu’à sa queue. Un six donne un lancer de plus. Plusieurs pions peuvent partager une case. Le premier à atteindre la case 100 gagne. Avec « Arrivée exacte », le lancer doit tomber pile sur 100, et le reste fait reculer.',
+        keyboard: 'Clavier', rollKey: 'Lancer le dé',
+        tutTitle1: 'Lance le dé', tutText1: 'Lance le dé et ton pion avance d’autant de cases. Un six te donne un lancer de plus.',
+        tutTitle2: 'Échelles en haut, serpents en bas', tutText2: 'Arrive au pied d’une échelle pour y grimper. Tombe sur la tête d’un serpent et tu glisses jusqu’à sa queue.',
+        tutTitle3: 'Direction 100', tutText3: 'Le premier à atteindre la case 100 gagne. Tout est question de chance, alors profite du voyage.'
+      },
+      ar: {
+        players: 'لاعبين', vsBots: 'ضد الروبوتات', people: 'بالتناوب', you: 'أنت', playerN: 'اللاعب {n}', bot: 'روبوت',
+        plainEnd: 'الوصول إلى 100', exactEnd: 'نهاية دقيقة', newMatch: 'لعبة جديدة', resetWarn: 'سينهي هذا اللعبة الحالية. متابعة؟',
+        boardLabel: 'لوحة السلالم والثعابين', roll: 'ارمِ النرد', sixAgain: 'ستة: ارمِ مرة أخرى',
+        ladderUp: 'سلّم: إلى الأعلى!', snakeDown: 'ثعبان: إلى الأسفل!', bounced: 'تجاوزت 100 فعدت',
+        turnOf: 'دور {n}', yourTurn: 'دورك',
+        rollsLabel: 'رمياتك', laddersLabel: 'سلالم صعدتها', snakesLabel: 'ثعابين لدغتك', playerWon: '{n} يفوز',
+        rules: 'ارموا النرد بالتناوب وحرّكوا القطعة بعدد الخانات؛ يبدأ الجميع من خارج اللوحة. من يقف عند أسفل سلّم يصعده، ومن يقف على رأس ثعبان ينزلق إلى ذيله. الستة تمنحك رمية أخرى. يمكن لأكثر من قطعة أن تكون في الخانة نفسها. أول من يصل إلى الخانة 100 يفوز. مع «نهاية دقيقة» يجب أن تنتهي الرمية على 100 تمامًا، والباقي يرجعك إلى الخلف.',
+        keyboard: 'لوحة المفاتيح', rollKey: 'ارمِ النرد',
+        tutTitle1: 'ارمِ النرد', tutText1: 'ارمِ النرد فتتقدم قطعتك بعدد الخانات. الستة تمنحك رمية أخرى.',
+        tutTitle2: 'السلالم تصعد والثعابين تنزل', tutText2: 'قف عند أسفل سلّم لتصعده. وإذا وقفت على رأس ثعبان تنزلق إلى ذيله.',
+        tutTitle3: 'نحو 100', tutText3: 'أول من يصل إلى الخانة 100 يفوز. كل شيء حظ، فاستمتع بالرحلة.'
+      },
+      hi: {
+        players: 'खिलाड़ी', vsBots: 'बॉट से', people: 'बारी-बारी', you: 'आप', playerN: 'खिलाड़ी {n}', bot: 'बॉट',
+        plainEnd: '100 तक पहुँचें', exactEnd: 'ठीक 100 पर', newMatch: 'नया खेल', resetWarn: 'इससे मौजूदा खेल ख़त्म हो जाएगा। जारी रखें?',
+        boardLabel: 'साँप-सीढ़ी का बोर्ड', roll: 'पासा फेंकें', sixAgain: 'छक्का: फिर फेंकें',
+        ladderUp: 'सीढ़ी: ऊपर!', snakeDown: 'साँप: नीचे!', bounced: '100 से आगे, और वापस',
+        turnOf: '{n} की बारी', yourTurn: 'आपकी बारी',
+        rollsLabel: 'आपके पासे', laddersLabel: 'चढ़ी सीढ़ियाँ', snakesLabel: 'साँपों पर गिरे', playerWon: '{n} की जीत',
+        rules: 'बारी-बारी से पासा फेंकें और अपनी गोटी उतने खाने आगे बढ़ाएँ; सब बोर्ड के बाहर से शुरू करते हैं। सीढ़ी के नीचे पहुँचें तो उस पर चढ़ें, साँप के सिर पर पहुँचें तो उसकी पूँछ तक फिसलें। छक्का आने पर एक बार और फेंकें। एक खाने में कई गोटियाँ रह सकती हैं। जो पहले खाना 100 तक पहुँचे, वह जीतता है। "ठीक 100 पर" में पासा ठीक 100 पर पड़ना चाहिए, और बाक़ी अंक गोटी को पीछे लौटा देते हैं।',
+        keyboard: 'कीबोर्ड', rollKey: 'पासा फेंकें',
+        tutTitle1: 'पासा फेंकें', tutText1: 'पासा फेंकें और आपकी गोटी उतने खाने आगे बढ़ेगी। छक्का आने पर एक बार और फेंकें।',
+        tutTitle2: 'सीढ़ी ऊपर, साँप नीचे', tutText2: 'सीढ़ी के नीचे पहुँचें तो उस पर चढ़ें। साँप के सिर पर पहुँचें तो उसकी पूँछ तक फिसल जाएँगे।',
+        tutTitle3: '100 की ओर', tutText3: 'जो पहले खाना 100 तक पहुँचे, वह जीतता है। सब क़िस्मत का खेल है, बस मज़े लें।'
+      },
+      zh: {
+        players: '名玩家', vsBots: '对战电脑', people: '轮流对战', you: '你', playerN: '玩家{n}', bot: '电脑',
+        plainEnd: '到达100', exactEnd: '精确到终点', newMatch: '新一局', resetWarn: '将结束当前对局，是否继续？',
+        boardLabel: '蛇梯棋棋盘', roll: '掷骰子', sixAgain: '掷出六点：再掷一次',
+        ladderUp: '梯子：向上！', snakeDown: '蛇：向下！', bounced: '超过100又退回',
+        turnOf: '轮到{n}', yourTurn: '轮到你',
+        rollsLabel: '你的掷骰次数', laddersLabel: '爬过的梯子', snakesLabel: '碰到的蛇', playerWon: '{n}获胜',
+        rules: '轮流掷骰子，按点数移动棋子；大家都从棋盘外出发。停在梯子底部就爬上去，停在蛇头就滑到蛇尾。掷出六点可再掷一次。多枚棋子可以停在同一格。先到达第100格的人获胜。选择“精确到终点”时，点数必须正好落在100，多出的步数要往回走。',
+        keyboard: '键盘', rollKey: '掷骰子',
+        tutTitle1: '掷骰子', tutText1: '掷骰子，棋子就走相应的格数。掷出六点还能再掷一次。',
+        tutTitle2: '梯子向上，蛇向下', tutText2: '停在梯子底部就爬上去。停在蛇头就滑到蛇尾。',
+        tutTitle3: '冲向100', tutText3: '先到达第100格的人获胜。全凭运气，尽情享受吧。'
+      },
+      de: {
+        players: 'Spieler', vsBots: 'Gegen Bots', people: 'Reihum', you: 'Du', playerN: 'Spieler {n}', bot: 'Bot',
+        plainEnd: 'Bis 100', exactEnd: 'Genau ins Ziel', newMatch: 'Neue Partie', resetWarn: 'Die aktuelle Partie endet. Weiter?',
+        boardLabel: 'Spielbrett Schlangen und Leitern', roll: 'Würfeln', sixAgain: 'Eine Sechs: nochmal würfeln',
+        ladderUp: 'Eine Leiter: hoch!', snakeDown: 'Eine Schlange: runter!', bounced: 'Über 100 und zurück',
+        turnOf: 'Am Zug: {n}', yourTurn: 'Du bist dran',
+        rollsLabel: 'Deine Würfe', laddersLabel: 'Leitern hinauf', snakesLabel: 'Schlangen erwischt', playerWon: 'Sieg: {n}',
+        rules: 'Würfelt abwechselnd und zieht eure Figur so viele Felder weiter; alle starten neben dem Brett. Wer am Fuß einer Leiter landet, klettert hinauf; wer auf einem Schlangenkopf landet, rutscht bis zum Schwanz hinunter. Eine Sechs gibt einen weiteren Wurf. Mehrere Figuren dürfen auf einem Feld stehen. Wer zuerst Feld 100 erreicht, gewinnt. Mit „Genau ins Ziel“ muss der Wurf genau auf 100 enden, der Rest geht zurück.',
+        keyboard: 'Tastatur', rollKey: 'Würfeln',
+        tutTitle1: 'Würfeln', tutText1: 'Würfle, und deine Figur zieht so viele Felder. Eine Sechs gibt dir noch einen Wurf.',
+        tutTitle2: 'Leitern hoch, Schlangen runter', tutText2: 'Am Fuß einer Leiter kletterst du hinauf. Auf einem Schlangenkopf rutschst du bis zum Schwanz.',
+        tutTitle3: 'Auf zur 100', tutText3: 'Wer zuerst Feld 100 erreicht, gewinnt. Es ist reines Glück, also genieß die Fahrt.'
+      },
+      es: {
+        players: 'jugadores', vsBots: 'Contra bots', people: 'Por turnos', you: 'Tú', playerN: 'Jugador {n}', bot: 'Bot',
+        plainEnd: 'Llegar a 100', exactEnd: 'Final exacto', newMatch: 'Nueva partida', resetWarn: 'Esto termina la partida actual. ¿Seguir?',
+        boardLabel: 'Tablero de serpientes y escaleras', roll: 'Tirar el dado', sixAgain: 'Un seis: tira otra vez',
+        ladderUp: '¡Una escalera: arriba!', snakeDown: '¡Una serpiente: abajo!', bounced: 'Pasó de 100 y volvió',
+        turnOf: 'Turno: {n}', yourTurn: 'Tu turno',
+        rollsLabel: 'Tus tiradas', laddersLabel: 'Escaleras subidas', snakesLabel: 'Serpientes', playerWon: 'Gana: {n}',
+        rules: 'Tirad el dado por turnos y avanzad vuestra ficha esas casillas; todos empiezan fuera del tablero. Si caes al pie de una escalera, subes; si caes en la cabeza de una serpiente, bajas hasta su cola. Un seis da otra tirada. Varias fichas pueden compartir casilla. Gana quien llegue primero a la casilla 100. Con «Final exacto» la tirada debe caer justo en 100 y lo que sobra vuelve atrás.',
+        keyboard: 'Teclado', rollKey: 'Tirar el dado',
+        tutTitle1: 'Tira el dado', tutText1: 'Tira y tu ficha avanza esas casillas. Un seis te da otra tirada.',
+        tutTitle2: 'Escaleras arriba, serpientes abajo', tutText2: 'Al pie de una escalera, subes. En la cabeza de una serpiente, bajas hasta su cola.',
+        tutTitle3: 'Hasta el 100', tutText3: 'Gana quien llegue primero a la casilla 100. Es pura suerte: disfruta del viaje.'
+      }
+    }
+  });
+
+  var prefs = ctx.store.get('prefs', { players: 2, mode: 'bots', exact: false });
+  if ([2, 3, 4].indexOf(prefs.players) < 0) prefs.players = 2;
+  if (prefs.mode !== 'bots' && prefs.mode !== 'people') prefs.mode = 'bots';
+  prefs.exact = !!prefs.exact;
+
+  // G: the game. phase: 'roll' (waiting for the die) or 'busy' (the die or a
+  // token is moving).
+  var G = null, timer = null, anim = null;
+
+  var cv = document.createElement('canvas');
+  cv.className = 'sl-canvas';
+  cv.setAttribute('role', 'img');
+  cv.setAttribute('aria-label', C.t('boardLabel'));
+  var boardBox = el('div', { class: 'sl-boardbox' }, [cv]);
+  var top = el('div', { class: 'sl-top ch-above' });
+  var playersRow = el('div', { class: 'sl-players ch-above' });
+  var status = el('div', { class: 'sl-status', role: 'status', 'aria-live': 'polite' });
+  var die = el('button', { class: 'sl-die', type: 'button', 'aria-label': C.t('roll') });
+  var bar = el('div', { class: 'sl-bar' }, [status, die]);
+  var wrap = el('div', { class: 'sl-wrap ch-split' }, [el('div', { class: 'ch-fit' }, [boardBox]), el('div', { class: 'ch-side' }, [top, playersRow, bar])]);
+
+  ctx.button({ icon: 'help', label: C.t('help'), onClick: showHelp });
+  ctx.button({ icon: 'refresh', label: C.t('newMatch'), onClick: settings });
+  ctx.main.appendChild(wrap);
+  ctx.mount();
+
+  /* ------------------------------------------------------------ setup */
+
+  // Seat 0 is always the person holding the phone. Against bots every other
+  // seat is a bot; in pass-and-play they are people.
+  function newGame(o) {
+    stop();
+    anim = null;
+    G = {
+      players: o.players, mode: o.mode, exact: o.exact, phase: 'roll', roll: 0, msg: '',
+      myRolls: 0, ladders: 0, snakes: 0, bigSnake: false, startedAt: Date.now(), done: false
+    };
+    G.s = E.newGame(G.players, G.exact);
+    prefs.players = o.players; prefs.mode = o.mode; prefs.exact = o.exact;
+    ctx.store.set('prefs', prefs);
+    render();
+    save();
+    startTurn();
+  }
+  function current() { return { players: G.players, mode: G.mode, exact: G.exact }; }
+  function fromPrefs() { return { players: prefs.players, mode: prefs.mode, exact: prefs.exact }; }
+
+  function isBot(seat) { return G.mode === 'bots' && seat !== 0; }
+  function stop() { if (timer) { clearTimeout(timer); timer = null; } }
+  function later(fn, ms) { stop(); timer = setTimeout(function () { timer = null; fn(); }, ms); }
+
+  /* ------------------------------------------------------------- turns */
+
+  function startTurn() {
+    if (!G || G.done) return;
+    G.phase = 'roll';
+    G.roll = 0;
+    render();
+    if (isBot(G.s.turn)) later(doRoll, 650);
+  }
+
+  function doRoll() {
+    if (!G || G.done || G.phase !== 'roll') return;
+    G.phase = 'busy';
+    var who = G.s.turn, v = E.roll(Math.random);
+    if (who === 0) G.myRolls++;
+    die.classList.add('sl-die--roll');
+    drawDie(1 + Math.floor(Math.random() * 6));
+    C.feedback('clack');
+    render();
+    later(function () {
+      die.classList.remove('sl-die--roll');
+      G.roll = v;
+      // Saved the moment it is known: without it a reload threw the die again,
+      // so a roll onto a snake could be swapped for a new one
+      save();
+      drawDie(v);
+      later(move, 260);
+    }, C.ui.reduceMotion() ? 120 : 520);
+  }
+
+  // The token's path in board units: a stop per square walked, then the
+  // ladder or the snake's body, so the slide follows what is drawn.
+  function pathOf(r) {
+    var pts = [], walk = C.ui.reduceMotion() ? 40 : 130, glide = C.ui.reduceMotion() ? 12 : 34;
+    r.steps.forEach(function (n) { var q = centre(n); pts.push({ x: q[0], y: q[1], ms: walk }); });
+    if (r.jump) {
+      var line = r.jump.kind === 'ladder' ? ladderLine(r.jump.from, r.jump.to) : snakeLine(r.jump.from, r.jump.to);
+      var n = Math.max(10, Math.round(line.len * 5));
+      pts[pts.length - 1].ms = walk * 2;
+      for (var i = 1; i <= n; i++) { var p = line.at(i / n); pts.push({ x: p[0], y: p[1], ms: glide }); }
+    }
+    return pts;
+  }
+
+  function move() {
+    if (!G || G.done || !G.roll) return;
+    var who = G.s.turn, r = E.play(G.s, G.roll);
+    if (!r) return;
+    G.phase = 'busy';
+    G.msg = '';
+    anim = { seat: who, pts: pathOf(r), i: 0, from: G.s };
+    render();
+    // the first square walked is on screen for its own beat before the next: next() used
+    // to run at once and draw the second square in the same tick, so every move looked as
+    // if it skipped a square (#595)
+    C.feedback('place');
+    later(function next() {
+      if (!anim) return;
+      if (anim.i < anim.pts.length - 1) {
+        anim.i++;
+        if (anim.i < r.steps.length) C.feedback('place');
+        if (r.jump && anim.i === r.steps.length) C.feedback(r.jump.kind === 'ladder' ? 'good' : 'bad');
+        draw();
+        later(next, anim.pts[anim.i].ms);
+        return;
+      }
+      anim = null;
+      G.s = r.state;
+      if (r.jump) {
+        G.msg = C.t(r.jump.kind === 'ladder' ? 'ladderUp' : 'snakeDown');
+        if (who === 0 && r.jump.kind === 'ladder') G.ladders++;
+        if (who === 0 && r.jump.kind === 'snake') {
+          G.snakes++;
+          if (r.jump.from === LONGEST_SNAKE) G.bigSnake = true;
+        }
+        if (who === 0 && r.jump.kind === 'ladder' && r.jump.from === LONGEST_LADDER && G.mode === 'bots') C.achievements.unlock('sl-ladder');
+      } else if (r.bounced) G.msg = C.t('bounced');
+      if (G.s.winner >= 0) {
+        G.done = true;
+        render();
+        later(finish, 600);
+        return;
+      }
+      if (r.again) G.msg = G.msg ? G.msg + ' · ' + C.t('sixAgain') : C.t('sixAgain');
+      G.roll = 0;
+      save();
+      later(startTurn, r.jump ? 650 : 250);
+    }, anim.pts[0].ms);
+  }
+
+  var LONGEST_LADDER = longest(E.LADDERS, 1), LONGEST_SNAKE = longest(E.SNAKES, -1);
+  function longest(map, dir) {
+    var best = 0, at = 0;
+    Object.keys(map).forEach(function (k) { var d = (map[k] - k) * dir; if (d > best) { best = d; at = +k; } });
+    return at;
+  }
+
+  /* ------------------------------------------------------------ result */
+
+  // A game of pure luck: small rewards, and none of them for "skill"
+  function finish() {
+    stop();
+    var vsBots = G.mode === 'bots', w = G.s.winner, won = vsBots ? w === 0 : true;
+    var coins = vsBots ? (won ? 4 + (G.players - 2) : 2) : 3;
+    var points = vsBots ? (won ? 12 + (G.players - 2) * 3 : 5) : 8;
+    if (vsBots && won) {
+      C.achievements.unlock('sl-win');
+      if (G.bigSnake) C.achievements.unlock('sl-snake');
+    }
+    ctx.clearSave();
+    ctx.finish({
+      won: vsBots ? won : null,
+      title: vsBots ? (won ? C.t('won') : C.t('lost')) : C.t('playerWon', { n: pname(w) }),
+      timeMs: Date.now() - G.startedAt, coins: coins, points: points,
+      lines: [
+        { label: C.t('rollsLabel'), value: C.num(G.myRolls) },
+        { label: C.t('laddersLabel'), value: C.num(G.ladders) },
+        { label: C.t('snakesLabel'), value: C.num(G.snakes) }
+      ],
+      shareText: 'چوگان · مار و پله\n' + pname(w),
+      paint: cardPaint(),
+      onAgain: function () { newGame(current()); }
+    });
+  }
+
+  /* ------------------------------------------------------------- saves */
+
+  // Saved between turns and as soon as the die lands, with the roll. A token
+  // caught mid-move is saved as the turn before it, so a reload plays that same
+  // roll again.
+  ctx.autosave(function () {
+    if (!G || G.done || (!G.s.rolls && !G.roll)) return { inProgress: false };
+    return {
+      g: {
+        players: G.players, mode: G.mode, exact: G.exact, s: G.s, roll: G.roll,
+        myRolls: G.myRolls, ladders: G.ladders, snakes: G.snakes, bigSnake: G.bigSnake,
+        elapsed: Date.now() - G.startedAt
+      },
+      prefs: prefs
+    };
+  });
+  function save() { ctx.save(); }
+
+  function validSave(sv) {
+    var g = sv && sv.g, s = g && g.s;
+    return !!(g && [2, 3, 4].indexOf(g.players) >= 0 && (g.mode === 'bots' || g.mode === 'people') &&
+      s && Array.isArray(s.pos) && s.pos.length === g.players &&
+      s.pos.every(function (p) { return p >= 0 && p < E.END && Math.floor(p) === p; }) &&
+      s.winner < 0 && s.turn >= 0 && s.turn < g.players);
+  }
+  function restore(g) {
+    G = {
+      players: g.players, mode: g.mode, exact: !!g.exact, s: g.s, phase: 'roll', roll: 0, msg: '',
+      myRolls: g.myRolls || 0, ladders: g.ladders || 0, snakes: g.snakes || 0, bigSnake: !!g.bigSnake,
+      startedAt: Date.now() - (g.elapsed || 0), done: false
+    };
+    G.s.exact = G.exact;
+    render();
+    if (g.roll >= 1 && g.roll <= 6) { G.phase = 'busy'; G.roll = g.roll; drawDie(g.roll); later(move, 300); }
+    else startTurn();
+  }
+
+  // New game settings in one window. Nothing changes until Start, so it doubles
+  // as the "end this game?" question.
+  function settings() {
+    var o = G ? current() : fromPrefs(), body = el('div', { class: 'ch-col', style: { gap: 'var(--s-3)', 'align-items': 'center' } });
+    body.appendChild(C.ui.segmented([2, 3, 4].map(function (n) { return { value: n, label: C.num(n) + ' ' + C.t('players') }; }),
+      o.players, function (v) { o.players = v; }));
+    body.appendChild(C.ui.segmented([{ value: 'bots', label: C.t('vsBots') }, { value: 'people', label: C.t('people') }],
+      o.mode, function (v) { o.mode = v; }));
+    body.appendChild(C.ui.segmented([{ value: false, label: C.t('plainEnd') }, { value: true, label: C.t('exactEnd') }],
+      o.exact, function (v) { o.exact = v; }));
+    if (G && G.s.rolls && !G.done) body.appendChild(el('p', { class: 'ch-xs ch-dim', text: C.t('resetWarn') }));
+    C.ui.modal({
+      title: C.t('newMatch'), closeButton: true, body: [body],
+      actions: [{ label: C.t('cancel') }, { label: C.t('start'), kind: 'primary', onClick: function () { newGame(o); } }]
+    });
+  }
+
+  /* --------------------------------------------------------------- draw */
+
+  function colors() {
+    var cs = getComputedStyle(document.documentElement);
+    var v = function (k, f) { return cs.getPropertyValue(k).trim() || f; };
+    return {
+      c: [v('--sl-c0', '#E5484D'), v('--sl-c1', '#2F6FDE'), v('--sl-c2', '#E8A317'), v('--sl-c3', '#8E4EC6')],
+      cell: v('--c-surface', '#FFFFFF'), bg: v('--c-surface-2', '#F7F1E8'), line: v('--c-line', '#E6DDD0'),
+      text: v('--c-text', '#2B2118'), dim: v('--c-text-faint', '#A89A88'), accent: '#5A7716'
+    };
+  }
+
+  // The board is 10 squares wide and 10.9 tall: the strip under it is where
+  // tokens wait before their first roll.
+  var TALL = 10.9;
+  function boardSize() {
+    // the slot the core sized for the board (#359); before, 520-560px wide at most and
+    // the window's height less a guess for the rows below
+    var maxW = boardBox.clientWidth || 360, maxH = boardBox.clientHeight || maxW * TALL / 10;
+    var u = Math.floor(Math.min(maxW / 10, maxH / TALL));
+    return { u: u, w: u * 10, h: Math.round(u * TALL) };
+  }
+
+  function centre(n) {
+    if (n <= 0) return [0.5, 10.45];
+    var q = E.cell(n);
+    return [q[0] + 0.5, q[1] + 0.5];
+  }
+
+  function tint(hex, a) {
+    var n = parseInt(hex.slice(1), 16);
+    return 'rgba(' + (n >> 16) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+  }
+
+  // A ladder runs from the middle of its foot square to the middle of its top.
+  function ladderLine(a, b) {
+    var p = centre(a), q = centre(b), len = Math.hypot(q[0] - p[0], q[1] - p[1]);
+    return { len: len, at: function (t) { return [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t]; } };
+  }
+  // A snake's body: from the head down to the tail, a wave across the straight
+  // line that dies out towards the tail. The token slides along the same curve.
+  function snakeLine(a, b) {
+    var p = centre(a), q = centre(b), dx = q[0] - p[0], dy = q[1] - p[1], len = Math.hypot(dx, dy);
+    var nx = -dy / len, ny = dx / len, waves = Math.max(1.5, Math.round(len / 1.7) + 0.5), amp = Math.min(0.42, 0.18 + len * 0.03);
+    return {
+      len: len,
+      at: function (t) {
+        var w = Math.sin(t * Math.PI * waves) * amp * (0.35 + 0.65 * Math.sin(Math.PI * Math.min(1, t * 1.15)));
+        return [p[0] + dx * t + nx * w, p[1] + dy * t + ny * w];
+      }
+    };
+  }
+
+  function paintLadder(g, u, a, b) {
+    var p = centre(a), q = centre(b), dx = q[0] - p[0], dy = q[1] - p[1], len = Math.hypot(dx, dy);
+    var nx = -dy / len * 0.2, ny = dx / len * 0.2;
+    // the ends stop short of the square middles so the numbers stay readable
+    var s = 0.18 / len, e = 1 - s;
+    var X = function (t, side) { return (p[0] + dx * t + nx * side) * u; };
+    var Y = function (t, side) { return (p[1] + dy * t + ny * side) * u; };
+    g.lineCap = 'round';
+    // shadow, then rails, then rungs
+    g.strokeStyle = 'rgba(0,0,0,.18)'; g.lineWidth = u * 0.11;
+    [-1, 1].forEach(function (sd) { g.beginPath(); g.moveTo(X(s, sd) + u * 0.04, Y(s, sd) + u * 0.06); g.lineTo(X(e, sd) + u * 0.04, Y(e, sd) + u * 0.06); g.stroke(); });
+    var rungs = Math.max(2, Math.floor(len / 0.42));
+    g.strokeStyle = '#C8904F'; g.lineWidth = u * 0.07;
+    for (var i = 1; i < rungs; i++) {
+      var t = s + (e - s) * i / rungs;
+      g.beginPath(); g.moveTo(X(t, -1), Y(t, -1)); g.lineTo(X(t, 1), Y(t, 1)); g.stroke();
+    }
+    g.strokeStyle = '#8A5A2B'; g.lineWidth = u * 0.09;
+    [-1, 1].forEach(function (sd) { g.beginPath(); g.moveTo(X(s, sd), Y(s, sd)); g.lineTo(X(e, sd), Y(e, sd)); g.stroke(); });
+  }
+
+  // Each snake gets its own skin from this list, by its head square
+  var SKINS = [['#3E9B4F', '#2C7438'], ['#C9822B', '#94591A'], ['#4F8FBF', '#2F6690'], ['#B5524B', '#86342F']];
+  function paintSnake(g, u, a, b, k) {
+    var line = snakeLine(a, b), skin = SKINS[k % SKINS.length], n = Math.max(24, Math.round(line.len * 14));
+    var pts = [];
+    for (var i = 0; i <= n; i++) pts.push(line.at(i / n));
+    g.lineCap = 'round';
+    var width = function (t) { return u * (0.3 - 0.22 * t); };
+    // shadow, body, then a stripe every few segments
+    for (i = 0; i < n; i++) {
+      var t = i / n;
+      g.strokeStyle = 'rgba(0,0,0,.18)'; g.lineWidth = width(t);
+      g.beginPath(); g.moveTo(pts[i][0] * u + u * 0.05, pts[i][1] * u + u * 0.07); g.lineTo(pts[i + 1][0] * u + u * 0.05, pts[i + 1][1] * u + u * 0.07); g.stroke();
+    }
+    for (i = 0; i < n; i++) {
+      t = i / n;
+      g.strokeStyle = Math.floor(i / 3) % 2 ? skin[1] : skin[0]; g.lineWidth = width(t);
+      g.beginPath(); g.moveTo(pts[i][0] * u, pts[i][1] * u); g.lineTo(pts[i + 1][0] * u, pts[i + 1][1] * u); g.stroke();
+    }
+    // head: an oval along the body's first segment, two eyes and a tongue
+    var h = pts[0], h2 = pts[2], ang = Math.atan2(h[1] - h2[1], h[0] - h2[0]);
+    g.save();
+    g.translate(h[0] * u, h[1] * u);
+    g.rotate(ang);
+    g.fillStyle = '#D23B3B';
+    g.beginPath(); g.moveTo(u * 0.2, 0); g.lineTo(u * 0.36, -u * 0.05); g.moveTo(u * 0.2, 0); g.lineTo(u * 0.36, u * 0.05);
+    g.strokeStyle = '#D23B3B'; g.lineWidth = Math.max(1, u * 0.03); g.stroke();
+    g.fillStyle = skin[0];
+    g.beginPath(); g.ellipse(0, 0, u * 0.24, u * 0.18, 0, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#FFFFFF';
+    g.beginPath(); g.arc(u * 0.07, -u * 0.08, u * 0.055, 0, Math.PI * 2); g.arc(u * 0.07, u * 0.08, u * 0.055, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#1B1B1B';
+    g.beginPath(); g.arc(u * 0.09, -u * 0.08, u * 0.028, 0, Math.PI * 2); g.arc(u * 0.09, u * 0.08, u * 0.028, 0, Math.PI * 2); g.fill();
+    g.restore();
+  }
+
+  function paintBoard(g, W, o, col) {
+    var u = W / 10, s = o.s;
+    g.fillStyle = col.bg;
+    C.rrect(g, 0, 0, W, u * TALL, Math.round(u * 0.3));
+    g.fill();
+    // squares: a soft checker in the accent, 100 in the accent itself
+    for (var n = 1; n <= 100; n++) {
+      var q = E.cell(n), x = q[0] * u, y = q[1] * u;
+      g.fillStyle = n === 100 ? col.accent : ((q[0] + q[1]) % 2 ? tint(col.accent, 0.16) : col.cell);
+      g.fillRect(x, y, u, u);
+      g.fillStyle = n === 100 ? '#FFFFFF' : col.dim;
+      g.font = '700 ' + Math.max(8, Math.round(u * (n === 100 ? 0.34 : 0.24))) + 'px Vazirmatn, system-ui, sans-serif';
+      g.textAlign = n === 100 ? 'center' : 'left'; g.textBaseline = n === 100 ? 'middle' : 'top';
+      g.direction = 'ltr';
+      g.fillText(C.num(n), n === 100 ? x + u / 2 : x + u * 0.08, n === 100 ? y + u / 2 : y + u * 0.06);
+    }
+    g.strokeStyle = col.line; g.lineWidth = Math.max(1, u / 30);
+    g.strokeRect(0, 0, W, u * 10);
+    Object.keys(E.LADDERS).forEach(function (a) { paintLadder(g, u, +a, E.LADDERS[a]); });
+    Object.keys(E.SNAKES).forEach(function (a, k) { paintSnake(g, u, +a, E.SNAKES[a], k); });
+    // tokens; several on one square sit side by side and a little smaller
+    var list = [];
+    for (var seat = 0; seat < s.pos.length; seat++) {
+      var at = centre(s.pos[seat]), key = 'n' + s.pos[seat];
+      if (o.anim && o.anim.seat === seat) { var pt = o.anim.pts[o.anim.i]; at = [pt.x, pt.y]; key = ''; }
+      list.push({ seat: seat, x: at[0], y: at[1], key: key });
+    }
+    var groups = {};
+    list.forEach(function (t) { if (t.key) (groups[t.key] = groups[t.key] || []).push(t); });
+    Object.keys(groups).forEach(function (key) {
+      var gr = groups[key];
+      if (key === 'n0') { gr.forEach(function (t, i) { t.x += i * 0.8; }); return; }
+      if (gr.length < 2) return;
+      gr.forEach(function (t, i) {
+        var a = i * Math.PI * 2 / gr.length - Math.PI / 4;
+        t.x += Math.cos(a) * 0.2; t.y += Math.sin(a) * 0.2; t.small = true;
+      });
+    });
+    // the moving token is drawn last, on top of the others
+    list.sort(function (a, b) { return (a.key ? 0 : 1) - (b.key ? 0 : 1); });
+    list.forEach(function (t) {
+      var R = u * (t.small ? 0.24 : 0.32), x = t.x * u, y = t.y * u;
+      g.beginPath(); g.arc(x + R * 0.08, y + R * 0.14, R, 0, Math.PI * 2);
+      g.fillStyle = 'rgba(0,0,0,.28)'; g.fill();
+      g.beginPath(); g.arc(x, y, R, 0, Math.PI * 2);
+      g.fillStyle = col.c[t.seat]; g.fill();
+      g.lineWidth = Math.max(1.5, R * 0.22);
+      g.strokeStyle = '#FFFFFF'; g.stroke();
+      g.beginPath(); g.arc(x - R * 0.3, y - R * 0.32, R * 0.28, 0, Math.PI * 2);
+      g.fillStyle = 'rgba(255,255,255,.45)'; g.fill();
+    });
+  }
+
+  function draw() {
+    if (!G) return;
+    var B = boardSize(), dpr = Math.min(2, window.devicePixelRatio || 1);
+    if (cv.width !== B.w * dpr || cv.height !== B.h * dpr) { cv.width = B.w * dpr; cv.height = B.h * dpr; }
+    cv.style.width = B.w + 'px'; cv.style.height = B.h + 'px';
+    var g = cv.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, B.w, B.h);
+    paintBoard(g, B.w, { s: anim ? anim.from : G.s, anim: anim }, colors());
+  }
+
+  var PIPS = { 1: [[1, 1]], 2: [[0, 0], [2, 2]], 3: [[0, 0], [1, 1], [2, 2]], 4: [[0, 0], [2, 0], [0, 2], [2, 2]],
+    5: [[0, 0], [2, 0], [1, 1], [0, 2], [2, 2]], 6: [[0, 0], [2, 0], [0, 1], [2, 1], [0, 2], [2, 2]] };
+  function drawDie(v) {
+    var c = G ? 'var(--sl-c' + G.s.turn + ')' : 'var(--c-text)';
+    var s = '<svg viewBox="0 0 44 44" width="44" height="44" aria-hidden="true">';
+    if (v) PIPS[v].forEach(function (q) { s += '<circle cx="' + (10 + q[0] * 12) + '" cy="' + (10 + q[1] * 12) + '" r="4.6" fill="' + c + '"/>'; });
+    else s += '<path d="M14 22h16M22 14v16" stroke="' + c + '" stroke-width="3" stroke-linecap="round" opacity=".4"/>';
+    die.innerHTML = s + '</svg>';
+  }
+
+  function cardPaint() {
+    var s = E.copy(G.s);
+    return function (g, W, H) {
+      var side = Math.min(W, H / TALL * 10);
+      g.translate((W - side) / 2, (H - side / 10 * TALL) / 2);
+      paintBoard(g, side, { s: s }, colors());
+    };
+  }
+
+  function pname(seat) {
+    if (seat === 0) return C.state.profile.name || C.t('you');
+    if (isBot(seat)) return G.players > 2 ? C.t('bot') + ' ' + C.num(seat + 1) : C.t('bot');
+    return C.t('playerN', { n: C.num(seat + 1) });
+  }
+
+  function drawPlayers() {
+    playersRow.innerHTML = '';
+    playersRow.classList.toggle('sl-players--many', G.players > 2);
+    for (var seat = 0; seat < G.players; seat++) {
+      var p = G.s.pos[seat];
+      var box = el('div', {
+        class: 'sl-player' + (G.s.turn === seat && !G.done ? ' sl-player--on' : ''),
+        style: { '--pc': 'var(--sl-c' + seat + ')' }
+      }, [
+        el('div', { class: 'sl-player__dot' }),
+        el('div', { class: 'sl-player__name', text: pname(seat) }),
+        el('span', { class: 'sl-player__n', text: p ? C.num(p) : '–' })
+      ]);
+      if (isBot(seat) && G.s.turn === seat && !G.done) box.classList.add('sl-thinking');
+      playersRow.appendChild(box);
+    }
+  }
+
+  function drawTop() {
+    top.innerHTML = '';
+    var o = current();
+    var parts = [C.num(o.players) + ' ' + C.t('players'), o.mode === 'bots' ? C.t('vsBots') : C.t('people'), C.t(o.exact ? 'exactEnd' : 'plainEnd')];
+    top.appendChild(el('button', { class: 'ch-badge ch-tap', type: 'button', onclick: settings, text: parts.join(' · ') }));
+  }
+
+  function drawBar() {
+    var mine = !isBot(G.s.turn) && !G.done;
+    die.style.setProperty('--pc', 'var(--sl-c' + G.s.turn + ')');
+    die.disabled = !(mine && G.phase === 'roll');
+    die.classList.toggle('sl-die--ready', mine && G.phase === 'roll');
+    if (G.phase === 'roll' && !G.roll) drawDie(0);
+    // "You's turn" read wrong; seat one is always the person holding the phone
+    var who = G.s.turn === 0 ? C.t('yourTurn') : C.t('turnOf', { n: pname(G.s.turn) });
+    status.textContent = G.msg ? (G.phase === 'roll' && mine ? G.msg + ' · ' + who : G.msg) :
+      (G.phase === 'roll' && mine ? who + ' · ' + C.t('roll') : who);
+  }
+
+  function render() {
+    if (!G) return;
+    drawTop();
+    drawPlayers();
+    drawBar();
+    draw();
+  }
+
+  /* -------------------------------------------------------------- input */
+
+  die.addEventListener('click', function () { if (G && !G.done && !isBot(G.s.turn) && G.phase === 'roll') doRoll(); });
+
+  window.addEventListener('keydown', function (e) {
+    if (!G || G.done || document.querySelector('.ch-scrim') || isBot(G.s.turn)) return;
+    var k = e.key;
+    if (G.phase === 'roll' && (k === ' ' || k === 'Enter' || C.keyIs(e, 'r'))) { e.preventDefault(); doRoll(); }
+  });
+
+  // the board follows its slot, which changes with the window and the side column (#359)
+  if (window.ResizeObserver) new ResizeObserver(function () { if (G) draw(); }).observe(boardBox);
+  else window.addEventListener('resize', function () { if (G) draw(); });
+  if (window.matchMedia) {
+    var mq = window.matchMedia('(prefers-color-scheme: dark)');
+    if (mq.addEventListener) mq.addEventListener('change', function () { if (G) draw(); });
+  }
+  // A pause in the middle of a move plays the same roll again from the turn's
+  // start (the move is applied only when it ends); a die still in the air is
+  // thrown again, before anyone has seen it.
+  C.onPause(function () { stop(); });
+  C.onResume(function () {
+    if (!G || G.done) return;
+    anim = null;
+    die.classList.remove('sl-die--roll');
+    if (G.roll) { G.phase = 'busy'; G.msg = ''; drawDie(G.roll); later(move, 300); }
+    else startTurn();
+  });
+
+  /* --------------------------------------------------------------- help */
+
+  function kb(k, what) {
+    return el('div', { class: 'ch-item' }, [el('div', { class: 'ch-item__label', text: what }), el('span', { class: 'ch-badge', text: k })]);
+  }
+  function showHelp() {
+    C.ui.modal({
+      title: C.t('help'),
+      body: [
+        el('p', { class: 'ch-dim', text: C.t('rules') }),
+        el('h3', { style: { 'margin-top': 'var(--s-4)' }, text: C.t('keyboard') }),
+        el('div', { class: 'ch-list' }, [kb('Space / R', C.t('rollKey'))])
+      ],
+      actions: [
+        { label: C.t('tutorial'), onClick: function () { ctx.showTutorial(TUT); } },
+        { label: C.t('done'), kind: 'primary' }
+      ]
+    });
+  }
+
+  function art(kind) {
+    var s = '<svg viewBox="0 0 220 120" width="100%">';
+    if (kind === 1) {
+      for (var i = 0; i < 4; i++) s += '<rect x="' + (20 + i * 30) + '" y="45" width="30" height="30" fill="' + (i % 2 ? 'var(--c-surface)' : 'rgba(90,119,22,.16)') + '" stroke="var(--c-line)" stroke-width="1.5"/>';
+      s += '<circle cx="35" cy="60" r="9" fill="var(--sl-c0)" stroke="#fff" stroke-width="3" opacity=".35"/><circle cx="125" cy="60" r="9" fill="var(--sl-c0)" stroke="#fff" stroke-width="3"/>' +
+        '<path d="M38 40q40-26 82 0" stroke="var(--sl-c0)" stroke-width="3" fill="none" stroke-linecap="round"/>' +
+        '<rect x="160" y="38" width="44" height="44" rx="10" fill="var(--c-surface)" stroke="var(--c-line)" stroke-width="2"/>';
+      [[0, 0], [2, 0], [1, 1], [0, 2], [2, 2]].forEach(function (q) { s += '<circle cx="' + (170 + q[0] * 12) + '" cy="' + (48 + q[1] * 12) + '" r="3.8" fill="var(--sl-c0)"/>'; });
+    } else if (kind === 2) {
+      s += '<path d="M40 105L80 15M62 105L102 15" stroke="#8A5A2B" stroke-width="6" stroke-linecap="round"/>';
+      for (var r = 0; r < 6; r++) { var y = 95 - r * 15, x = 40 + (105 - y) * 0.444; s += '<path d="M' + x + ' ' + y + 'h22" stroke="#C8904F" stroke-width="4" stroke-linecap="round"/>'; }
+      s += '<path d="M140 20c30 10-20 30 10 45s-20 30 20 40" stroke="#3E9B4F" stroke-width="10" fill="none" stroke-linecap="round"/>' +
+        '<ellipse cx="140" cy="20" rx="11" ry="8" fill="#3E9B4F"/><circle cx="137" cy="17" r="2.5" fill="#fff"/><circle cx="143" cy="17" r="2.5" fill="#fff"/>';
+    } else {
+      s += '<rect x="80" y="20" width="60" height="60" rx="8" fill="#5A7716"/><text x="110" y="58" text-anchor="middle" font-size="24" font-weight="700" fill="#fff">100</text>' +
+        '<circle cx="110" cy="100" r="10" fill="var(--sl-c0)" stroke="#fff" stroke-width="3"/>' +
+        '<path d="M60 30l5 10 11 1-8 8 2 11-10-5-10 5 2-11-8-8 11-1z" fill="#E8A317"/><path d="M160 30l5 10 11 1-8 8 2 11-10-5-10 5 2-11-8-8 11-1z" fill="#E8A317"/>';
+    }
+    return s + '</svg>';
+  }
+  var TUT = [
+    { title: C.t('tutTitle1'), text: C.t('tutText1'), art: art(1) },
+    { title: C.t('tutTitle2'), text: C.t('tutText2'), art: art(2) },
+    { title: C.t('tutTitle3'), text: C.t('tutText3'), art: art(3) }
+  ];
+
+  /* -------------------------------------------------------------- start */
+
+  var saved = ctx.loadSave();
+  if (validSave(saved)) {
+    if (saved.prefs) { prefs = saved.prefs; prefs.exact = !!prefs.exact; }
+    restore(saved.g);
+  } else {
+    newGame(fromPrefs());
+    ctx.tutorialIfNew(TUT);
+  }
+})();
+</script>
+</body>
+</html>
