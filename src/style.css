@@ -81,3 +81,93 @@ body {
     background: #ffffff;
   }
 }
+
+/* ===== game pages: mobile header + light-mode fixes (patch v3) ===== */
+@media (max-width: 767px) {
+  .game-root :is(header, [class~="sticky"]) {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .game-root :is(header, [class~="sticky"])::-webkit-scrollbar { display: none; }
+  .game-root :is(header, [class~="sticky"]) div { flex-wrap: nowrap !important; }
+  .game-root :is(header, [class~="sticky"]) > * { flex-shrink: 0; }
+  .game-root :is(header, [class~="sticky"]) :is(button, a, span, h1, h2, h3) {
+    white-space: nowrap;
+    font-size: 0.75rem;
+    line-height: 1.1rem;
+  }
+}
+
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class^="bg-ink-700"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class*=" bg-ink-700"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class^="bg-ink-800"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class*=" bg-ink-800"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class^="bg-ink-900"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class*=" bg-ink-900"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class^="bg-ink-950"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class*=" bg-ink-950"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class^="bg-slate-700"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class*=" bg-slate-700"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class^="bg-slate-800"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class*=" bg-slate-800"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class^="bg-slate-900"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class*=" bg-slate-900"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class^="bg-slate-950"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class*=" bg-slate-950"] {
+  background-color: rgb(241 245 249 / 0.95) !important;
+}
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class^="text-ink-100"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class*=" text-ink-100"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class^="text-ink-200"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class*=" text-ink-200"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class^="text-ink-300"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class*=" text-ink-300"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class^="text-ink-400"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class*=" text-ink-400"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class^="text-slate-100"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class*=" text-slate-100"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class^="text-slate-200"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class*=" text-slate-200"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class^="text-slate-300"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class*=" text-slate-300"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class^="text-slate-400"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class*=" text-slate-400"] {
+  color: #334155 !important;
+}
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class^="border-ink-600"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class*=" border-ink-600"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class^="border-ink-700"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class*=" border-ink-700"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class^="border-ink-800"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class*=" border-ink-800"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class^="border-slate-600"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class*=" border-slate-600"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class^="border-slate-700"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class*=" border-slate-700"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class^="border-slate-800"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class*=" border-slate-800"] {
+  border-color: #cbd5e1 !important;
+}
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class^="text-brand-200"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class*=" text-brand-200"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class^="text-brand-300"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class*=" text-brand-300"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class^="text-brand-400"],
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class*=" text-brand-400"] {
+  color: #1749af !important;
+}
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class~="text-white"]:not([class*="bg-"]):not([class*="gradient"]) {
+  color: #0f172a !important;
+}
+html:not(.dark) :is(.rocket-setup, .rocket-holo) [class~="text-white"][class*="bg-brand-600/20"] {
+  color: #163d88 !important;
+}
+html:not(.dark) :is(.rocket-setup, .rocket-holo) :is(select, option, input) {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}

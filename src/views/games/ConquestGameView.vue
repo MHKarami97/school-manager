@@ -7,6 +7,7 @@ import { useGameProfilesStore } from '@/stores/game-profiles'
 import { DEFAULT_CURRICULUM_QUESTIONS, type EducationalQuestion } from '@/config/default-questions.config'
 import { sfx } from '@/utils/sound-effects'
 import { BASE_COURSES, findCourse } from '@/config/courses.config'
+import { GAME_GRADES } from '@/config/game-grades.config'
 import { GAME_GRADE_COURSE_IDS, loadGradeQuestions, normalizeCourseIds } from '@/config/game-grades.config'
 import {
   GAME_SEASONS,
@@ -930,7 +931,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="relative min-h-screen bg-slate-50 text-slate-800 dark:bg-slate-950 dark:text-slate-100 font-sans select-none overflow-x-hidden transition-colors" dir="rtl">
+  <div class="game-root relative min-h-screen bg-slate-50 text-slate-800 dark:bg-slate-950 dark:text-slate-100 font-sans select-none overflow-x-hidden transition-colors" dir="rtl">
     <!-- راهنمای چرخاندن گوشی در حالت عمودی -->
     <div
       v-if="isPortraitMobile && !dismissRotationWarning"
@@ -1052,7 +1053,7 @@ onBeforeUnmount(() => {
           </label>
           <div class="grid grid-cols-3 sm:grid-cols-6 gap-2">
             <button
-              v-for="g in [1, 2, 3, 4, 5, 6]"
+              v-for="g in GAME_GRADES"
               :key="g"
               type="button"
               class="rounded-2xl border p-3 text-center font-bold text-sm transition-all"

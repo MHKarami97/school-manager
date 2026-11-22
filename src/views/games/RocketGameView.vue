@@ -7,6 +7,7 @@ import { useGameProfilesStore } from '@/stores/game-profiles'
 import { DEFAULT_CURRICULUM_QUESTIONS, type EducationalQuestion } from '@/config/default-questions.config'
 import { sfx } from '@/utils/sound-effects'
 import { BASE_COURSES, findCourse } from '@/config/courses.config'
+import { GAME_GRADES } from '@/config/game-grades.config'
 import { GAME_GRADE_COURSE_IDS, loadGradeQuestions } from '@/config/game-grades.config'
 import { getCurrentSeasonKey, MOTIVATIONAL_QUOTES } from '@/config/game-seasons.config'
 import type { DifficultyLevel, GameHistorySession, GameSeasonKey, GameStage, QuestionAnswerRecord } from '@/types'
@@ -1035,7 +1036,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="relative flex h-screen w-screen flex-col overflow-hidden bg-ink-50 text-ink-900 dark:bg-ink-950 dark:text-white select-none transition-colors">
+  <div class="game-root relative flex h-screen w-screen flex-col overflow-hidden bg-ink-50 text-ink-900 dark:bg-ink-950 dark:text-white select-none transition-colors">
     <!-- هدر بازی -->
     <header class="flex h-12 shrink-0 items-center justify-between border-b border-ink-200 bg-white/90 px-3 sm:px-6 backdrop-blur z-20 dark:border-ink-800 dark:bg-ink-900/90 text-slate-800 dark:text-white transition-colors">
       <div class="flex items-center gap-2 sm:gap-3">
@@ -1119,7 +1120,7 @@ onBeforeUnmount(() => {
       <!-- ۱. صفحه تنظیمات مأموریت قبل از شروع (Setup Screen) -->
       <div
         v-if="gameState === 'setup'"
-        class="absolute inset-0 z-30 flex items-center justify-center overflow-y-auto bg-slate-900/60 dark:bg-ink-950/90 p-4 backdrop-blur-md"
+        class="rocket-setup absolute inset-0 z-30 flex items-center justify-center overflow-y-auto bg-slate-900/60 dark:bg-ink-950/90 p-4 backdrop-blur-md"
       >
         <div class="w-full max-w-2xl rounded-3xl border border-slate-200 bg-white/95 p-5 sm:p-7 shadow-2xl dark:border-brand-500/30 dark:bg-ink-900/95 transition-colors">
           <!-- نوار پروفایل دانش‌آموز فعال و مسیر فصلی -->
@@ -1152,7 +1153,7 @@ onBeforeUnmount(() => {
             <label class="mb-2 block text-xs font-bold text-ink-300">۱. انتخاب پایه تحصیلی:</label>
             <div class="grid grid-cols-3 gap-2 sm:grid-cols-6">
               <button
-                v-for="g in [1, 2, 3, 4, 5, 6]"
+                v-for="g in GAME_GRADES"
                 :key="g"
                 type="button"
                 class="rounded-xl border py-2.5 text-center text-xs font-bold transition-all"
@@ -1282,7 +1283,7 @@ onBeforeUnmount(() => {
       <!-- ۳. ترمینال هولوگرافیک سوال مأموریت (In-Game Question Holo-Deck) -->
       <div
         v-if="gameState === 'playing' && currentQuestion && showHoloDeck"
-        class="absolute top-3 left-1/2 -translate-x-1/2 z-20 w-[95%] max-w-xl rounded-2xl border border-brand-500/40 bg-white/95 p-4 shadow-2xl backdrop-blur-md dark:bg-ink-900/90"
+        class="rocket-holo absolute top-3 left-1/2 -translate-x-1/2 z-20 w-[95%] max-w-xl rounded-2xl border border-brand-500/40 bg-white/95 p-4 shadow-2xl backdrop-blur-md dark:bg-ink-900/90"
       >
         <div class="mb-2 flex items-center justify-between border-b border-slate-200 pb-2 dark:border-ink-800">
           <div class="flex items-center gap-2">
