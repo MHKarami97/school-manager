@@ -102,9 +102,9 @@ async function loadSampleQuestions(): Promise<void> {
   alert(`${newQuestions.length} سوال نمونه درسی با موفقیت به بانک سوالات شما افزوده شد.`)
 }
 
-// --- بسته‌های استاندارد سوالات پایه‌های اول تا ششم (۳۵۰۰ سوال) ---
+// --- بسته‌های استاندارد سوالات پایه‌های اول تا دوازدهم (۱۷,۸۰۰ سوال) ---
 interface QuestionPackInfo {
-  grade: number | 'all'
+  grade: number | string
   title: string
   description: string
   subjectsCount: number
@@ -118,68 +118,154 @@ const packLoadingMessage = ref('')
 const showPacksModal = ref(false)
 
 const QUESTION_PACKS: QuestionPackInfo[] = [
+  // دوره ابتدایی
   {
     grade: 1,
     title: 'پایه اول ابتدایی',
-    description: '۴ درس (ریاضی، علوم، فارسی، قرآن)',
+    description: '۴ درس (ریاضی، علوم، فارسی، قرآن) - ۲۰۰ سوال برای هر درس',
     subjectsCount: 4,
-    questionsCount: 400,
+    questionsCount: 800,
     excelFile: 'grade-1-questions.xlsx',
     jsonFile: 'grade-1.json',
   },
   {
     grade: 2,
     title: 'پایه دوم ابتدایی',
-    description: '۵ درس (ریاضی، علوم، فارسی، قرآن، هدیه‌های آسمان)',
+    description: '۵ درس (ریاضی، علوم، فارسی، قرآن، هدیه‌های آسمان) - ۲۰۰ سوال هر درس',
     subjectsCount: 5,
-    questionsCount: 500,
+    questionsCount: 1000,
     excelFile: 'grade-2-questions.xlsx',
     jsonFile: 'grade-2.json',
   },
   {
     grade: 3,
     title: 'پایه سوم ابتدایی',
-    description: '۶ درس (ریاضی، علوم، فارسی، قرآن، هدیه‌ها، مطالعات اجتماعی)',
+    description: '۶ درس (ریاضی، علوم، فارسی، قرآن، هدیه‌ها، مطالعات) - ۲۰۰ سوال هر درس',
     subjectsCount: 6,
-    questionsCount: 600,
+    questionsCount: 1200,
     excelFile: 'grade-3-questions.xlsx',
     jsonFile: 'grade-3.json',
   },
   {
     grade: 4,
     title: 'پایه چهارم ابتدایی',
-    description: '۶ درس (ریاضی، علوم، فارسی، قرآن، هدیه‌ها، مطالعات اجتماعی)',
+    description: '۶ درس (ریاضی، علوم، فارسی، قرآن، هدیه‌ها، مطالعات) - ۲۰۰ سوال هر درس',
     subjectsCount: 6,
-    questionsCount: 600,
+    questionsCount: 1200,
     excelFile: 'grade-4-questions.xlsx',
     jsonFile: 'grade-4.json',
   },
   {
     grade: 5,
     title: 'پایه پنجم ابتدایی',
-    description: '۶ درس (ریاضی، علوم، فارسی، قرآن، هدیه‌ها، مطالعات اجتماعی)',
+    description: '۶ درس (ریاضی، علوم، فارسی، قرآن، هدیه‌ها، مطالعات) - ۲۰۰ سوال هر درس',
     subjectsCount: 6,
-    questionsCount: 600,
+    questionsCount: 1200,
     excelFile: 'grade-5-questions.xlsx',
     jsonFile: 'grade-5.json',
   },
   {
     grade: 6,
     title: 'پایه ششم ابتدایی',
-    description: '۸ درس (ریاضی، علوم، فارسی، قرآن، هدیه‌ها، مطالعات، تفکر و پژوهش، کار و فناوری)',
+    description: '۸ درس (ریاضی، علوم، فارسی، قرآن، هدیه‌ها، مطالعات، تفکر، کار و فناوری)',
     subjectsCount: 8,
-    questionsCount: 800,
+    questionsCount: 1600,
     excelFile: 'grade-6-questions.xlsx',
     jsonFile: 'grade-6.json',
   },
   {
-    grade: 'all',
+    grade: 'elem-all',
     title: 'بسته جامع کل دوره ابتدایی (پایه‌های ۱ تا ۶)',
-    description: '۳۵ درس/پایه با حداقل ۱۰۰ سوال برای هر درس (مجموعاً ۳,۵۰۰ سوال کاملاً استاندارد)',
+    description: '۳۵ درس/پایه با حداقل ۲۰۰ سوال برای هر درس (مجموعاً ۷,۰۰۰ سوال)',
     subjectsCount: 35,
-    questionsCount: 3500,
+    questionsCount: 7000,
     excelFile: 'elementary-all-grades-questions.xlsx',
     jsonFile: 'elementary-curriculum-questions.json',
+  },
+
+  // دوره اول متوسطه
+  {
+    grade: 7,
+    title: 'پایه هفتم (متوسطه اول)',
+    description: '۸ درس (ریاضی، علوم، فارسی، عربی، زبان، قرآن و دینی، مطالعات، کار و فناوری)',
+    subjectsCount: 8,
+    questionsCount: 1600,
+    excelFile: 'grade-7-questions.xlsx',
+    jsonFile: 'grade-7.json',
+  },
+  {
+    grade: 8,
+    title: 'پایه هشتم (متوسطه اول)',
+    description: '۸ درس (ریاضی، علوم، فارسی، عربی، زبان، قرآن و دینی، مطالعات، کار و فناوری)',
+    subjectsCount: 8,
+    questionsCount: 1600,
+    excelFile: 'grade-8-questions.xlsx',
+    jsonFile: 'grade-8.json',
+  },
+  {
+    grade: 9,
+    title: 'پایه نهم (متوسطه اول)',
+    description: '۸ درس (ریاضی، علوم، فارسی، عربی، زبان، قرآن و دینی، مطالعات، آمادگی دفاعی)',
+    subjectsCount: 8,
+    questionsCount: 1600,
+    excelFile: 'grade-9-questions.xlsx',
+    jsonFile: 'grade-9.json',
+  },
+  {
+    grade: 'lower-all',
+    title: 'بسته جامع کل دوره اول متوسطه (پایه‌های ۷ تا ۹)',
+    description: '۲۴ درس/پایه با حداقل ۲۰۰ سوال برای هر درس (مجموعاً ۴,۸۰۰ سوال)',
+    subjectsCount: 24,
+    questionsCount: 4800,
+    excelFile: 'lower-secondary-all-grades-questions.xlsx',
+    jsonFile: 'lower-secondary-curriculum-questions.json',
+  },
+
+  // دوره دوم متوسطه
+  {
+    grade: 10,
+    title: 'پایه دهم (متوسطه دوم)',
+    description: '۱۰ درس (ریاضی، فیزیک، شیمی، زیست، ادبیات، عربی، زبان، دینی، جغرافیا، دفاعی)',
+    subjectsCount: 10,
+    questionsCount: 2000,
+    excelFile: 'grade-10-questions.xlsx',
+    jsonFile: 'grade-10.json',
+  },
+  {
+    grade: 11,
+    title: 'پایه یازدهم (متوسطه دوم)',
+    description: '۱۱ درس (ریاضی/حسابان، فیزیک، شیمی، زیست، ادبیات، عربی، زبان، دینی، تاریخ، زمین‌شناسی، محیط‌زیست)',
+    subjectsCount: 11,
+    questionsCount: 2200,
+    excelFile: 'grade-11-questions.xlsx',
+    jsonFile: 'grade-11.json',
+  },
+  {
+    grade: 12,
+    title: 'پایه دوازدهم (متوسطه دوم)',
+    description: '۹ درس (ریاضیات، فیزیک، شیمی، زیست، ادبیات، عربی، زبان، دینی، سلامت و بهداشت)',
+    subjectsCount: 9,
+    questionsCount: 1800,
+    excelFile: 'grade-12-questions.xlsx',
+    jsonFile: 'grade-12.json',
+  },
+  {
+    grade: 'upper-all',
+    title: 'بسته جامع کل دوره دوم متوسطه (پایه‌های ۱۰ تا ۱۲)',
+    description: '۳۰ درس/پایه با حداقل ۲۰۰ سوال برای هر درس (مجموعاً ۶,۰۰۰ سوال)',
+    subjectsCount: 30,
+    questionsCount: 6000,
+    excelFile: 'upper-secondary-all-grades-questions.xlsx',
+    jsonFile: 'upper-secondary-curriculum-questions.json',
+  },
+  {
+    grade: 'all',
+    title: 'بسته جامع مدارس کل کشور (پایه‌های ۱ تا ۱۲)',
+    description: '۸۹ عنوان درسی در ۳ دوره تحصیلی، حداقل ۲۰۰ سوال هر درس (مجموعاً ۱۷,۸۰۰ سوال)',
+    subjectsCount: 89,
+    questionsCount: 17800,
+    excelFile: 'all-curriculum-questions.xlsx',
+    jsonFile: 'all-curriculum-questions.json',
   },
 ]
 
@@ -301,7 +387,7 @@ async function loadCurriculumPack(pack: QuestionPackInfo): Promise<void> {
             v-for="pack in QUESTION_PACKS"
             :key="pack.excelFile"
             class="flex flex-col justify-between rounded-xl border border-ink-100 bg-ink-50/50 p-3.5 transition-all hover:border-purple-300 dark:border-ink-800 dark:bg-ink-950/40"
-            :class="{ 'border-purple-300 bg-purple-50/30 sm:col-span-2 lg:col-span-3 dark:border-purple-700': pack.grade === 'all' }"
+            :class="{ 'border-purple-300 bg-purple-50/30 sm:col-span-2 lg:col-span-3 dark:border-purple-700': typeof pack.grade === 'string' }"
           >
             <div>
               <div class="flex items-center justify-between gap-2">

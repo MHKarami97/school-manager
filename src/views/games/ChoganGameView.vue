@@ -67,20 +67,41 @@ const finishRewardMedals = ref<string[]>([])
 
 // دروس قابل انتخاب برای هر پایه
 const availableCourses = computed(() => {
+  const g = selectedGrade.value
+  if (g <= 6) {
+    return BASE_COURSES.filter((c) =>
+      ['math', 'science', 'persian-reading', 'quran', 'heaven-gifts', 'social-studies', 'thinking-research', 'work-tech'].includes(c.id),
+    )
+  }
+  if (g <= 9) {
+    return BASE_COURSES.filter((c) =>
+      ['math', 'science', 'persian-reading', 'arabic', 'english', 'religious-education', 'social-studies', 'work-tech', 'defense-readiness'].includes(c.id),
+    )
+  }
   return BASE_COURSES.filter((c) =>
-    ['math', 'science', 'persian-reading', 'quran', 'heaven-gifts', 'social-studies'].includes(c.id),
+    ['math', 'physics', 'chemistry', 'biology', 'persian-reading', 'arabic', 'english', 'religious-education', 'geography', 'history', 'defense-readiness', 'geology', 'environment', 'health'].includes(c.id),
   )
 })
 
 // بارگذاری بانک سوالات جامع درسی
 async function loadQuestionBank(): Promise<void> {
   try {
-    const res = await fetch('/data/questions/elementary-curriculum-questions.json')
+    const grade = selectedGrade.value || 4
+    let res = await fetch(`/data/questions/grade-${grade}.json`)
+    if (!res.ok) {
+      if (grade <= 6) {
+        res = await fetch('/data/questions/elementary-curriculum-questions.json')
+      } else if (grade <= 9) {
+        res = await fetch('/data/questions/lower-secondary-curriculum-questions.json')
+      } else {
+        res = await fetch('/data/questions/upper-secondary-curriculum-questions.json')
+      }
+    }
     if (res.ok) {
       extraCurriculumQuestions.value = await res.json()
     }
   } catch (e) {
-    console.warn('Extra curriculum questions failed to load:', e)
+    console.warn('Curriculum questions failed to load:', e)
   }
 }
 
@@ -116,6 +137,13 @@ watch(
   },
   { immediate: true },
 )
+
+watch(selectedGrade, () => {
+  loadQuestionBank()
+  if (!availableCourses.value.some((c) => c.id === selectedCourseId.value)) {
+    selectedCourseId.value = availableCourses.value[0]?.id || 'math'
+  }
+})
 
 // باز کردن چالش سوال دانایی جدید
 function openQuestionChallenge(): void {

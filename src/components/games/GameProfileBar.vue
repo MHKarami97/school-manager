@@ -100,6 +100,12 @@ async function handleDeleteStudent(id: string): Promise<void> {
   editingStudentId.value = null
   emit('profile-changed')
 }
+
+function getGradeStageLabel(grade: number): string {
+  if (grade <= 6) return 'دبستان'
+  if (grade <= 9) return 'متوسطه اول'
+  return 'متوسطه دوم'
+}
 </script>
 
 <template>
@@ -257,7 +263,15 @@ async function handleDeleteStudent(id: string): Promise<void> {
                   v-model.number="formStudentGrade"
                   class="w-full rounded-2xl border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white transition"
                 >
-                  <option v-for="g in [1, 2, 3, 4, 5, 6]" :key="g" :value="g">پایه {{ g }} دبستان</option>
+                  <optgroup label="دوره ابتدایی (پایه‌های ۱ تا ۶)">
+                    <option v-for="g in [1, 2, 3, 4, 5, 6]" :key="g" :value="g">پایه {{ g }} دبستان</option>
+                  </optgroup>
+                  <optgroup label="دوره اول متوسطه (پایه‌های ۷ تا ۹)">
+                    <option v-for="g in [7, 8, 9]" :key="g" :value="g">پایه {{ g }} متوسطه اول</option>
+                  </optgroup>
+                  <optgroup label="دوره دوم متوسطه (پایه‌های ۱۰ تا ۱۲)">
+                    <option v-for="g in [10, 11, 12]" :key="g" :value="g">پایه {{ g }} متوسطه دوم</option>
+                  </optgroup>
                 </select>
               </div>
 
@@ -314,7 +328,7 @@ async function handleDeleteStudent(id: string): Promise<void> {
                         </span>
                       </div>
                       <div class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-2">
-                        <span>پایه {{ profile.grade }} دبستان</span>
+                        <span>پایه {{ profile.grade }} ({{ getGradeStageLabel(profile.grade) }})</span>
                         <span>·</span>
                         <span class="text-amber-500 font-bold">⭐ {{ profile.totalScore }} امتیاز</span>
                         <span>·</span>

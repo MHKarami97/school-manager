@@ -36,7 +36,20 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,jpg,jpeg,avif,gif,woff,woff2,json,webmanifest}"],
-        globIgnores: ["**/downloads/**"],
+        globIgnores: ["**/downloads/**", "**/data/questions/**"],
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.pathname.includes('/data/questions/'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'curriculum-questions-cache',
+              expiration: {
+                maxEntries: 30,
+                maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
+              },
+            },
+          },
+        ],
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         navigateFallback: "index.html",
         cleanupOutdatedCaches: true,
