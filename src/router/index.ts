@@ -39,6 +39,11 @@ const routes = [
     component: () => import("@/views/games/SpeedRaceGameView.vue"),
   },
   {
+    path: "/games/conquest",
+    name: "game-conquest",
+    component: () => import("@/views/games/ConquestGameView.vue"),
+  },
+  {
     path: "/guide",
     name: "guide",
     component: () => import("@/views/GuideView.vue"),
