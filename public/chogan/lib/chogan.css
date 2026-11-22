@@ -13,48 +13,6 @@
   font-display: swap;
 }
 
-/* Latin letters from Nunito, under the same family name, so every `font: … Vazirmatn`
-   in a game's canvas gets it too (#670). The owner found Vazirmatn's Latin (Roboto) plain.
-   Declared after Vazirmatn, so it wins for the characters in its range. The range skips
-   U+200B-200F and U+2060-206F: ZWNJ, ZWJ and bidi marks from another font would split
-   a Persian word's run and break its joining. Its weight, style and stretch must match the
-   Vazirmatn face exactly: Chrome joins two faces into one unicode-range set only when those
-   descriptors are equal, and with Nunito's own `200 1000` it used Nunito alone, so every
-   Persian letter fell back to the system font (0.25.0, owner's phone). */
-@font-face {
-  font-family: 'Vazirmatn';
-  src: url('../fonts/nunito-latin.woff2') format('woff2-variations'),
-       url('../fonts/nunito-latin.woff2') format('woff2');
-  font-weight: 100 900;
-  font-style: normal;
-  font-display: swap;
-  /* Vazirmatn's own line metrics (2100/1100 of 2048), so a line of English is as tall as before */
-  ascent-override: 102.54%;
-  descent-override: 53.71%;
-  line-gap-override: 0%;
-  unicode-range: U+0020-007E, U+00A0-024F, U+1E00-1EFF, U+2010-205E, U+20AC, U+2122, U+2212;
-}
-
-/* Hindi (#856): neither Vazirmatn nor Nunito has Devanagari, and Linux and ChromeOS often
-   have no system font for it, so the basic Devanagari block of Noto Sans Devanagari
-   (OFL, weights 400-800, every conjunct of those letters kept) ships beside them. Same
-   family and the same descriptors as the faces above, for the reason given there. A page
-   loads it only when it shows Devanagari; the service worker keeps it for offline use.
-   Vazirmatn's line metrics again,
-   so a Hindi line is as tall as a Persian or English one. */
-@font-face {
-  font-family: 'Vazirmatn';
-  src: url('../fonts/noto-devanagari.woff2') format('woff2-variations'),
-       url('../fonts/noto-devanagari.woff2') format('woff2');
-  font-weight: 100 900;
-  font-style: normal;
-  font-display: swap;
-  ascent-override: 102.54%;
-  descent-override: 53.71%;
-  line-gap-override: 0%;
-  unicode-range: U+0900-097F, U+25CC;
-}
-
 /* --------------------------------------------------------------- توکن‌ها */
 :root {
   color-scheme: light;
@@ -311,11 +269,15 @@ html, body {
   min-height: 100%;
   background: var(--c-bg);
   color: var(--c-text);
-  font-family: var(--f);
+  font-family: var(--f) !important;
   font-size: var(--fs-md);
   line-height: 1.7;
   -webkit-text-size-adjust: 100%;
   overscroll-behavior-y: none;
+}
+
+input, button, select, textarea, text, tspan, svg text {
+  font-family: var(--f) !important;
 }
 
 body.ch-noscroll {
