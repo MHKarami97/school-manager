@@ -167,20 +167,20 @@ function goToPage(page: number): void {
             <div class="max-w-2xl">
               <div class="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold backdrop-blur-md">
                 <span class="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span>باشگاه ۹۵ بازی دانایی و مهارت مدیریار</span>
+                <span>باشگاه بازی‌های دانایی و مهارت مدیریار</span>
               </div>
               <h1 class="mt-3 text-3xl font-black tracking-tight sm:text-4xl lg:text-5xl">
                 دنیای بازی، سرگرمی و دانایی
               </h1>
               <p class="mt-3 text-sm leading-relaxed text-indigo-100 sm:text-base">
-                مجموعه ۹۵ بازی کلاسیک، تخته‌ای، مهارتی و پازل‌های فکری؛ با حل سوالات کتاب‌های درسی سکه و جان کسب کن، رکورد بزن و مدال‌های فصلی قهرمانی را تصاحب نما!
+                مجموعه بازی‌های کلاسیک، تخته‌ای، مهارتی و پازل‌های فکری؛ با حل سوالات کتاب‌های درسی سکه و جان کسب کن، رکورد بزن و مدال‌های فصلی قهرمانی را تصاحب نما!
               </p>
             </div>
 
             <!-- جعبه آماری سریع -->
             <div class="grid grid-cols-2 gap-3 w-full sm:w-auto">
               <div class="rounded-2xl bg-white/10 p-3.5 backdrop-blur-md border border-white/10 text-center">
-                <div class="text-2xl font-black sm:text-3xl">۹۵</div>
+                <div class="text-2xl font-black sm:text-3xl">{{ CHOGAN_GAMES.length }}</div>
                 <div class="text-xs text-indigo-100">بازی کامل و آماده</div>
               </div>
               <div class="rounded-2xl bg-white/10 p-3.5 backdrop-blur-md border border-white/10 text-center">
@@ -251,7 +251,7 @@ function goToPage(page: number): void {
           <div>
             <h2 class="text-2xl font-black text-ink-900 sm:text-3xl dark:text-white flex items-center gap-2">
               <span>🎮</span>
-              <span>تالار ۹۵ بازی دانایی</span>
+              <span>تالار بازی‌های دانایی و مهارت</span>
             </h2>
             <p class="text-xs text-slate-500 dark:text-ink-400 mt-1">
               از پازل و شطرنج تا مار و پله، برج‌ساز، بیلیارد و سودوکو؛ همراه با چالش‌های سوالات درسی

@@ -3,38 +3,161 @@ import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppFooter from '@/components/layout/AppFooter.vue'
-import { SITE_FEATURES, AUDIENCE_TABS, type FeatureAudience } from '@/config/features.config'
+import { SITE_FEATURES, AUDIENCE_TABS, type FeatureAudience, type SiteFeature } from '@/config/features.config'
+import { CHOGAN_GAMES, CHOGAN_CATEGORIES, type GameCategory } from '@/config/chogan-games.config'
 
 const selectedTab = ref<'all' | FeatureAudience>('all')
 
+// برای تب دانش‌آموز: جستجو و فیلتر بازی‌ها
+const studentGameSearch = ref('')
+const studentGameCategory = ref<'all' | GameCategory>('all')
+const studentGamesPage = ref(1)
+const studentGamesPerPage = 16
+
+const allStudentGames = computed(() => {
+  let list = CHOGAN_GAMES
+  if (studentGameCategory.value !== 'all') {
+    list = list.filter((g) => g.category === studentGameCategory.value)
+  }
+  const q = studentGameSearch.value.trim().toLowerCase()
+  if (q) {
+    list = list.filter((g) =>
+      g.nameFa.toLowerCase().includes(q) ||
+      g.nameEn.toLowerCase().includes(q) ||
+      g.summaryFa.toLowerCase().includes(q) ||
+      g.id.toLowerCase().includes(q)
+    )
+  }
+  return list
+})
+
+const paginatedStudentGames = computed(() => {
+  const start = (studentGamesPage.value - 1) * studentGamesPerPage
+  return allStudentGames.value.slice(start, start + studentGamesPerPage)
+})
+
+const studentTotalPages = computed(() =>
+  Math.ceil(allStudentGames.value.length / studentGamesPerPage) || 1
+)
+
+// ویژگی‌های غیر بازی برای دانش‌آموز (آزمایشگاه علوم)
+const studentNonGameFeatures = computed(() => {
+  return SITE_FEATURES.filter((f) => f.audiences.includes('student') && !f.id.startsWith('game-'))
+})
+
+// فیلتر امکانات برای نقش‌های معلم، مدیر و اولیا
 const filteredFeatures = computed(() => {
   if (selectedTab.value === 'all') {
-    return SITE_FEATURES
+    return []
   }
   return SITE_FEATURES.filter((f) => f.audiences.includes(selectedTab.value as FeatureAudience))
 })
 
 function countForAudience(audienceId: 'all' | FeatureAudience): number {
-  if (audienceId === 'all') return SITE_FEATURES.length
+  if (audienceId === 'all') return 4
+  if (audienceId === 'student') return CHOGAN_GAMES.length + studentNonGameFeatures.value.length
   return SITE_FEATURES.filter((f) => f.audiences.includes(audienceId)).length
+}
+
+function isTeacherOnly(feature: SiteFeature): boolean {
+  return feature.audiences.length === 1 && feature.audiences[0] === 'teacher'
 }
 
 const audiencePillMap: Record<FeatureAudience, { label: string; class: string }> = {
   admin: { label: 'مدیر و معاون', class: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300' },
-  teacher: { label: 'معلم', class: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300' },
-  parent: { label: 'اولیا', class: 'bg-purple-50 text-purple-700 dark:bg-purple-500/10 dark:text-purple-300' },
+  teacher: { label: 'معلم', class: 'bg-purple-50 text-purple-700 dark:bg-purple-500/10 dark:text-purple-300' },
+  parent: { label: 'اولیا', class: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300' },
   student: { label: 'دانش‌آموز', class: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' },
 }
 
-function scrollToFeatures(): void {
+// باکس‌های معرفی نقش‌ها در حالت نمایش همه
+interface RoleGatewayCard {
+  id: FeatureAudience
+  title: string
+  subtitle: string
+  description: string
+  icon: string
+  shortLabel: string
+  badge: string
+  gradient: string
+  borderClass: string
+  badgeClass: string
+  btnClass: string
+  highlights: string[]
+}
+
+const ROLE_GATEWAY_CARDS: RoleGatewayCard[] = [
+  {
+    id: 'admin',
+    title: 'امکانات مدیران و معاونان مدرسه',
+    shortLabel: 'مدیر و معاون',
+    subtitle: 'مدیریت و برنامه‌ریزی کلان',
+    description:
+      'چیدمان خودکار برنامه هفتگی بر اساس ضوابط رسمی، گروه‌بندی عادلانه کلاس‌ها، چارت هفتگی تدریس، برنامه‌ریزی ورزش و سرویس مدرسه.',
+    icon: '🏛️',
+    badge: 'مدیریت مدرسه',
+    gradient: 'from-blue-500/10 via-indigo-500/5 to-transparent dark:from-blue-900/20 dark:via-indigo-900/10 dark:to-transparent',
+    borderClass: 'border-blue-200 hover:border-blue-400 dark:border-blue-800/80 dark:hover:border-blue-700',
+    badgeClass: 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300',
+    btnClass: 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-600/25',
+    highlights: ['برنامه هفتگی کلاس‌ها', 'گروه‌بندی عادلانه دانش‌آموزان', 'چارت تدریس معلمان', 'مدیریت سرویس مدرسه'],
+  },
+  {
+    id: 'teacher',
+    title: 'امکانات و ابزارهای معلمان',
+    shortLabel: 'معلم',
+    subtitle: 'طرح درس، آزمون و کلاس',
+    description:
+      'طراحی و ثبت طرح درس جلسات با استاندارد رسمی، آزمون‌ساز هوشمند و بانک سوالات، ثبت حضور و غیاب کلاسی و تقویم رویدادها.',
+    icon: '🧑‍🏫',
+    badge: 'ویژه معلمان',
+    gradient: 'from-purple-500/10 via-violet-500/5 to-transparent dark:from-purple-900/20 dark:via-violet-900/10 dark:to-transparent',
+    borderClass: 'border-purple-200 hover:border-purple-400 dark:border-purple-800/80 dark:hover:border-purple-700',
+    badgeClass: 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300',
+    btnClass: 'bg-purple-600 hover:bg-purple-700 text-white shadow-purple-600/25',
+    highlights: ['طرح درس جلسات با خروجی PDF', 'بانک سوال و آزمون‌ساز هوشمند', 'حضور و غیاب کلاسی', 'ثبت رویدادها و جشن‌ها'],
+  },
+  {
+    id: 'student',
+    title: 'بازی‌های دانایی و آزمایشگاه مجازی',
+    shortLabel: 'دانش‌آموز',
+    subtitle: 'یادگیری، سرگرمی و رقابت',
+    description:
+      'مجموعه بازی‌های هوش، تخته‌ای، مهارتی و پازل پیوندخورده با کتب درسی؛ همراه با آزمایشگاه شبیه‌سازی زنده علوم، سکه، مدال و لیگ فصلی.',
+    icon: '🎮',
+    badge: 'سرگرمی علمی',
+    gradient: 'from-emerald-500/10 via-teal-500/5 to-transparent dark:from-emerald-900/20 dark:via-teal-900/10 dark:to-transparent',
+    borderClass: 'border-emerald-200 hover:border-emerald-400 dark:border-emerald-800/80 dark:hover:border-emerald-700',
+    badgeClass: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
+    btnClass: 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/25',
+    highlights: ['باشگاه بازی‌های فکری و مهارتی', 'آزمایشگاه مجازی و زنده علوم', 'چالش سوالات درسی برای کسب سکه', 'مدال‌ها و لیگ فصلی قهرمانان'],
+  },
+  {
+    id: 'parent',
+    title: 'امکانات اولیا و خانواده‌ها',
+    shortLabel: 'اولیا',
+    subtitle: 'ارتباط مستمر خانه و مدرسه',
+    description:
+      'پیگیری وضعیت و ایستگاه‌های سرویس مدرسه، شفافیت مالی و پرداخت شهریه، آگاهی از وضعیت حضور و دعوت‌نامه‌های رسمی جلسات.',
+    icon: '👨‍👩‍👧‍👦',
+    badge: 'ارتباط با مدرسه',
+    gradient: 'from-amber-500/10 via-orange-500/5 to-transparent dark:from-amber-900/20 dark:via-orange-900/10 dark:to-transparent',
+    borderClass: 'border-amber-200 hover:border-amber-400 dark:border-amber-800/80 dark:hover:border-amber-700',
+    badgeClass: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
+    btnClass: 'bg-amber-600 hover:bg-amber-700 text-white shadow-amber-600/25',
+    highlights: ['رهگیری سرویس و مسیر رانندگان', 'پرداخت‌های مالی و سوابق شهریه', 'ثبت و پیگیری دعوت‌نامه‌های رسمی', 'اطلاعیه‌های جلسات اولیا و مربیان'],
+  },
+]
+
+function selectAudienceTab(tabId: FeatureAudience): void {
+  selectedTab.value = tabId
   const el = document.getElementById('features')
   if (el) {
     el.scrollIntoView({ behavior: 'smooth' })
   }
 }
 
-function viewUpcomingGames(): void {
-  selectedTab.value = 'student'
+function scrollToFeatures(): void {
   const el = document.getElementById('features')
   if (el) {
     el.scrollIntoView({ behavior: 'smooth' })
@@ -60,7 +183,7 @@ function viewUpcomingGames(): void {
               سامانه جامع و یکپارچه آموزشگاهی مدیریار
             </div>
 
-            <!-- تیتر اصلی بدون کاراکترهای اضافی و با متن هماهنگ و یکدست -->
+            <!-- تیتر اصلی -->
             <h1 class="mt-6 text-3xl font-black tracking-tight text-ink-900 sm:text-5xl dark:text-white">
               مدیریت هوشمند مدرسه و یادگیری تعاملی دانش‌آموزان
             </h1>
@@ -94,10 +217,11 @@ function viewUpcomingGames(): void {
               </RouterLink>
 
               <RouterLink
-                to="/history"
-                class="w-full rounded-xl border border-ink-200 bg-white px-5 py-3.5 text-center text-sm font-semibold text-ink-700 transition hover:border-brand-300 sm:w-auto dark:border-ink-800 dark:bg-ink-900 dark:text-ink-200 dark:hover:border-ink-700"
+                to="/games"
+                class="flex w-full items-center justify-center gap-2 rounded-xl border border-purple-500/40 bg-purple-50 px-6 py-3.5 text-center text-sm font-semibold text-purple-800 transition hover:bg-purple-100 sm:w-auto dark:border-purple-500/30 dark:bg-purple-950/40 dark:text-purple-300 dark:hover:bg-purple-900/50"
               >
-                تاریخچه فعالیت‌ها
+                <span>🎮</span>
+                <span>باشگاه بازی‌های دانایی</span>
               </RouterLink>
             </div>
 
@@ -175,28 +299,30 @@ function viewUpcomingGames(): void {
         </div>
       </section>
 
-      <!-- بخش کارت ویژه باشگاه ۹۵ بازی دانایی (Games Hub Banner) -->
+      <!-- بخش کارت ویژه باشگاه بازی‌های دانایی (Games Hub Banner) -->
       <section class="mx-auto max-w-6xl px-4 pb-8 sm:px-6">
         <div class="relative overflow-hidden rounded-3xl bg-gradient-to-r from-brand-900 via-indigo-900 to-purple-950 p-6 sm:p-10 text-white shadow-xl shadow-indigo-950/20">
           <div class="relative z-10 flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
             <div class="max-w-2xl space-y-3">
               <div class="inline-flex items-center gap-2 rounded-full bg-brand-500/20 px-3 py-1 text-xs font-semibold text-brand-300">
                 <span class="h-2 w-2 rounded-full bg-brand-400 animate-pulse"></span>
-                باشگاه ۹۵ بازی دانایی و مهارت
+                باشگاه بازی‌های دانایی و مهارت
               </div>
-              <h2 class="text-2xl font-black sm:text-3xl">دنیای ۹۵ بازی هوش، تخته‌ای و مهارتی پیوندخورده با کتب درسی</h2>
+              <h2 class="text-2xl font-black sm:text-3xl">دنیای بازی‌های هوش، تخته‌ای و مهارتی پیوندخورده با کتب درسی</h2>
               <p class="text-xs leading-6 text-indigo-100/90 sm:text-sm sm:leading-7">
                 مجموعه‌ای کامل از بازی‌های اصیل (مار و پله، منچ، شطرنج، ماز، سودوکو و...)؛ دانش‌آموزان با حل سوالات درسی سکه، جان و امتیاز کسب می‌کنند و در لیگ فصلی قهرمانان رقابت می‌نمایند.
               </p>
             </div>
 
+            <!-- دکمه با متن مشکی کاملاً خوانا و بدون رنگ سفید نامناسب -->
             <RouterLink
               to="/games"
-              class="flex shrink-0 items-center gap-2 rounded-2xl bg-white px-6 py-3.5 text-sm font-bold text-brand-950 shadow-lg shadow-black/20 transition hover:bg-brand-50 hover:scale-105"
+              class="flex shrink-0 items-center gap-2 rounded-2xl px-6 py-3.5 text-sm font-black shadow-lg shadow-black/20 transition hover:scale-105 cursor-pointer"
+              style="background-color: #ffffff !important; color: #0f172a !important;"
             >
-              <span>ورود به باشگاه ۹۵ بازی</span>
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4">
-                <path d="M15 19l-7-7 7-7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+              <span class="font-black" style="color: #0f172a !important;">ورود به باشگاه بازی‌ها</span>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4" style="color: #0f172a !important;">
+                <path d="M15 19l-7-7 7-7" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
               </svg>
             </RouterLink>
           </div>
@@ -212,14 +338,14 @@ function viewUpcomingGames(): void {
           </p>
         </div>
 
-        <!-- تب‌های نقش‌ها (کاملاً واکنش‌گرا و اسکرول‌پذیر در موبایل) -->
+        <!-- تب‌های نقش‌ها (واکنش‌گرا و اسکرول‌پذیر در موبایل) -->
         <div class="mt-8 -mx-4 flex items-center overflow-x-auto px-4 pb-3 pt-1 scrollbar-none sm:mx-0 sm:justify-center sm:px-0">
           <div class="inline-flex w-max shrink-0 items-center gap-1.5 rounded-2xl border border-ink-200/80 bg-white/70 p-1.5 shadow-xs backdrop-blur sm:gap-2 dark:border-ink-800 dark:bg-ink-900/80">
             <button
               v-for="tab in AUDIENCE_TABS"
               :key="tab.id"
               type="button"
-              class="flex shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-[11px] font-bold transition sm:gap-2 sm:px-3.5 sm:py-2 sm:text-xs"
+              class="flex shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-[11px] font-bold transition sm:gap-2 sm:px-3.5 sm:py-2 sm:text-xs cursor-pointer"
               :class="
                 selectedTab === tab.id
                   ? 'bg-brand-600 text-white shadow-md shadow-brand-600/20'
@@ -241,8 +367,221 @@ function viewUpcomingGames(): void {
           </div>
         </div>
 
-        <!-- کارت‌های ابزارها و امکانات -->
-        <div class="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <!-- ۱. حالت نمایش همه: ۴ باکس تفکیک‌شده معرفی نقش‌ها (برای جلوگیری از شلوغی) -->
+        <div v-if="selectedTab === 'all'" class="mt-8 grid gap-6 sm:grid-cols-2">
+          <div
+            v-for="role in ROLE_GATEWAY_CARDS"
+            :key="role.id"
+            class="group relative flex flex-col justify-between overflow-hidden rounded-3xl border bg-white p-7 shadow-xs transition-all duration-300 hover:-translate-y-1 hover:shadow-xl dark:bg-ink-900 cursor-pointer"
+            :class="role.borderClass"
+            @click="selectAudienceTab(role.id)"
+          >
+            <!-- گرادیان ملایم پس‌زمینه -->
+            <div
+              class="absolute inset-0 bg-gradient-to-br opacity-50 transition-opacity group-hover:opacity-100 pointer-events-none"
+              :class="role.gradient"
+            ></div>
+
+            <div class="relative z-10">
+              <div class="flex items-center justify-between">
+                <span class="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-3xl shadow-sm dark:bg-ink-800 group-hover:scale-110 transition-transform">
+                  {{ role.icon }}
+                </span>
+                <span
+                  class="rounded-full px-3 py-1 text-xs font-bold"
+                  :class="role.badgeClass"
+                >
+                  {{ role.badge }}
+                </span>
+              </div>
+
+              <h3 class="mt-5 text-xl font-black text-ink-900 dark:text-white">
+                {{ role.title }}
+              </h3>
+              <p class="mt-1 text-xs font-semibold text-ink-400">
+                {{ role.subtitle }}
+              </p>
+              <p class="mt-3 text-xs leading-6 text-ink-600 dark:text-ink-300">
+                {{ role.description }}
+              </p>
+
+              <!-- سرفصل‌های شاخص نقش -->
+              <div class="mt-5 flex flex-wrap gap-2 border-t border-slate-100/80 pt-4 dark:border-ink-800">
+                <span
+                  v-for="h in role.highlights"
+                  :key="h"
+                  class="rounded-lg bg-slate-100 px-2.5 py-1 text-11px font-medium text-slate-700 dark:bg-ink-800 dark:text-ink-300"
+                >
+                  ✓ {{ h }}
+                </span>
+              </div>
+            </div>
+
+            <div class="relative z-10 mt-6 pt-2">
+              <button
+                type="button"
+                class="flex w-full items-center justify-between rounded-xl px-4 py-3 text-xs font-bold transition shadow-xs cursor-pointer"
+                :class="role.btnClass"
+                @click.stop="selectAudienceTab(role.id)"
+              >
+                <span>مشاهده امکانات و بخش‌های {{ role.shortLabel }}</span>
+                <span class="group-hover:translate-x-1 transition-transform">←</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ۲. حالت تب دانش‌آموز: نمایش کامل تمام بازی‌ها همراه با ابزارهای دانش‌آموزی -->
+        <div v-else-if="selectedTab === 'student'" class="mt-8 space-y-8">
+          <!-- ابزارهای پایه‌ای دانش‌آموز (آزمایشگاه علوم) -->
+          <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            <div
+              v-for="feature in studentNonGameFeatures"
+              :key="feature.id"
+              class="group relative flex flex-col justify-between rounded-2xl border border-emerald-300 bg-white p-6 shadow-xs transition hover:-translate-y-1 hover:shadow-md dark:border-emerald-500/30 dark:bg-ink-900"
+            >
+              <div>
+                <div class="flex items-start justify-between">
+                  <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-6 w-6">
+                      <path :d="feature.icon" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                  </div>
+                  <span v-if="feature.badge" class="rounded-full bg-emerald-100 px-2.5 py-0.5 text-11px font-bold text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300">
+                    {{ feature.badge }}
+                  </span>
+                </div>
+                <h3 class="mt-4 text-base font-bold text-ink-900 dark:text-white">{{ feature.title }}</h3>
+                <p class="mt-2 text-xs leading-6 text-ink-500 dark:text-ink-400">{{ feature.description }}</p>
+              </div>
+              <div class="mt-5">
+                <RouterLink
+                  :to="feature.startPath"
+                  class="flex w-full items-center justify-center rounded-xl bg-emerald-600 py-2.5 text-xs font-bold text-white shadow-emerald-600/20 hover:bg-emerald-700 transition"
+                >
+                  {{ feature.startLabel }}
+                </RouterLink>
+              </div>
+            </div>
+          </div>
+
+          <!-- کلکسیون کامل تمام بازی‌ها برای دانش‌آموز -->
+          <div class="rounded-3xl border border-slate-200 bg-white p-6 shadow-xs dark:border-ink-800 dark:bg-ink-900">
+            <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between border-b border-slate-100 pb-5 dark:border-ink-800">
+              <div>
+                <h3 class="text-xl font-black text-ink-900 dark:text-white flex items-center gap-2">
+                  <span>🎮</span>
+                  <span>باشگاه و تالار بازی‌های دانایی</span>
+                </h3>
+                <p class="text-xs text-slate-500 dark:text-ink-400 mt-1">
+                  تمام بازی‌های فکری، تخته‌ای و مهارتی؛ با پاسخ به سوالات درسی سکه و جان کسب کنید و بازی را جلو ببرید.
+                </p>
+              </div>
+
+              <!-- فیلد جستجوی سریع بازی و لینک تمام‌صفحه -->
+              <div class="flex items-center gap-2">
+                <input
+                  v-model="studentGameSearch"
+                  type="text"
+                  placeholder="جستجوی نام بازی..."
+                  class="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-medium text-ink-900 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-ink-700 dark:bg-ink-800 dark:text-white"
+                />
+                <RouterLink
+                  to="/games"
+                  class="shrink-0 rounded-xl bg-brand-600 px-3.5 py-2 text-xs font-bold text-white shadow-xs hover:bg-brand-700 transition"
+                >
+                  نمای تمام‌صفحه تالار بازی‌ها ←
+                </RouterLink>
+              </div>
+            </div>
+
+            <!-- فیلتر دسته‌بندی موضوعی بازی‌ها -->
+            <div class="mt-4 flex flex-wrap items-center gap-2">
+              <button
+                v-for="cat in CHOGAN_CATEGORIES"
+                :key="cat.id"
+                type="button"
+                class="rounded-xl px-3 py-1.5 text-xs font-bold transition cursor-pointer"
+                :class="
+                  studentGameCategory === cat.id
+                    ? 'bg-brand-600 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-ink-300'
+                "
+                @click="studentGameCategory = cat.id; studentGamesPage = 1"
+              >
+                {{ cat.titleFa }} ({{ cat.count }})
+              </button>
+            </div>
+
+            <!-- گرید تمام کارت‌های بازی -->
+            <div class="mt-6 grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+              <RouterLink
+                v-for="g in paginatedStudentGames"
+                :key="g.id"
+                :to="g.playUrl"
+                class="group flex flex-col justify-between rounded-2xl border border-slate-200 bg-slate-50/50 p-4 shadow-2xs transition hover:-translate-y-1 hover:border-brand-500/50 hover:bg-white hover:shadow-md dark:border-ink-800 dark:bg-ink-800/40 dark:hover:bg-ink-800"
+              >
+                <div>
+                  <div class="flex items-start justify-between">
+                    <div
+                      class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl p-2 transition group-hover:scale-105"
+                      :style="{ backgroundColor: g.soft || '#f1f5f9' }"
+                    >
+                      <img :src="g.iconUrl" :alt="g.nameFa" class="h-7 w-7 object-contain" loading="lazy" />
+                    </div>
+                    <span class="rounded-md bg-white px-2 py-0.5 text-9px font-bold text-slate-600 dark:bg-ink-700 dark:text-ink-200 shadow-2xs">
+                      {{ g.categoryFa }}
+                    </span>
+                  </div>
+                  <h4 class="mt-3 text-sm font-bold text-ink-900 group-hover:text-brand-600 dark:text-white dark:group-hover:text-brand-400 transition-colors">
+                    {{ g.nameFa }}
+                  </h4>
+                  <p class="text-9px text-slate-400 dark:text-ink-500" dir="ltr">{{ g.nameEn }}</p>
+                  <p class="mt-1.5 text-xs text-slate-600 dark:text-ink-300 line-clamp-2 leading-relaxed">
+                    {{ g.summaryFa }}
+                  </p>
+                </div>
+                <div class="mt-4 flex items-center justify-between border-t border-slate-200/60 pt-2.5 dark:border-ink-700/60">
+                  <span class="text-xs font-bold text-brand-600 dark:text-brand-400">شروع بازی</span>
+                  <span class="text-xs text-brand-600 dark:text-brand-400 group-hover:translate-x-1 transition-transform">←</span>
+                </div>
+              </RouterLink>
+            </div>
+
+            <!-- صفحه‌بندی بازی‌ها -->
+            <div v-if="studentTotalPages > 1" class="mt-6 flex items-center justify-center gap-1.5 border-t border-slate-100 pt-4 dark:border-ink-800">
+              <button
+                type="button"
+                class="rounded-lg px-2.5 py-1 text-xs font-bold text-slate-600 dark:text-ink-300 disabled:opacity-40 cursor-pointer"
+                :disabled="studentGamesPage === 1"
+                @click="studentGamesPage--"
+              >
+                قبلی
+              </button>
+              <button
+                v-for="p in studentTotalPages"
+                :key="p"
+                type="button"
+                class="h-7 w-7 rounded-lg text-xs font-bold transition cursor-pointer"
+                :class="studentGamesPage === p ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-ink-300'"
+                @click="studentGamesPage = p"
+              >
+                {{ p }}
+              </button>
+              <button
+                type="button"
+                class="rounded-lg px-2.5 py-1 text-xs font-bold text-slate-600 dark:text-ink-300 disabled:opacity-40 cursor-pointer"
+                :disabled="studentGamesPage === studentTotalPages"
+                @click="studentGamesPage++"
+              >
+                بعدی
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ۳. حالت سایر نقش‌ها (معلم، مدیر، اولیا) با رنگ متمایز و بنفش/ارغوانی برای معلم (غیر آبی) -->
+        <div v-else class="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           <div
             v-for="feature in filteredFeatures"
             :key="feature.id"
@@ -252,7 +591,9 @@ function viewUpcomingGames(): void {
                 ? 'border-emerald-300 ring-1 ring-emerald-500/20 dark:border-emerald-500/30'
                 : feature.status === 'coming-soon'
                   ? 'border-dashed border-amber-300/80 bg-amber-50/20 dark:border-amber-500/30 dark:bg-amber-950/10'
-                  : 'border-ink-100 hover:border-brand-200 dark:border-ink-800 dark:hover:border-ink-700'
+                  : isTeacherOnly(feature)
+                    ? 'border-purple-200 hover:border-purple-400 dark:border-purple-900/60 dark:hover:border-purple-700'
+                    : 'border-ink-100 hover:border-brand-200 dark:border-ink-800 dark:hover:border-ink-700'
             ]"
           >
             <!-- سربرگ کارت: آیکون، برچسب‌ها و نشان -->
@@ -264,7 +605,9 @@ function viewUpcomingGames(): void {
                     ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400'
                     : feature.status === 'coming-soon'
                       ? 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400'
-                      : 'bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400'
+                      : isTeacherOnly(feature)
+                        ? 'bg-purple-100 text-purple-700 dark:bg-purple-950/70 dark:text-purple-300'
+                        : 'bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400'
                 ]"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-6 w-6">
@@ -279,7 +622,9 @@ function viewUpcomingGames(): void {
                 :class="[
                   feature.status === 'coming-soon'
                     ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300'
-                    : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300'
+                    : isTeacherOnly(feature)
+                      ? 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300'
+                      : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300'
                 ]"
               >
                 {{ feature.badge }}
@@ -324,7 +669,9 @@ function viewUpcomingGames(): void {
                   :class="[
                     feature.isNew
                       ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20'
-                      : 'bg-brand-600 hover:bg-brand-700 shadow-brand-600/20'
+                      : isTeacherOnly(feature)
+                        ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-600/20'
+                        : 'bg-brand-600 hover:bg-brand-700 shadow-brand-600/20'
                   ]"
                 >
                   {{ feature.startLabel }}
@@ -345,88 +692,27 @@ function viewUpcomingGames(): void {
 
       <!-- بخش پیش‌نمایش بازی‌های یادگیری دانش‌آموزان -->
       <section class="mx-auto max-w-6xl px-4 py-12 sm:px-6">
-        <div class="rounded-3xl border border-amber-200/80 bg-gradient-to-br from-amber-500/10 via-white to-orange-500/5 p-6 sm:p-10 dark:border-amber-500/20 dark:bg-ink-900/60">
+        <div class="rounded-3xl border border-purple-200/80 bg-gradient-to-br from-purple-500/10 via-white to-indigo-500/5 p-6 sm:p-10 dark:border-purple-500/20 dark:bg-ink-900/60">
           <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
             <div class="space-y-3">
-              <div class="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-800 dark:bg-amber-500/20 dark:text-amber-300">
-                🚀 در مسیر توسعه (Roadmap)
+              <div class="inline-flex items-center gap-1.5 rounded-full bg-purple-100 px-3 py-1 text-xs font-bold text-purple-800 dark:bg-purple-500/20 dark:text-purple-300">
+                🎮 یادگیری تعاملی و پرنشاط
               </div>
               <h3 class="text-xl font-black text-ink-900 sm:text-2xl dark:text-white">
                 بازی‌های آموزشی درسی؛ یادگیری شاد، هدفمند و جذاب
               </h3>
               <p class="max-w-2xl text-xs leading-6 text-ink-600 sm:text-sm sm:leading-7 dark:text-ink-300">
-                مشابه بازی محبوب <b>«نبرد موشکی»</b>، به زودی مینی‌گیم‌های تعاملی و پرهیجانی به مدیریار اضافه می‌شوند که مستقیماً به بانک سوالات کتاب‌های درسی متصل هستند. پاسخ درست در بازی شلیک موشک و ارتقای پایگاه‌ها را ممکن می‌کند و پاسخ اشتباه با راهنمایی‌های مفهومی به یادگیری درس کمک می‌نماید.
+                بازی‌های هوش، تخته‌ای و مهارتی مدیریار مستقیماً به بانک سوالات کتاب‌های درسی متصل هستند. پاسخ درست در بازی‌ها سکه و امتیاز و شانس پیشروی اعطا می‌کند و پاسخ نادرست با راهنمایی‌های مفهومی به یادگیری درس کمک می‌نماید.
               </p>
             </div>
-            <button
-              type="button"
-              class="shrink-0 cursor-pointer rounded-2xl border border-amber-300 bg-white px-5 py-3 text-xs font-bold text-amber-800 shadow-xs transition hover:bg-amber-50 dark:border-amber-500/30 dark:bg-ink-800 dark:text-amber-300 active:scale-95"
-              @click="viewUpcomingGames"
+
+            <RouterLink
+              to="/games"
+              class="flex shrink-0 items-center gap-2 rounded-2xl bg-purple-600 px-6 py-3.5 text-xs font-bold text-white shadow-lg shadow-purple-600/25 transition hover:bg-purple-700"
             >
-              مشاهده بازی‌های در دست ساخت ←
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <!-- بخش چرایی مدیریار (Core Pillars) -->
-      <section class="bg-white py-16 transition-colors dark:bg-ink-900/60">
-        <div class="mx-auto max-w-6xl px-4 sm:px-6">
-          <div class="mx-auto max-w-2xl text-center">
-            <h2 class="text-2xl font-black text-ink-900 sm:text-3xl dark:text-white">چرا سامانه مدیریار؟</h2>
-            <p class="mt-3 text-xs leading-6 text-ink-500 sm:text-sm dark:text-ink-400">
-              ویژگی‌های متمایزی که مدیریت امور مدرسه و یادگیری را ساده، سریع و استاندارد می‌کند.
-            </p>
-          </div>
-
-          <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            <div class="rounded-2xl border border-ink-100 p-5 dark:border-ink-800">
-              <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-5 w-5">
-                  <path d="M12 18h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-                </svg>
-              </div>
-              <h3 class="mt-4 text-sm font-bold text-ink-900 dark:text-white">سازگار با تمام دستگاه‌ها</h3>
-              <p class="mt-2 text-xs leading-6 text-ink-500 dark:text-ink-400">
-                روی ویندوز، مک، گوشی‌های هوشمند و تبلت‌ها با طراحی روان، مدرن و کاملاً واکنش‌گرا در دسترس است.
-              </p>
-            </div>
-
-            <div class="rounded-2xl border border-ink-100 p-5 dark:border-ink-800">
-              <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-5 w-5">
-                  <path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-                </svg>
-              </div>
-              <h3 class="mt-4 text-sm font-bold text-ink-900 dark:text-white">امنیت و استقلال کامل</h3>
-              <p class="mt-2 text-xs leading-6 text-ink-500 dark:text-ink-400">
-                اطلاعات معلمان، دانش‌آموزان و برنامه‌ها با نهایت دقت و امنیت نگهداری شده و کنترل کامل اطلاعات در اختیار خود شماست.
-              </p>
-            </div>
-
-            <div class="rounded-2xl border border-ink-100 p-5 dark:border-ink-800">
-              <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-50 text-purple-600 dark:bg-purple-500/10 dark:text-purple-400">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-5 w-5">
-                  <path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-                </svg>
-              </div>
-              <h3 class="mt-4 text-sm font-bold text-ink-900 dark:text-white">پوشش تمامی ارکان مدرسه</h3>
-              <p class="mt-2 text-xs leading-6 text-ink-500 dark:text-ink-400">
-                از مدیر و معاونان اجرایی گرفته تا معلمان، اولیا و دانش‌آموزان، هر فرد ابزارهای اختصاصی و کاربردی خود را دارد.
-              </p>
-            </div>
-
-            <div class="rounded-2xl border border-ink-100 p-5 dark:border-ink-800">
-              <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-5 w-5">
-                  <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-                </svg>
-              </div>
-              <h3 class="mt-4 text-sm font-bold text-ink-900 dark:text-white">قوانین رسمی آموزش و پرورش</h3>
-              <p class="mt-2 text-xs leading-6 text-ink-500 dark:text-ink-400">
-                منطبق بر مصوبات رسمی شورای عالی آموزش و پرورش در ساعات درسی، عدم تکرار طولی/عرضی و چینش استاندارد.
-              </p>
-            </div>
+              <span>ورود به باشگاه بازی‌ها</span>
+              <span>←</span>
+            </RouterLink>
           </div>
         </div>
       </section>
