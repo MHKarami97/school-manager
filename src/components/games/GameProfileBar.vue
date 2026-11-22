@@ -117,37 +117,34 @@ function getGradeStageLabel(grade: number): string {
 </script>
 
 <template>
-  <div class="w-full flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-md backdrop-blur-md transition-colors dark:border-slate-800 dark:bg-slate-900/90 dark:text-slate-100">
-    <!-- بخش پروفایل دانش‌آموز فعال -->
-    <div class="flex items-center gap-3">
-      <!-- آواتار دانش‌آموز با دکمه تغییر سریع -->
+  <div class="grid w-full grid-cols-1 gap-3 rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-md backdrop-blur-md transition-colors dark:border-slate-800 dark:bg-slate-900/90 dark:text-slate-100 sm:flex sm:flex-wrap sm:items-center sm:justify-between">
+    <!-- پروفایل دانش‌آموز فعال -->
+    <div class="flex min-w-0 items-center gap-3">
       <button
         type="button"
-        class="group relative flex h-12 w-12 items-center justify-center rounded-2xl border border-indigo-200 bg-indigo-50 text-2xl shadow-sm transition hover:scale-105 active:scale-95 dark:border-indigo-500/40 dark:bg-indigo-950/50"
+        class="group relative flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-indigo-200 bg-indigo-50 text-2xl shadow-sm transition hover:scale-105 active:scale-95 dark:border-indigo-500/40 dark:bg-indigo-950/50"
         title="تغییر یا مدیریت دانش‌آموز"
         @click="showProfilesModal = true; formMode = 'list'"
       >
         <span>{{ profilesStore.activeProfile?.avatar || '🦁' }}</span>
-        <span class="absolute -bottom-1 -left-1 flex h-4 w-4 items-center justify-center rounded-full bg-indigo-600 text-[9px] text-white shadow">
-          ✎
-        </span>
+        <span class="absolute -bottom-1 -left-1 flex h-4 w-4 items-center justify-center rounded-full bg-indigo-600 text-[9px] text-white shadow">✎</span>
       </button>
 
-      <div>
+      <div class="min-w-0">
         <div class="flex items-center gap-2">
-          <span class="font-black text-sm text-slate-800 dark:text-white">
+          <span class="truncate text-sm font-black text-slate-800 dark:text-white">
             {{ profilesStore.activeProfile?.name || 'دانش‌آموز' }}
           </span>
           <select
             :value="profilesStore.activeProfile?.grade || 4"
             aria-label="پایه تحصیلی"
-            class="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+            class="shrink-0 rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
             @change="handleQuickGradeChange"
           >
             <option v-for="g in 12" :key="g" :value="g">پایه {{ g }}</option>
           </select>
         </div>
-        <div class="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+        <div class="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-slate-500 dark:text-slate-400">
           <span class="flex items-center gap-1 font-bold text-amber-500">
             <span>⭐</span>
             <span>{{ profilesStore.activeProfile?.totalScore || 0 }}</span>
@@ -162,51 +159,49 @@ function getGradeStageLabel(grade: number): string {
       </div>
     </div>
 
-    <!-- نشان فصل جاری سال تحصیلی و دکمه‌های ناوبری سریع -->
-    <div class="flex flex-wrap items-center gap-2">
-      <!-- نشان فصل تحصیلی -->
+    <!-- دکمه‌های ناوبری: گرید ۴ستونه در موبایل، ردیف افقی در دسکتاپ -->
+    <div class="grid grid-cols-4 gap-1.5 sm:flex sm:flex-wrap sm:items-center sm:gap-2">
       <button
         type="button"
-        class="flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50/80 px-3 py-1.5 text-xs font-bold text-amber-800 transition hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-300"
-        @click="emit('open-journey')"
+        class="flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl border border-amber-200 bg-amber-50/80 px-1 py-2 text-[10px] font-bold text-amber-800 transition hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-300 sm:flex-row sm:gap-1.5 sm:px-3 sm:py-1.5 sm:text-xs"
         title="مشاهده مسیر مراحل یک‌ساله"
-      >
-        <span>{{ activeSeason.icon }}</span>
-        <span class="hidden sm:inline">{{ activeSeason.name }}</span>
-        <span class="text-[10px] opacity-75 font-normal">({{ activeSeason.monthsName }})</span>
-      </button>
-
-      <!-- مسیر مراحل -->
-      <button
-        type="button"
-        class="flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-700 transition hover:bg-indigo-100 dark:border-indigo-500/30 dark:bg-indigo-950/40 dark:text-indigo-300"
         @click="emit('open-journey')"
       >
-        <span>🗺️</span>
-        <span class="hidden sm:inline">مسیر یک‌ساله</span>
+        <span class="text-base leading-none sm:text-sm">{{ activeSeason.icon }}</span>
+        <span class="max-w-full truncate">{{ activeSeason.name }}</span>
+        <span class="hidden text-[10px] font-normal opacity-75 sm:inline">({{ activeSeason.monthsName }})</span>
       </button>
 
-      <!-- مدال‌ها و چالش‌ها -->
       <button
         type="button"
-        class="flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-300"
+        class="flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl border border-indigo-200 bg-indigo-50 px-1 py-2 text-[10px] font-bold text-indigo-700 transition hover:bg-indigo-100 dark:border-indigo-500/30 dark:bg-indigo-950/40 dark:text-indigo-300 sm:flex-row sm:gap-1.5 sm:px-3 sm:py-1.5 sm:text-xs"
+        @click="emit('open-journey')"
+      >
+        <span class="text-base leading-none sm:text-sm">🗺️</span>
+        <span class="max-w-full truncate">مسیر یک‌ساله</span>
+      </button>
+
+      <button
+        type="button"
+        class="relative flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl border border-emerald-200 bg-emerald-50 px-1 py-2 text-[10px] font-bold text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-300 sm:flex-row sm:gap-1.5 sm:px-3 sm:py-1.5 sm:text-xs"
         @click="emit('open-medals')"
       >
-        <span>🏅</span>
-        <span>مدال‌ها و چالش‌ها</span>
-        <span class="rounded-full bg-emerald-600 px-1.5 py-0.2 text-[10px] text-white">
+        <span class="text-base leading-none sm:text-sm">🏅</span>
+        <span class="max-w-full truncate sm:hidden">مدال‌ها</span>
+        <span class="hidden sm:inline">مدال‌ها و چالش‌ها</span>
+        <span class="rounded-full bg-emerald-600 px-1.5 text-[10px] leading-4 text-white">
           {{ profilesStore.unlockedMedalsCount }}/{{ profilesStore.totalMedalsCount }}
         </span>
       </button>
 
-      <!-- نمودارها و گزارش‌ها -->
       <button
         type="button"
-        class="flex items-center gap-1.5 rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-xs font-bold text-cyan-700 transition hover:bg-cyan-100 dark:border-cyan-500/30 dark:bg-cyan-950/40 dark:text-cyan-300"
+        class="flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl border border-cyan-200 bg-cyan-50 px-1 py-2 text-[10px] font-bold text-cyan-700 transition hover:bg-cyan-100 dark:border-cyan-500/30 dark:bg-cyan-950/40 dark:text-cyan-300 sm:flex-row sm:gap-1.5 sm:px-3 sm:py-1.5 sm:text-xs"
         @click="emit('open-analytics')"
       >
-        <span>📊</span>
-        <span>نمودار و گزارش</span>
+        <span class="text-base leading-none sm:text-sm">📊</span>
+        <span class="max-w-full truncate sm:hidden">گزارش</span>
+        <span class="hidden sm:inline">نمودار و گزارش</span>
       </button>
     </div>
 
