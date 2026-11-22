@@ -23,13 +23,14 @@ import type {
   ExamSession,
   TeachingPlan,
   GameHistorySession,
+  StudentGameProfile,
 } from "@/types";
 import { createAttendanceStores } from "./attendance-schema";
 import { createServiceStores } from "./service-schema";
 
 const DB_NAME = "school-manager-db";
 
-const DB_VERSION = 15;
+const DB_VERSION = 16;
 
 export const STORE_TEACHERS = "teachers";
 export const STORE_SCHEDULES = "schedules";
@@ -54,6 +55,7 @@ export const STORE_EXAM_ROOMS = "examRooms";
 export const STORE_EXAM_SESSIONS = "examSessions";
 export const STORE_TEACHING_PLANS = "teachingPlans";
 export const STORE_GAME_HISTORY = "gameHistory";
+export const STORE_GAME_PROFILES = "gameProfiles";
 
 type MutationListener = () => void;
 const mutationListeners = new Set<MutationListener>();
@@ -211,6 +213,12 @@ export function getDb(): Promise<IDBPDatabase> {
           });
           store.createIndex("by-endedAt", "endedAt");
           store.createIndex("by-gameType", "gameType");
+        }
+        if (!db.objectStoreNames.contains(STORE_GAME_PROFILES)) {
+          const store = db.createObjectStore(STORE_GAME_PROFILES, {
+            keyPath: "id",
+          });
+          store.createIndex("by-lastActiveAt", "lastActiveAt");
         }
         createAttendanceStores(db);
         createServiceStores(db);
@@ -612,4 +620,18 @@ export async function deleteGameHistory(id: string): Promise<void> {
 export async function clearAllGameHistory(): Promise<void> {
   const db = await getDb();
   await db.clear(STORE_GAME_HISTORY);
+}
+
+export async function getAllGameProfiles(): Promise<StudentGameProfile[]> {
+  const db = await getDb();
+  const all = await db.getAll(STORE_GAME_PROFILES);
+  return (all as StudentGameProfile[]).sort((a, b) => b.lastActiveAt - a.lastActiveAt);
+}
+export async function putGameProfile(profile: StudentGameProfile): Promise<void> {
+  const db = await getDb();
+  await db.put(STORE_GAME_PROFILES, toPlain(profile));
+}
+export async function deleteGameProfile(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete(STORE_GAME_PROFILES, id);
 }

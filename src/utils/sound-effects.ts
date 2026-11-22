@@ -203,6 +203,104 @@ class SoundEffectsManager {
       osc.stop(now + idx * 0.12 + 0.4)
     })
   }
+
+  // صدای ساخت یا ارتقای برج (Build / Upgrade)
+  playBuild(): void {
+    if (!this.enabled) return
+    const ctx = this.initCtx()
+    if (!ctx) return
+
+    const now = ctx.currentTime
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+
+    osc.type = 'sine'
+    osc.frequency.setValueAtTime(320, now)
+    osc.frequency.exponentialRampToValueAtTime(640, now + 0.15)
+    osc.frequency.exponentialRampToValueAtTime(960, now + 0.3)
+
+    gain.gain.setValueAtTime(0.2, now)
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3)
+
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+
+    osc.start(now)
+    osc.stop(now + 0.3)
+  }
+
+  // صدای شلیک لیزری برج
+  playTowerShoot(): void {
+    if (!this.enabled) return
+    const ctx = this.initCtx()
+    if (!ctx) return
+
+    const now = ctx.currentTime
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+
+    osc.type = 'sawtooth'
+    osc.frequency.setValueAtTime(750, now)
+    osc.frequency.exponentialRampToValueAtTime(220, now + 0.1)
+
+    gain.gain.setValueAtTime(0.12, now)
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1)
+
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+
+    osc.start(now)
+    osc.stop(now + 0.1)
+  }
+
+  // صدای انجماد / یخ‌زدن برج ادبیات
+  playFreeze(): void {
+    if (!this.enabled) return
+    const ctx = this.initCtx()
+    if (!ctx) return
+
+    const now = ctx.currentTime
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+
+    osc.type = 'sine'
+    osc.frequency.setValueAtTime(1200, now)
+    osc.frequency.linearRampToValueAtTime(400, now + 0.25)
+
+    gain.gain.setValueAtTime(0.15, now)
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25)
+
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+
+    osc.start(now)
+    osc.stop(now + 0.25)
+  }
+
+  // صدای شکست یا اتمام جان قلعه
+  playDefeat(): void {
+    if (!this.enabled) return
+    const ctx = this.initCtx()
+    if (!ctx) return
+
+    const now = ctx.currentTime
+    const notes = [330, 293.66, 261.63, 220] // E4, D4, C4, A3
+    notes.forEach((freq, idx) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'sawtooth'
+      osc.frequency.setValueAtTime(freq, now + idx * 0.18)
+
+      gain.gain.setValueAtTime(0.2, now + idx * 0.18)
+      gain.gain.exponentialRampToValueAtTime(0.01, now + idx * 0.18 + 0.35)
+
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+
+      osc.start(now + idx * 0.18)
+      osc.stop(now + idx * 0.18 + 0.35)
+    })
+  }
 }
 
 export const sfx = new SoundEffectsManager()

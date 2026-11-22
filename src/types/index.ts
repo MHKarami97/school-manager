@@ -464,11 +464,15 @@ export interface QuestionAnswerRecord {
 
 export interface GameHistorySession {
   id: string;
-  gameType: "rocket";
+  studentId?: string;
+  studentName?: string;
+  gameType: "rocket" | "tower-defense" | string;
   gameTitle: string;
   heroId: string;
   heroName: string;
   grade: number;
+  season?: "autumn" | "winter" | "spring" | "summer";
+  stageId?: string;
   selectedCourses: string[];
   startedAt: number;
   endedAt: number;
@@ -481,6 +485,67 @@ export interface GameHistorySession {
   totalQuestionsAnswered: number;
   correctAnswersCount: number;
   answers: QuestionAnswerRecord[];
+}
+
+export type GameSeasonKey = "autumn" | "winter" | "spring" | "summer";
+
+export interface StudentGameProfile {
+  id: string;
+  name: string;
+  grade: number;
+  avatar: string;
+  colorTheme?: string;
+  createdAt: number;
+  lastActiveAt: number;
+  totalScore: number;
+  currentStreak: number;
+  lastPlayedDate?: string;
+  unlockedMedalIds: string[];
+  completedChallengeIds: string[];
+  stageProgress: Record<string, { stars: number; bestScore: number; clearedAt: number }>;
+}
+
+export interface GameStage {
+  id: string;
+  season: GameSeasonKey;
+  stageNumber: number;
+  title: string;
+  description: string;
+  targetScore: number;
+  wavesCount: number;
+  recommendedCourses: string[];
+  themeKey: string;
+}
+
+export interface GameMedal {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  category: "accuracy" | "speed" | "defense" | "streak" | "season" | "curriculum";
+  requirementText: string;
+  rewardScore: number;
+}
+
+export interface DailyChallenge {
+  id: string;
+  date: string; // YYYY-MM-DD
+  title: string;
+  description: string;
+  icon: string;
+  targetCount: number;
+  currentCount: number;
+  isCompleted: boolean;
+  rewardScore: number;
+  type: "questions" | "waves" | "speed" | "course" | "perfect";
+}
+
+export interface MotivationalQuote {
+  id: string;
+  text: string;
+  author?: string;
+  category: "courage" | "science" | "effort" | "learning";
+  icon: string;
 }
 
 export interface ExamTemplateRule {

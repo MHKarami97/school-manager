@@ -37,6 +37,15 @@ export const BASE_COURSES: CourseDefinition[] = [
   { id: 'geology', name: 'زمین‌شناسی', specialRule: 'none', color: '#78350f' },
 ]
 
-export function findCourse(courses: CourseDefinition[], id: string): CourseDefinition | undefined {
-  return courses.find((c) => c.id === id)
+export function findCourse(
+  coursesOrId: CourseDefinition[] | string,
+  maybeId?: string
+): CourseDefinition | undefined {
+  if (typeof coursesOrId === 'string') {
+    return BASE_COURSES.find((c) => c.id === coursesOrId)
+  }
+  if (Array.isArray(coursesOrId) && maybeId) {
+    return coursesOrId.find((c) => c.id === maybeId)
+  }
+  return undefined
 }

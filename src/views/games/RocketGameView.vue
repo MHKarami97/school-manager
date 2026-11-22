@@ -3,10 +3,18 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useQuestionsStore } from '@/stores/questions'
 import { useGameHistoryStore } from '@/stores/game-history'
+import { useGameProfilesStore } from '@/stores/game-profiles'
 import { DEFAULT_CURRICULUM_QUESTIONS, type EducationalQuestion } from '@/config/default-questions.config'
 import { sfx } from '@/utils/sound-effects'
 import { BASE_COURSES, findCourse } from '@/config/courses.config'
-import type { DifficultyLevel, GameHistorySession, QuestionAnswerRecord } from '@/types'
+import { getCurrentSeasonKey, MOTIVATIONAL_QUOTES } from '@/config/game-seasons.config'
+import type { DifficultyLevel, GameHistorySession, GameSeasonKey, GameStage, QuestionAnswerRecord } from '@/types'
+
+// کامپوننت‌های الحاقی پیشرفته
+import GameProfileBar from '@/components/games/GameProfileBar.vue'
+import GameJourneyModal from '@/components/games/GameJourneyModal.vue'
+import GameMedalsModal from '@/components/games/GameMedalsModal.vue'
+import GameAnalyticsModal from '@/components/games/GameAnalyticsModal.vue'
 
 // --- نقشه‌ها و اطلاعات درسی پایه‌ها ---
 const GRADE_COURSES_MAP: Record<number, string[]> = {
@@ -146,6 +154,31 @@ const eligibleQuestions = computed(() => {
     return true
   })
 })
+
+// استورهای سیستم
+const profilesStore = useGameProfilesStore()
+
+// متغیرهای فصلی و مراحل
+const activeSeasonKey = ref<GameSeasonKey>(getCurrentSeasonKey())
+const selectedStage = ref<GameStage | null>(null)
+const showJourneyModal = ref(false)
+const showMedalsModal = ref(false)
+const showAnalyticsModal = ref(false)
+const currentMotivationalQuote = ref<string>('')
+
+function pickRandomMotivationalQuote(): string {
+  const randomIndex = Math.floor(Math.random() * MOTIVATIONAL_QUOTES.length)
+  return MOTIVATIONAL_QUOTES[randomIndex].text
+}
+
+// همگام‌سازی پایه با دانش‌آموز فعال
+watch(
+  () => profilesStore.activeProfile?.grade,
+  (newGrade) => {
+    if (newGrade) selectedGrade.value = newGrade
+  },
+  { immediate: true }
+)
 
 // --- متغیرهای تاریخچه و زمان‌سنجی جلسه جاری ---
 const currentSessionId = ref<string>('')
@@ -372,6 +405,7 @@ function startMission(): void {
   sessionShotsHit.value = 0
   score.value = 0
 
+  currentMotivationalQuote.value = pickRandomMotivationalQuote()
   gameState.value = 'countdown'
   countdownNumber.value = 3
   sfx.playCountdown(false)
@@ -387,6 +421,19 @@ function startMission(): void {
       initWave(1)
     }
   }, 900)
+}
+
+function handleSelectStage(stage: GameStage): void {
+  selectedStage.value = stage
+  if (stage.recommendedCourses && stage.recommendedCourses.length > 0) {
+    const valid = stage.recommendedCourses.filter((id) =>
+      availableCoursesForGrade.value.some((c) => c.id === id)
+    )
+    if (valid.length > 0) {
+      selectedCourseIds.value = valid
+    }
+  }
+  startMission()
 }
 
 function openMissionSetup(): void {
@@ -408,11 +455,15 @@ async function saveCurrentSessionSnapshot(): Promise<void> {
 
   const session: GameHistorySession = {
     id: currentSessionId.value,
+    studentId: profilesStore.activeProfile?.id,
+    studentName: profilesStore.activeProfile?.name,
     gameType: 'rocket',
     gameTitle: 'نبرد موشکی علمی',
     heroId: activeHero.value.id,
     heroName: activeHero.value.name,
     grade: selectedGrade.value,
+    season: activeSeasonKey.value,
+    stageId: selectedStage.value?.id,
     selectedCourses: [...selectedCourseIds.value],
     startedAt: gameStartTime.value,
     endedAt: Date.now(),
@@ -428,6 +479,7 @@ async function saveCurrentSessionSnapshot(): Promise<void> {
   }
 
   await gameHistoryStore.save(session)
+  await profilesStore.recordMissionOutcome(session)
 }
 
 // ساخت مرحله جدید و تنظیم دشمن
@@ -548,46 +600,80 @@ function renderLoop(): void {
   launcherPos.x = Math.max(70, W * 0.1)
   launcherPos.y = H - 65
 
-  // ۱. پس‌زمینه کهکشانی گرادیان
+  const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
+
+  // ۱. پس‌زمینه (آسمان آفتابی در تم روشن / کهکشان پر ستاره در تم تاریک)
   const skyGrad = ctx.createLinearGradient(0, 0, 0, H)
-  skyGrad.addColorStop(0, '#020617')
-  skyGrad.addColorStop(0.4, '#0f172a')
-  skyGrad.addColorStop(0.75, '#1e1b4b')
-  skyGrad.addColorStop(1, '#090d16')
+  if (isDark) {
+    skyGrad.addColorStop(0, '#020617')
+    skyGrad.addColorStop(0.4, '#0f172a')
+    skyGrad.addColorStop(0.75, '#1e1b4b')
+    skyGrad.addColorStop(1, '#090d16')
+  } else {
+    skyGrad.addColorStop(0, '#38bdf8')
+    skyGrad.addColorStop(0.4, '#7dd3fc')
+    skyGrad.addColorStop(0.75, '#bae6fd')
+    skyGrad.addColorStop(1, '#e0f2fe')
+  }
   ctx.fillStyle = skyGrad
   ctx.fillRect(0, 0, W, H)
 
-  // ستاره‌های چشمک‌زن
-  for (let i = 0; i < 45; i++) {
-    const sx = (i * 97) % W
-    const sy = (i * 43) % (H - 120)
-    const flicker = 0.3 + 0.7 * Math.abs(Math.sin(globalTime * 2 + i))
-    ctx.fillStyle = `rgba(255, 255, 255, ${flicker})`
-    const size = i % 4 === 0 ? 2.5 : 1.5
-    ctx.fillRect(sx, sy, size, size)
+  if (isDark) {
+    // ستاره‌های چشمک‌زن
+    for (let i = 0; i < 45; i++) {
+      const sx = (i * 97) % W
+      const sy = (i * 43) % (H - 120)
+      const flicker = 0.3 + 0.7 * Math.abs(Math.sin(globalTime * 2 + i))
+      ctx.fillStyle = `rgba(255, 255, 255, ${flicker})`
+      const size = i % 4 === 0 ? 2.5 : 1.5
+      ctx.fillRect(sx, sy, size, size)
+    }
+  } else {
+    // ابرهای سفید و پف‌دار در آسمان روز
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.65)'
+    for (let i = 0; i < 5; i++) {
+      const cx = ((i * 210 + globalTime * 20) % (W + 200)) - 100
+      const cy = 40 + (i % 3) * 35
+      ctx.beginPath()
+      ctx.arc(cx, cy, 26, 0, Math.PI * 2)
+      ctx.arc(cx + 22, cy - 8, 20, 0, Math.PI * 2)
+      ctx.arc(cx + 42, cy, 24, 0, Math.PI * 2)
+      ctx.fill()
+    }
   }
 
-  // سیاره غول‌پیکر حلقه‌دار
+  // خورشید تابان (روشن) یا سیاره حلقه‌دار (تاریک)
   ctx.save()
   const moonX = W * 0.82
   const moonY = 75
   const moonGrad = ctx.createRadialGradient(moonX - 8, moonY - 8, 4, moonX, moonY, 32)
-  moonGrad.addColorStop(0, '#fef08a')
-  moonGrad.addColorStop(0.7, '#f59e0b')
-  moonGrad.addColorStop(1, '#78350f')
-  ctx.fillStyle = moonGrad
-  ctx.beginPath()
-  ctx.arc(moonX, moonY, 28, 0, Math.PI * 2)
-  ctx.fill()
-  ctx.strokeStyle = 'rgba(253, 224, 71, 0.45)'
-  ctx.lineWidth = 3
-  ctx.beginPath()
-  ctx.ellipse(moonX, moonY, 48, 12, -0.25, 0, Math.PI * 2)
-  ctx.stroke()
+  if (isDark) {
+    moonGrad.addColorStop(0, '#fef08a')
+    moonGrad.addColorStop(0.7, '#f59e0b')
+    moonGrad.addColorStop(1, '#78350f')
+    ctx.fillStyle = moonGrad
+    ctx.beginPath()
+    ctx.arc(moonX, moonY, 28, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.strokeStyle = 'rgba(253, 224, 71, 0.45)'
+    ctx.lineWidth = 3
+    ctx.beginPath()
+    ctx.ellipse(moonX, moonY, 48, 12, -0.25, 0, Math.PI * 2)
+    ctx.stroke()
+  } else {
+    moonGrad.addColorStop(0, '#ffffff')
+    moonGrad.addColorStop(0.3, '#fef08a')
+    moonGrad.addColorStop(0.8, '#f59e0b')
+    moonGrad.addColorStop(1, '#ea580c')
+    ctx.fillStyle = moonGrad
+    ctx.beginPath()
+    ctx.arc(moonX, moonY, 32, 0, Math.PI * 2)
+    ctx.fill()
+  }
   ctx.restore()
 
-  // ۲. کوه‌های بنفش دور
-  ctx.fillStyle = '#1e1b4b'
+  // ۲. کوه‌های دور
+  ctx.fillStyle = isDark ? '#1e1b4b' : '#93c5fd'
   ctx.beginPath()
   ctx.moveTo(0, H - 70)
   for (let x = 0; x <= W; x += 30) {
@@ -598,8 +684,8 @@ function renderLoop(): void {
   ctx.lineTo(0, H)
   ctx.fill()
 
-  // ۳. تپه‌های میانی سبز
-  ctx.fillStyle = '#064e3b'
+  // ۳. تپه‌های میانی
+  ctx.fillStyle = isDark ? '#064e3b' : '#34d399'
   ctx.beginPath()
   ctx.moveTo(0, H - 60)
   for (let x = 0; x <= W; x += 25) {
@@ -610,10 +696,15 @@ function renderLoop(): void {
   ctx.lineTo(0, H)
   ctx.fill()
 
-  // ۴. زمین پیش‌زمینه با چمن نئونی
+  // ۴. زمین پیش‌زمینه
   const groundGrad = ctx.createLinearGradient(0, H - 70, 0, H)
-  groundGrad.addColorStop(0, '#042f2e')
-  groundGrad.addColorStop(1, '#021815')
+  if (isDark) {
+    groundGrad.addColorStop(0, '#042f2e')
+    groundGrad.addColorStop(1, '#021815')
+  } else {
+    groundGrad.addColorStop(0, '#10b981')
+    groundGrad.addColorStop(1, '#047857')
+  }
   ctx.fillStyle = groundGrad
   ctx.beginPath()
   ctx.moveTo(0, H - 55)
@@ -623,7 +714,7 @@ function renderLoop(): void {
   ctx.lineTo(0, H)
   ctx.fill()
 
-  ctx.strokeStyle = '#10b981'
+  ctx.strokeStyle = isDark ? '#10b981' : '#34d399'
   ctx.lineWidth = 3.5
   ctx.beginPath()
   ctx.moveTo(0, H - 55)
@@ -931,9 +1022,11 @@ async function removeHistoryItem(id: string): Promise<void> {
 }
 
 onMounted(async () => {
+  await profilesStore.load()
   loadGameQuestionBank()
   await questionsStore.loadFromDb()
   await gameHistoryStore.loadFromDb()
+  currentMotivationalQuote.value = pickRandomMotivationalQuote()
   checkOrientation()
   window.addEventListener('resize', handleResize)
   window.addEventListener('orientationchange', checkOrientation)
@@ -951,13 +1044,13 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="relative flex h-screen w-screen flex-col overflow-hidden bg-ink-950 text-white select-none">
+  <div class="relative flex h-screen w-screen flex-col overflow-hidden bg-ink-50 text-ink-900 dark:bg-ink-950 dark:text-white select-none transition-colors">
     <!-- هدر بازی -->
-    <header class="flex h-12 shrink-0 items-center justify-between border-b border-ink-800 bg-ink-900/90 px-3 sm:px-6 backdrop-blur z-20">
+    <header class="flex h-12 shrink-0 items-center justify-between border-b border-ink-200 bg-white/90 px-3 sm:px-6 backdrop-blur z-20 dark:border-ink-800 dark:bg-ink-900/90 text-slate-800 dark:text-white transition-colors">
       <div class="flex items-center gap-2 sm:gap-3">
         <RouterLink
           to="/"
-          class="flex items-center gap-1 rounded-xl border border-ink-700 bg-ink-800/80 px-2.5 py-1 text-xs font-semibold text-ink-200 transition hover:border-brand-500 hover:text-white"
+          class="flex items-center gap-1 rounded-xl border border-ink-200 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-200 dark:border-ink-700 dark:bg-ink-800/80 dark:text-ink-200 dark:hover:border-brand-500 dark:hover:text-white"
         >
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4">
             <path d="M9 5l7 7-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
@@ -966,17 +1059,17 @@ onBeforeUnmount(() => {
         </RouterLink>
 
         <div class="flex items-center gap-2">
-          <span class="flex h-7 w-7 items-center justify-center rounded-xl bg-brand-600 text-sm shadow-md shadow-brand-500/20">
+          <span class="flex h-7 w-7 items-center justify-center rounded-xl bg-brand-600 text-sm shadow-md shadow-brand-500/20 text-white">
             🚀
           </span>
           <div>
-            <h1 class="text-xs font-black sm:text-sm text-white">نبرد موشکی علمی</h1>
+            <h1 class="text-xs font-black sm:text-sm">نبرد موشکی علمی</h1>
           </div>
         </div>
 
         <button
           type="button"
-          class="flex items-center gap-1 rounded-lg border border-ink-700 bg-ink-800/80 px-2 py-1 text-10px font-medium text-ink-300 hover:border-brand-400 hover:text-white"
+          class="flex items-center gap-1 rounded-lg border border-ink-200 bg-slate-100 px-2 py-1 text-10px font-medium text-slate-700 hover:bg-slate-200 dark:border-ink-700 dark:bg-ink-800/80 dark:text-ink-300 dark:hover:border-brand-400 dark:hover:text-white"
           @click="openMissionSetup"
         >
           ⚙️ مأموریت جدید
@@ -984,42 +1077,42 @@ onBeforeUnmount(() => {
 
         <button
           type="button"
-          class="flex items-center gap-1 rounded-lg border border-purple-600/40 bg-purple-950/40 px-2 py-1 text-10px font-bold text-purple-300 hover:border-purple-400 hover:text-white"
-          @click="showHistoryModal = true"
+          class="flex items-center gap-1 rounded-lg border border-purple-300 bg-purple-50 px-2 py-1 text-10px font-bold text-purple-700 hover:bg-purple-100 dark:border-purple-600/40 dark:bg-purple-950/40 dark:text-purple-300 dark:hover:border-purple-400 dark:hover:text-white"
+          @click="showAnalyticsModal = true"
         >
-          📜 کارنامه و تاریخچه ({{ gameHistoryStore.totalSessions }})
+          📊 گزارش و کارنامه
         </button>
       </div>
 
       <!-- وضعیت امتیاز، باد و صدا -->
       <div class="flex items-center gap-2 sm:gap-4">
         <span
-          class="hidden sm:flex items-center gap-1 rounded-full bg-ink-800/80 px-2.5 py-0.5 text-10px font-medium text-ink-300 border border-ink-700"
+          class="hidden sm:flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-10px font-medium text-slate-700 border border-slate-200 dark:bg-ink-800/80 dark:text-ink-300 dark:border-ink-700"
         >
           💨 باد: {{ wind > 0 ? `+${wind} راست` : wind < 0 ? `${wind} چپ` : 'آرام' }}
         </span>
 
         <span
           v-if="canFire"
-          class="flex items-center gap-1 rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-10px font-bold text-emerald-300 ring-1 ring-emerald-500/40 animate-pulse"
+          class="flex items-center gap-1 rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-10px font-bold text-emerald-600 dark:text-emerald-300 ring-1 ring-emerald-500/40 animate-pulse"
         >
           🔓 قفل پرتاب باز است
         </span>
         <span
           v-else
-          class="flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-10px font-medium text-amber-300 border border-amber-500/30"
+          class="flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-10px font-medium text-amber-700 dark:text-amber-300 border border-amber-500/30"
         >
           🔒 پرتاب قفل است
         </span>
 
-        <div class="flex items-center gap-1.5 rounded-xl border border-ink-800 bg-ink-800/80 px-3 py-1 text-xs font-bold text-amber-400">
+        <div class="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-bold text-amber-600 dark:border-ink-800 dark:bg-ink-800/80 dark:text-amber-400">
           <span>⭐</span>
           <span>{{ score }}</span>
         </div>
 
         <button
           type="button"
-          class="flex h-7 w-7 items-center justify-center rounded-lg border border-ink-700 bg-ink-800/80 text-xs text-ink-300 hover:text-white"
+          class="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 text-xs text-slate-700 hover:bg-slate-200 dark:border-ink-700 dark:bg-ink-800/80 dark:text-ink-300 dark:hover:text-white"
           :title="soundEnabled ? 'قطع صدا' : 'وصل صدا'"
           @click="toggleSound"
         >
@@ -1035,25 +1128,32 @@ onBeforeUnmount(() => {
       <!-- ۱. صفحه تنظیمات مأموریت قبل از شروع (Setup Screen) -->
       <div
         v-if="gameState === 'setup'"
-        class="absolute inset-0 z-30 flex items-center justify-center overflow-y-auto bg-ink-950/90 p-4 backdrop-blur-md"
+        class="absolute inset-0 z-30 flex items-center justify-center overflow-y-auto bg-slate-900/60 dark:bg-ink-950/90 p-4 backdrop-blur-md"
       >
-        <div class="w-full max-w-2xl rounded-3xl border border-brand-500/30 bg-ink-900/95 p-5 sm:p-7 shadow-2xl">
-          <div class="mb-5 flex items-center justify-between border-b border-ink-800 pb-3">
+        <div class="w-full max-w-2xl rounded-3xl border border-slate-200 bg-white/95 p-5 sm:p-7 shadow-2xl dark:border-brand-500/30 dark:bg-ink-900/95 transition-colors">
+          <!-- نوار پروفایل دانش‌آموز فعال و مسیر فصلی -->
+          <div class="mb-5">
+            <GameProfileBar
+              :current-season-key="activeSeasonKey"
+              @open-journey="showJourneyModal = true"
+              @open-medals="showMedalsModal = true"
+              @open-analytics="showAnalyticsModal = true"
+            />
+          </div>
+
+          <!-- پیام انگیزشی -->
+          <div class="mb-5 rounded-2xl border border-amber-200 bg-amber-50/80 p-3 text-center text-xs font-bold text-amber-800 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-300">
+            🌟 {{ currentMotivationalQuote }}
+          </div>
+
+          <div class="mb-5 flex items-center justify-between border-b border-slate-200 pb-3 dark:border-ink-800">
             <div class="flex items-center gap-3">
               <span class="text-3xl">🚀</span>
               <div>
-                <h2 class="text-lg font-black text-white sm:text-xl">اتاق فرماندهی مأموریت موشکی علمی</h2>
-                <p class="text-xs text-ink-400">پایه تحصیلی، درس‌ها و سطح چالش را مشخص کنید تا مأموریت آغاز شود.</p>
+                <h2 class="text-lg font-black text-slate-800 dark:text-white sm:text-xl">اتاق فرماندهی مأموریت موشکی علمی</h2>
+                <p class="text-xs text-slate-500 dark:text-ink-400">پایه تحصیلی، درس‌ها و سطح چالش را مشخص کنید تا مأموریت آغاز شود.</p>
               </div>
             </div>
-            <button
-              v-if="gameHistoryStore.totalSessions > 0"
-              type="button"
-              class="rounded-xl border border-purple-500/40 bg-purple-950/30 px-3 py-1.5 text-xs font-bold text-purple-300 hover:bg-purple-900/50"
-              @click="showHistoryModal = true"
-            >
-              📜 مشاهده کارنامه‌های قبلی
-            </button>
           </div>
 
           <!-- بخش اول: انتخاب پایه تحصیلی -->
@@ -1599,5 +1699,22 @@ onBeforeUnmount(() => {
         </button>
       </div>
     </div>
+
+    <!-- کامپوننت‌های مودال جامع -->
+    <GameJourneyModal
+      v-if="showJourneyModal"
+      @close="showJourneyModal = false"
+      @select-stage="handleSelectStage"
+    />
+
+    <GameMedalsModal
+      v-if="showMedalsModal"
+      @close="showMedalsModal = false"
+    />
+
+    <GameAnalyticsModal
+      v-if="showAnalyticsModal"
+      @close="showAnalyticsModal = false"
+    />
   </div>
 </template>
