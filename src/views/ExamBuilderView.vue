@@ -258,9 +258,14 @@ function handlePrint(mode: 'with-answers' | 'without-answers'): void {
         <div class="mb-4 rounded-2xl border border-ink-100 bg-white p-5 dark:border-ink-800 dark:bg-ink-900">
           <div class="mb-3 flex items-center justify-between">
             <p class="text-sm font-semibold text-ink-800 dark:text-ink-200">افزودن دستی از بانک سوال</p>
-            <button type="button" class="text-11px font-medium text-brand-600 hover:underline dark:text-brand-400" @click="openNewQuestion">
-              + سوال جدید
-            </button>
+            <div class="flex items-center gap-3">
+              <button type="button" class="text-11px font-medium text-brand-600 hover:underline dark:text-brand-400" @click="openNewQuestion">
+                + سوال جدید
+              </button>
+              <RouterLink to="/question-bank" class="inline-flex items-center gap-1 rounded-lg border border-brand-200 px-2.5 py-1 text-11px font-medium text-brand-700 hover:bg-brand-50 dark:border-brand-800 dark:text-brand-300 dark:hover:bg-brand-900/20">
+                📚 بانک سوالات
+              </RouterLink>
+            </div>
           </div>
           <input v-model="bankSearch" type="text" placeholder="جست‌وجو در بانک سوال..." class="mb-3 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200" />
           <div class="grid max-h-72 gap-2 overflow-y-auto sm:grid-cols-2">

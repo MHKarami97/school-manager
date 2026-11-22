@@ -444,9 +444,14 @@ onMounted(() => {
             >
               ⚡ ضریب ۲ برابری امتیاز فعال است!
             </span>
-            <span class="text-10px text-slate-400 dark:text-ink-500">
-              پایه: {{ selectedGrade }}م · درس: {{ findCourse(BASE_COURSES, selectedCourseId)?.name || 'ریاضی' }}
-            </span>
+            <div class="flex flex-wrap items-center gap-2">
+              <select v-model.number="selectedGrade" aria-label="پایه" class="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100">
+                <option v-for="g in 12" :key="g" :value="g">پایه {{ g }}</option>
+              </select>
+              <select v-model="selectedCourseId" aria-label="درس" class="max-w-40 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100">
+                <option v-for="c in availableCourses" :key="c.id" :value="c.id">{{ c.name }}</option>
+              </select>
+            </div>
           </div>
         </div>
       </section>

@@ -201,15 +201,15 @@ function getGradeStageLabel(grade: number): string {
     <Teleport to="body">
       <div
         v-if="showProfilesModal"
-        class="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm overflow-y-auto"
+        class="fixed inset-0 z-[9999] flex items-end justify-center overflow-y-auto bg-slate-950/75 p-2 backdrop-blur-sm sm:items-center sm:p-4"
         dir="rtl"
         @click.self="showProfilesModal = false"
       >
         <div
-          class="my-auto flex w-full max-w-lg max-h-[92vh] flex-col rounded-3xl border border-slate-200 bg-white shadow-2xl transition-all dark:border-slate-800 dark:bg-slate-900 overflow-hidden"
+          class="my-auto flex w-full max-w-lg max-h-[92dvh] flex-col rounded-3xl border border-slate-200 bg-white shadow-2xl transition-all dark:border-slate-800 dark:bg-slate-900 overflow-hidden"
         >
           <!-- هدر مدال مدیریت دانش‌آموز -->
-          <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-800 shrink-0">
+          <div class="flex items-center justify-between gap-2 border-b border-slate-200 px-4 py-3 dark:border-slate-800 shrink-0 sm:px-6 sm:py-4">
             <div class="flex items-center gap-3">
               <span class="text-3xl">👨‍👩‍👧‍👦</span>
               <div>
@@ -282,12 +282,12 @@ function getGradeStageLabel(grade: number): string {
                     انتخاب شده: {{ formStudentAvatar }}
                   </span>
                 </div>
-                <div class="grid grid-cols-6 gap-2 p-2 rounded-2xl border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950/40">
+                <div class="grid grid-cols-6 gap-1.5 rounded-2xl border border-slate-200 bg-slate-50 p-2 dark:border-slate-800 dark:bg-slate-950/40 sm:gap-2">
                   <button
                     v-for="av in AVAILABLE_AVATARS"
                     :key="av"
                     type="button"
-                    class="flex h-11 w-11 items-center justify-center rounded-xl border text-2xl transition hover:scale-105 active:scale-95"
+                    class="flex aspect-square w-full items-center justify-center rounded-xl border text-xl transition hover:scale-105 active:scale-95 sm:text-2xl"
                     :class="
                       formStudentAvatar === av
                         ? 'border-indigo-500 bg-indigo-100 shadow-md ring-2 ring-indigo-500 dark:bg-indigo-900/60'
@@ -303,11 +303,11 @@ function getGradeStageLabel(grade: number): string {
 
             <!-- لیست پروفایل‌های موجود با دکمه‌های انتخاب و ویرایش -->
             <div v-else class="space-y-3">
-              <div class="space-y-2.5 max-h-72 overflow-y-auto p-0.5">
+              <div class="space-y-2.5 max-h-[50dvh] overflow-y-auto p-0.5 sm:max-h-72">
                 <div
                   v-for="profile in profilesStore.profiles"
                   :key="profile.id"
-                  class="flex items-center justify-between rounded-2xl border p-3.5 transition cursor-pointer"
+                  class="flex flex-wrap items-center justify-between gap-2 rounded-2xl border p-3 transition cursor-pointer sm:p-3.5"
                   :class="
                     profilesStore.activeProfileId === profile.id
                       ? 'border-indigo-500 bg-indigo-50/80 shadow-sm ring-1 ring-indigo-500 dark:border-indigo-500 dark:bg-indigo-950/40'
@@ -315,7 +315,7 @@ function getGradeStageLabel(grade: number): string {
                   "
                   @click="handleSelectProfile(profile.id)"
                 >
-                  <div class="flex items-center gap-3">
+                  <div class="flex min-w-0 flex-1 items-center gap-3">
                     <span class="text-3xl">{{ profile.avatar }}</span>
                     <div>
                       <div class="flex items-center gap-2">
@@ -327,7 +327,7 @@ function getGradeStageLabel(grade: number): string {
                           فعال
                         </span>
                       </div>
-                      <div class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-2">
+                      <div class="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500 dark:text-slate-400">
                         <span>پایه {{ profile.grade }} ({{ getGradeStageLabel(profile.grade) }})</span>
                         <span>·</span>
                         <span class="text-amber-500 font-bold">⭐ {{ profile.totalScore }} امتیاز</span>
@@ -376,7 +376,7 @@ function getGradeStageLabel(grade: number): string {
           <!-- فوتر ثابت دکمه‌های فرم در حالت ویرایش یا افزودن -->
           <div
             v-if="formMode === 'add' || formMode === 'edit'"
-            class="flex items-center justify-between gap-2 px-6 py-4 border-t border-slate-200 dark:border-slate-800 shrink-0 bg-slate-50/70 dark:bg-slate-900/70"
+            class="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-slate-50/70 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/70 shrink-0 sm:px-6 sm:py-4"
           >
             <div class="flex gap-2">
               <button

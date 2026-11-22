@@ -144,13 +144,13 @@ const courseStats = computed(() => {
       dir="rtl"
       @click.self="emit('close')"
     >
-      <div class="my-auto flex max-h-[92vh] w-full max-w-4xl flex-col rounded-3xl border border-slate-200 bg-white shadow-2xl transition-colors dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 overflow-hidden">
+      <div class="my-auto flex max-h-[92dvh] w-full max-w-4xl flex-col rounded-3xl border border-slate-200 bg-white shadow-2xl transition-colors dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 overflow-hidden">
         <!-- هدر مدال گزارش -->
-      <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-800">
+      <div class="flex items-center justify-between gap-2 border-b border-slate-200 px-4 py-3 dark:border-slate-800 sm:px-6 sm:py-4">
         <div class="flex items-center gap-3">
           <span class="text-3xl">📊</span>
           <div>
-            <h3 class="font-black text-lg text-slate-800 dark:text-white">
+            <h3 class="font-black text-base sm:text-lg text-slate-800 dark:text-white">
               گزارش تحلیلی و نمودار وضعیت پیشرفت تحصیلی
             </h3>
             <p class="text-xs text-slate-500 dark:text-slate-400">
@@ -168,9 +168,9 @@ const courseStats = computed(() => {
       </div>
 
       <!-- فیلترهای زمانی -->
-      <div class="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-6 py-2.5 dark:border-slate-800 dark:bg-slate-950/60">
+      <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-4 py-2.5 dark:border-slate-800 dark:bg-slate-950/60 sm:px-6">
         <span class="text-xs font-bold text-slate-600 dark:text-slate-400">بازه زمانی گزارش:</span>
-        <div class="flex gap-1.5">
+        <div class="flex flex-wrap gap-1.5">
           <button
             v-for="f in [
               { key: 'week', label: 'این هفته' },
@@ -194,7 +194,7 @@ const courseStats = computed(() => {
       </div>
 
       <!-- محتوای گزارش و نمودارها -->
-      <div class="flex-1 overflow-y-auto p-6 space-y-6">
+      <div class="flex-1 space-y-4 overflow-y-auto p-3 sm:space-y-6 sm:p-6">
         <!-- ۴ کارت شاخص کلیدی (KPIs) -->
         <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center dark:border-slate-800 dark:bg-slate-950/60">
@@ -251,7 +251,7 @@ const courseStats = computed(() => {
                 "
                 :style="{ height: `${Math.max(8, day.heightPercentage)}%` }"
               ></div>
-              <span class="text-[11px] font-bold text-slate-600 dark:text-slate-400 mt-1">
+              <span class="mt-1 text-[9px] font-bold text-slate-600 dark:text-slate-400 sm:text-[11px]">
                 {{ day.label }}
               </span>
             </div>
@@ -275,13 +275,13 @@ const courseStats = computed(() => {
               :key="c.courseId"
               class="space-y-1.5"
             >
-              <div class="flex items-center justify-between text-xs font-bold">
+              <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs font-bold">
                 <span class="flex items-center gap-2 text-slate-800 dark:text-slate-200">
                   <span class="h-2.5 w-2.5 rounded-full" :style="{ backgroundColor: c.color }" />
                   <span>{{ c.name }}</span>
                   <span class="text-[11px] text-slate-400 font-normal">({{ c.total }} سوال حل شده)</span>
                 </span>
-                <span class="flex items-center gap-3">
+                <span class="flex flex-wrap items-center gap-x-3 gap-y-0.5">
                   <span class="text-slate-400 font-normal text-[11px]">سرعت: {{ c.avgSpeedSeconds }} ثانیه</span>
                   <span
                     :class="c.accuracy >= 80 ? 'text-emerald-600 dark:text-emerald-400' : c.accuracy >= 60 ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'"
