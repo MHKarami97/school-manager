@@ -11,6 +11,7 @@ import {
   exportQuestionsToExcel,
   parseQuestionBankFile,
 } from '../utils/question-bank-import-export'
+import { DEFAULT_CURRICULUM_QUESTIONS } from '../config/default-questions.config'
 import AppHeader from '../components/layout/AppHeader.vue'
 import QuestionCard from '../components/question-bank/QuestionCard.vue'
 import type { DifficultyLevel } from '../types'
@@ -89,6 +90,123 @@ function exportVisible(): void {
   if (!filteredQuestions.value.length) return
   exportQuestionsToExcel(filteredQuestions.value, 'بانک-سوال')
 }
+
+async function loadSampleQuestions(): Promise<void> {
+  const existingTexts = new Set(questionsStore.items.map((q) => q.text))
+  const newQuestions = DEFAULT_CURRICULUM_QUESTIONS.filter((q) => !existingTexts.has(q.text))
+  if (!newQuestions.length) {
+    alert('تمام سوالات نمونه کتاب‌های درسی از قبل در بانک سوالات شما موجود هستند.')
+    return
+  }
+  await questionsStore.addBulk(newQuestions)
+  alert(`${newQuestions.length} سوال نمونه درسی با موفقیت به بانک سوالات شما افزوده شد.`)
+}
+
+// --- بسته‌های استاندارد سوالات پایه‌های اول تا ششم (۳۵۰۰ سوال) ---
+interface QuestionPackInfo {
+  grade: number | 'all'
+  title: string
+  description: string
+  subjectsCount: number
+  questionsCount: number
+  excelFile: string
+  jsonFile: string
+}
+
+const isDownloadingPack = ref(false)
+const packLoadingMessage = ref('')
+const showPacksModal = ref(false)
+
+const QUESTION_PACKS: QuestionPackInfo[] = [
+  {
+    grade: 1,
+    title: 'پایه اول ابتدایی',
+    description: '۴ درس (ریاضی، علوم، فارسی، قرآن)',
+    subjectsCount: 4,
+    questionsCount: 400,
+    excelFile: 'grade-1-questions.xlsx',
+    jsonFile: 'grade-1.json',
+  },
+  {
+    grade: 2,
+    title: 'پایه دوم ابتدایی',
+    description: '۵ درس (ریاضی، علوم، فارسی، قرآن، هدیه‌های آسمان)',
+    subjectsCount: 5,
+    questionsCount: 500,
+    excelFile: 'grade-2-questions.xlsx',
+    jsonFile: 'grade-2.json',
+  },
+  {
+    grade: 3,
+    title: 'پایه سوم ابتدایی',
+    description: '۶ درس (ریاضی، علوم، فارسی، قرآن، هدیه‌ها، مطالعات اجتماعی)',
+    subjectsCount: 6,
+    questionsCount: 600,
+    excelFile: 'grade-3-questions.xlsx',
+    jsonFile: 'grade-3.json',
+  },
+  {
+    grade: 4,
+    title: 'پایه چهارم ابتدایی',
+    description: '۶ درس (ریاضی، علوم، فارسی، قرآن، هدیه‌ها، مطالعات اجتماعی)',
+    subjectsCount: 6,
+    questionsCount: 600,
+    excelFile: 'grade-4-questions.xlsx',
+    jsonFile: 'grade-4.json',
+  },
+  {
+    grade: 5,
+    title: 'پایه پنجم ابتدایی',
+    description: '۶ درس (ریاضی، علوم، فارسی، قرآن، هدیه‌ها، مطالعات اجتماعی)',
+    subjectsCount: 6,
+    questionsCount: 600,
+    excelFile: 'grade-5-questions.xlsx',
+    jsonFile: 'grade-5.json',
+  },
+  {
+    grade: 6,
+    title: 'پایه ششم ابتدایی',
+    description: '۸ درس (ریاضی، علوم، فارسی، قرآن، هدیه‌ها، مطالعات، تفکر و پژوهش، کار و فناوری)',
+    subjectsCount: 8,
+    questionsCount: 800,
+    excelFile: 'grade-6-questions.xlsx',
+    jsonFile: 'grade-6.json',
+  },
+  {
+    grade: 'all',
+    title: 'بسته جامع کل دوره ابتدایی (پایه‌های ۱ تا ۶)',
+    description: '۳۵ درس/پایه با حداقل ۱۰۰ سوال برای هر درس (مجموعاً ۳,۵۰۰ سوال کاملاً استاندارد)',
+    subjectsCount: 35,
+    questionsCount: 3500,
+    excelFile: 'elementary-all-grades-questions.xlsx',
+    jsonFile: 'elementary-curriculum-questions.json',
+  },
+]
+
+async function loadCurriculumPack(pack: QuestionPackInfo): Promise<void> {
+  isDownloadingPack.value = true
+  packLoadingMessage.value = `در حال بارگذاری ${pack.title}...`
+  try {
+    const res = await fetch(`/data/questions/${pack.jsonFile}`)
+    if (!res.ok) throw new Error('Failed to fetch question pack')
+    const packQuestions: Question[] = await res.json()
+    const existingTexts = new Set(questionsStore.items.map((q) => q.text))
+    const toAdd = packQuestions.filter((q) => !existingTexts.has(q.text))
+    if (!toAdd.length) {
+      alert(`تمام سوالات بسته «${pack.title}» از قبل در بانک سوالات شما موجود هستند.`)
+      packLoadingMessage.value = 'همه سوالات این بسته از قبل موجود هستند.'
+      return
+    }
+    await questionsStore.addBulk(toAdd)
+    packLoadingMessage.value = `${toAdd.length} سوال با موفقیت به بانک سوالات شما افزوده شد.`
+    alert(`${toAdd.length} سوال استاندارد از بسته «${pack.title}» به بانک سوالات افزوده شد.`)
+  } catch (err) {
+    console.error(err)
+    packLoadingMessage.value = 'خطا در بارگذاری سوالات بسته درسی.'
+  } finally {
+    isDownloadingPack.value = false
+  }
+}
 </script>
 
 <template>
@@ -132,12 +250,88 @@ function exportVisible(): void {
           >
             خروجی اکسل (فهرست فیلترشده)
           </button>
+          <button
+            type="button"
+            class="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 dark:border-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300"
+            @click="loadSampleQuestions"
+          >
+            + بارگذاری سوالات نمونه درسی
+          </button>
+          <button
+            type="button"
+            class="rounded-lg border border-purple-300 bg-purple-50 px-3 py-2 text-xs font-semibold text-purple-800 hover:bg-purple-100 dark:border-purple-600 dark:bg-purple-950/40 dark:text-purple-300"
+            @click="showPacksModal = !showPacksModal"
+          >
+            📦 بسته‌های آماده پایه‌های ۱ تا ۶ (۳,۵۰۰ سوال)
+          </button>
           <input ref="fileInputRef" type="file" accept=".xlsx,.xls" class="hidden" @change="handleFileSelected" />
         </div>
         <p class="mt-2 text-11px text-ink-400 dark:text-ink-500">
           خروجی و ورودی با فرمت xlsx است و متن فارسی همیشه سالم باز می‌شود.
         </p>
         <p v-if="importMessage" class="mt-2 text-xs text-emerald-600 dark:text-emerald-400">{{ importMessage }}</p>
+      </div>
+
+      <!-- پنل بسته‌های آماده سوالات استاندارد ابتدایی -->
+      <div v-if="showPacksModal" class="mb-6 rounded-2xl border-2 border-purple-200 bg-white p-5 shadow-sm dark:border-purple-800/60 dark:bg-ink-900">
+        <div class="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-ink-100 pb-3 dark:border-ink-800">
+          <div>
+            <h2 class="text-base font-bold text-ink-900 dark:text-ink-100">
+              📚 بسته‌های سوالات درسی پایه‌های اول تا ششم (حداقل ۱۰۰ سوال برای هر درس)
+            </h2>
+            <p class="mt-1 text-xs text-ink-500 dark:text-ink-400">
+              مجموعاً ۳,۵۰۰ سوال ۴گزینه‌ای استاندارد، به همراه پاسخ صحیح، بارم و سطح دشواری منطبق بر کتاب‌های درسی.
+            </p>
+          </div>
+          <button
+            type="button"
+            class="rounded-lg bg-ink-100 px-3 py-1.5 text-xs text-ink-600 hover:bg-ink-200 dark:bg-ink-800 dark:text-ink-300"
+            @click="showPacksModal = false"
+          >
+            بستن
+          </button>
+        </div>
+
+        <div v-if="packLoadingMessage" class="mb-4 rounded-xl bg-purple-50 p-3 text-xs font-medium text-purple-800 dark:bg-purple-950/50 dark:text-purple-200">
+          ⏳ {{ packLoadingMessage }}
+        </div>
+
+        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div
+            v-for="pack in QUESTION_PACKS"
+            :key="pack.excelFile"
+            class="flex flex-col justify-between rounded-xl border border-ink-100 bg-ink-50/50 p-3.5 transition-all hover:border-purple-300 dark:border-ink-800 dark:bg-ink-950/40"
+            :class="{ 'border-purple-300 bg-purple-50/30 sm:col-span-2 lg:col-span-3 dark:border-purple-700': pack.grade === 'all' }"
+          >
+            <div>
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-sm font-bold text-ink-900 dark:text-ink-100">{{ pack.title }}</span>
+                <span class="rounded-full bg-purple-100 px-2.5 py-0.5 text-10px font-bold text-purple-800 dark:bg-purple-900/60 dark:text-purple-300">
+                  {{ pack.questionsCount }} سوال
+                </span>
+              </div>
+              <p class="mt-1.5 text-xs text-ink-500 dark:text-ink-400">{{ pack.description }}</p>
+            </div>
+
+            <div class="mt-4 flex flex-wrap items-center gap-2 pt-2 border-t border-ink-100 dark:border-ink-800">
+              <a
+                :href="`/downloads/questions/${pack.excelFile}`"
+                :download="pack.excelFile"
+                class="inline-flex items-center gap-1 rounded-lg border border-ink-300 bg-white px-2.5 py-1.5 text-xs font-medium text-ink-700 shadow-sm hover:bg-ink-50 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200"
+              >
+                📥 دریافت اکسل
+              </a>
+              <button
+                type="button"
+                class="inline-flex items-center gap-1 rounded-lg bg-purple-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-purple-700 disabled:opacity-50"
+                :disabled="isDownloadingPack"
+                @click="loadCurriculumPack(pack)"
+              >
+                + بارگذاری مستقیم در سامانه
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="mb-4 grid gap-2 rounded-2xl border border-ink-100 bg-white p-4 sm:grid-cols-5 dark:border-ink-800 dark:bg-ink-900">
