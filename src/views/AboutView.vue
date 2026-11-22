@@ -53,7 +53,7 @@ const featuresOverview = [
             <span>سامانه یکپارچه مدیریار · نسخه ۲.۴</span>
           </div>
 
-          <h1 class="mt-4 text-3xl font-black text-ink-900 sm:text-4xl dark:text-ink-100">
+          <h1 class="mt-4 text-3xl font-black text-ink-900 sm:text-4xl dark:text-white">
             هوشمندسازی و سهولت در مدیریت مدارس
           </h1>
           <p class="mx-auto mt-3 max-w-2xl text-xs sm:text-sm leading-7 text-ink-500 dark:text-ink-400">
@@ -84,7 +84,7 @@ const featuresOverview = [
       <!-- کارت‌های ۴ ستون اصول اساسی مدیریار -->
       <div class="mt-10">
         <div class="text-center">
-          <h2 class="text-xl font-bold text-ink-900 sm:text-2xl dark:text-ink-100">
+          <h2 class="text-xl font-bold text-ink-900 sm:text-2xl dark:text-white">
             ارزش‌ها و اصول بنیادین
           </h2>
           <p class="mt-1 text-xs sm:text-sm text-ink-500 dark:text-ink-400">
@@ -109,7 +109,7 @@ const featuresOverview = [
                   {{ pillar.badge }}
                 </span>
               </div>
-              <h3 class="mt-4 text-base font-extrabold text-ink-900 dark:text-ink-100">
+              <h3 class="mt-4 text-base font-extrabold text-ink-900 dark:text-white">
                 {{ pillar.title }}
               </h3>
               <p class="mt-2 text-xs leading-6 text-ink-600 dark:text-ink-300">
@@ -122,7 +122,7 @@ const featuresOverview = [
 
       <!-- معرفی امکانات و چشم‌انداز -->
       <div class="mt-12 rounded-3xl border border-ink-100 bg-white p-6 shadow-xs dark:border-ink-800 dark:bg-ink-900 sm:p-8">
-        <h2 class="text-lg font-bold text-ink-900 dark:text-ink-100">
+        <h2 class="text-lg font-bold text-ink-900 dark:text-white">
           امکانات یکپارچه در خدمت مدرسه هوشمند
         </h2>
         <p class="mt-1 text-xs text-ink-500 dark:text-ink-400">

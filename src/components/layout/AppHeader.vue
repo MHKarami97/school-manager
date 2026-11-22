@@ -33,8 +33,8 @@ function isActive(path: string): boolean {
       <RouterLink to="/" class="group flex items-center gap-2.5" @click="closeMenu">
         <AppLogo size="md" />
         <div class="flex flex-col">
-          <span class="text-base font-extrabold text-ink-900 dark:text-ink-100">مدیریار</span>
-          <span class="hidden text-10px font-medium text-ink-400 sm:inline dark:text-ink-400">سامانه هوشمند مدارس</span>
+          <span class="text-base font-extrabold text-ink-900 dark:text-white">مدیریار</span>
+          <span class="hidden text-10px font-medium text-ink-400 sm:inline dark:text-ink-300">سامانه هوشمند مدارس</span>
         </div>
       </RouterLink>
 

@@ -185,13 +185,13 @@ function viewUpcomingGames(): void {
         </div>
 
         <!-- تب‌های نقش‌ها (کاملاً واکنش‌گرا و اسکرول‌پذیر در موبایل) -->
-        <div class="mt-8 flex items-center justify-start sm:justify-center overflow-x-auto pb-3 pt-1 scrollbar-none">
-          <div class="inline-flex gap-2 rounded-2xl border border-ink-200/80 bg-white/70 p-1.5 shadow-xs backdrop-blur dark:border-ink-800 dark:bg-ink-900/80">
+        <div class="mt-8 -mx-4 flex items-center overflow-x-auto px-4 pb-3 pt-1 scrollbar-none sm:mx-0 sm:justify-center sm:px-0">
+          <div class="inline-flex w-max shrink-0 items-center gap-1.5 rounded-2xl border border-ink-200/80 bg-white/70 p-1.5 shadow-xs backdrop-blur sm:gap-2 dark:border-ink-800 dark:bg-ink-900/80">
             <button
               v-for="tab in AUDIENCE_TABS"
               :key="tab.id"
               type="button"
-              class="flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-bold transition"
+              class="flex shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-[11px] font-bold transition sm:gap-2 sm:px-3.5 sm:py-2 sm:text-xs"
               :class="
                 selectedTab === tab.id
                   ? 'bg-brand-600 text-white shadow-md shadow-brand-600/20'
@@ -204,7 +204,7 @@ function viewUpcomingGames(): void {
               </svg>
               <span>{{ tab.shortLabel }}</span>
               <span
-                class="rounded-full px-1.5 py-0.2 text-10px font-bold"
+                class="rounded-full px-1.5 py-0.2 text-[10px] font-bold"
                 :class="selectedTab === tab.id ? 'bg-white/20 text-white' : 'bg-ink-100 text-ink-500 dark:bg-ink-800 dark:text-ink-400'"
               >
                 {{ countForAudience(tab.id) }}

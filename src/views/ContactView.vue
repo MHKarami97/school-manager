@@ -72,7 +72,7 @@ async function copyMessage(): Promise<void> {
           <span>پاسخگویی و ارتباط مستقیم</span>
         </div>
 
-        <h1 class="mt-4 text-3xl font-black text-ink-900 sm:text-4xl dark:text-ink-100">
+        <h1 class="mt-4 text-3xl font-black text-ink-900 sm:text-4xl dark:text-white">
           تماس با ما و ارسال بازخورد
         </h1>
         <p class="mx-auto mt-2 max-w-xl text-xs sm:text-sm leading-relaxed text-ink-500 dark:text-ink-400">
@@ -102,7 +102,7 @@ async function copyMessage(): Promise<void> {
               </span>
             </div>
 
-            <h3 class="mt-4 text-base font-extrabold text-ink-900 dark:text-ink-100">
+            <h3 class="mt-4 text-base font-extrabold text-ink-900 dark:text-white">
               {{ ch.title }}
             </h3>
             <p class="mt-1 text-xs font-mono font-medium text-ink-500 dark:text-ink-400 break-all dir-ltr text-right">
@@ -128,7 +128,7 @@ async function copyMessage(): Promise<void> {
             </svg>
           </div>
           <div>
-            <h2 class="text-lg font-bold text-ink-900 dark:text-ink-100">فرم ارسال پیام یا گزارش خطا</h2>
+            <h2 class="text-lg font-bold text-ink-900 dark:text-white">فرم ارسال پیام یا گزارش خطا</h2>
             <p class="text-xs text-ink-500 dark:text-ink-400">می‌توانید پیام خود را تنظیم کرده و مستقیماً ارسال کنید یا متن آن را کپی نمایید.</p>
           </div>
         </div>

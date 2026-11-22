@@ -58,7 +58,7 @@ function getAudienceBadge(aud: FeatureAudience): { label: string; class: string 
               </svg>
               <span>مرکز بایگانی و سوابق مدیریار</span>
             </div>
-            <h1 class="mt-3 text-2xl font-black text-ink-900 sm:text-3xl dark:text-ink-100">
+            <h1 class="mt-3 text-2xl font-black text-ink-900 sm:text-3xl dark:text-white">
               تاریخچه و سوابق فعالیت‌ها
             </h1>
             <p class="mt-2 text-sm leading-relaxed text-ink-500 dark:text-ink-400">
@@ -163,7 +163,7 @@ function getAudienceBadge(aud: FeatureAudience): { label: string; class: string 
               </div>
             </div>
 
-            <h2 class="mt-4 text-base font-extrabold text-ink-900 dark:text-ink-100 group-hover:text-brand-600 dark:group-hover:text-brand-300 transition">
+            <h2 class="mt-4 text-base font-extrabold text-ink-900 dark:text-white group-hover:text-brand-600 dark:group-hover:text-brand-300 transition">
               {{ feature.historyLabel }}
             </h2>
             <p class="mt-1.5 text-xs font-medium text-ink-400 dark:text-ink-400">

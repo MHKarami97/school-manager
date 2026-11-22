@@ -538,7 +538,7 @@ const faqs = ref([
             <span>دانشنامه جامع کاربری مدیریار</span>
           </div>
 
-          <h1 class="mt-3 text-2xl font-black text-ink-900 sm:text-3xl dark:text-ink-100">
+          <h1 class="mt-3 text-2xl font-black text-ink-900 sm:text-3xl dark:text-white">
             راهنمای کامل گام‌به‌گام سامانه
           </h1>
           <p class="mx-auto mt-2 max-w-2xl text-xs sm:text-sm leading-relaxed text-ink-500 dark:text-ink-400">
@@ -638,7 +638,7 @@ const faqs = ref([
                     {{ section.steps.length }} مرحله
                   </span>
                 </div>
-                <h2 class="mt-1 text-base font-extrabold text-ink-900 dark:text-ink-100">
+                <h2 class="mt-1 text-base font-extrabold text-ink-900 dark:text-white">
                   {{ section.title }}
                 </h2>
               </div>
@@ -663,7 +663,7 @@ const faqs = ref([
                   {{ idx + 1 }}
                 </div>
                 <div class="min-w-0 flex-1">
-                  <h3 class="text-sm font-bold text-ink-900 dark:text-ink-100">
+                  <h3 class="text-sm font-bold text-ink-900 dark:text-white">
                     {{ step.title }}
                   </h3>
                   <p class="mt-1 text-xs leading-6 text-ink-600 dark:text-ink-300">
@@ -713,7 +713,7 @@ const faqs = ref([
           >
             <button
               type="button"
-              class="flex w-full items-center justify-between text-right text-xs font-bold text-ink-900 transition dark:text-ink-100 sm:text-sm"
+              class="flex w-full items-center justify-between text-right text-xs font-bold text-ink-900 transition dark:text-white sm:text-sm"
               @click="faq.open = !faq.open"
             >
               <span>{{ faq.q }}</span>
@@ -731,7 +731,7 @@ const faqs = ref([
       <!-- کادر تماس و پشتیبانی -->
       <div class="mt-8 flex flex-col items-center justify-between gap-4 rounded-2xl border border-ink-100 bg-white p-6 shadow-xs dark:border-ink-800 dark:bg-ink-900 sm:flex-row">
         <div>
-          <h3 class="text-sm font-bold text-ink-900 dark:text-ink-100">سوالی دارید که در راهنما پیدا نکردید؟</h3>
+          <h3 class="text-sm font-bold text-ink-900 dark:text-white">سوالی دارید که در راهنما پیدا نکردید؟</h3>
           <p class="mt-1 text-xs text-ink-500 dark:text-ink-400">تیم توسعه مدیریار همواره آماده دریافت پیشنهادات و راهنمایی همکاران محترم فرهنگی است.</p>
         </div>
         <RouterLink

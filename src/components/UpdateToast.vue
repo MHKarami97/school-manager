@@ -128,7 +128,7 @@ function dismiss(): void {
         </div>
 
         <div class="min-w-0 flex-1 text-right">
-          <p class="text-xs font-bold text-ink-900 dark:text-ink-100 sm:text-sm">نسخه جدید مدیریار منتشر شد</p>
+          <p class="text-xs font-bold text-ink-900 dark:text-white sm:text-sm">نسخه جدید مدیریار منتشر شد</p>
           <p class="mt-0.5 text-[11px] leading-5 text-ink-500 dark:text-ink-300 sm:text-xs">
             جهت بارگذاری آخرین امکانات و بهبودها، به‌روزرسانی کنید.
           </p>
