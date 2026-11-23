@@ -12,9 +12,6 @@ const year = new Date().getFullYear()
       <div class="flex items-center justify-center gap-2">
         <AppLogo size="sm" />
         <span class="text-sm font-extrabold text-ink-900 dark:text-white">مدیریار</span>
-        <span class="rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-bold text-brand-700 dark:bg-brand-950 dark:text-brand-300">
-          نسخه ۱.۰
-        </span>
       </div>
       <p class="mt-1 text-[11px] text-ink-400 dark:text-ink-400">
         سامانه هوشمند و یکپارچه آموزشگاهی
