@@ -1,0 +1,7 @@
+# robots.txt for school.mhkarami97.ir
+User-agent: *
+Allow: /
+Disallow: /data/questions/
+Disallow: /chogan/
+
+Sitemap: https://school.mhkarami97.ir/sitemap.xml

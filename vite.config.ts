@@ -13,10 +13,10 @@ export default defineConfig({
       registerType: "prompt",
       injectRegister: false,
       manifest: {
-        name: "مدیریار - برنامه‌ریز هوشمند مدرسه",
+        name: "مدیریار - سامانه مدیریت و برنامه‌ریزی هوشمند مدارس",
         short_name: "مدیریار",
         description:
-          "ساخت خودکار و ویرایش برنامه هفتگی کلاس‌های ابتدایی، متوسطه اول و دوم",
+          "سامانه جامع مدارس: چیدمان برنامه هفتگی، بانک ۳۴۰+ طرح درس آماده تمام پایه‌ها، بانک ۱۸,۷۰۰+ سوال و آزمون‌ساز آنلاین، حضور و غیاب و آزمایشگاه مجازی علوم",
         theme_color: "#ffffff",
         background_color: "#f6f7f9",
         display: "standalone",
