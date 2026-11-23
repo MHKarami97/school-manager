@@ -99,7 +99,14 @@ async function triggerCheckUpdate(): Promise<void> {
       if (reg) {
         await reg.update()
         if (reg.waiting) {
-          updateStatus.value = 'نسخه جدید دریافت شد! جهت اعمال، صفحه را رفرش کنید.'
+          updateStatus.value = 'نسخه جدید آماده است! جهت اعمال، صفحه را بازنشانی کنید.'
+        } else if (reg.installing) {
+          updateStatus.value = 'در حال دریافت بسته به‌روزرسانی در پس‌زمینه...'
+          reg.installing.addEventListener('statechange', () => {
+            if (reg.installing?.state === 'installed') {
+              updateStatus.value = 'نسخه جدید دریافت شد! جهت اعمال، صفحه را بازنشانی کنید.'
+            }
+          })
         } else {
           updateStatus.value = 'شما در حال استفاده از آخرین نسخه پایدار هستید.'
         }

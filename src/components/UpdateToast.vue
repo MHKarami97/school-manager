@@ -29,6 +29,9 @@ const { needRefresh, updateServiceWorker } = useRegisterSW({
         dismissed.value = false
       }
 
+      // Check immediately on registration
+      void registration.update().catch(() => {})
+
       // 2. Listen to state changes
       registration.addEventListener('updatefound', () => {
         const installingWorker = registration.installing
@@ -42,10 +45,10 @@ const { needRefresh, updateServiceWorker } = useRegisterSW({
         }
       })
 
-      // 3. Periodic update check every 60 seconds
+      // 3. Periodic update check every 30 seconds
       checkInterval = window.setInterval(() => {
         void registration.update().catch(() => {})
-      }, 60 * 1000)
+      }, 30 * 1000)
     }
   },
   onRegisterError(error) {
@@ -70,11 +73,25 @@ function onVisibilityChange(): void {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   window.addEventListener('focus', checkForUpdate)
   document.addEventListener('visibilitychange', onVisibilityChange)
-  // Check after 2 seconds from startup
-  setTimeout(checkForUpdate, 2000)
+  setTimeout(checkForUpdate, 500)
+
+  // Direct check for existing waiting worker on mount
+  if ('serviceWorker' in navigator) {
+    try {
+      const reg = await navigator.serviceWorker.getRegistration()
+      if (reg) {
+        swRegistration = reg
+        if (reg.waiting) {
+          needRefresh.value = true
+          dismissed.value = false
+        }
+        void reg.update().catch(() => {})
+      }
+    } catch {}
+  }
 })
 
 onUnmounted(() => {
@@ -115,6 +132,7 @@ function dismiss(): void {
       class="fixed inset-x-0 bottom-20 z-50 flex justify-center px-3 pb-2 sm:bottom-4 sm:justify-end sm:px-6 sm:pb-0"
       role="status"
       aria-live="polite"
+      dir="rtl"
     >
       <div class="flex w-full max-w-sm items-center gap-3 rounded-2xl border border-brand-200 bg-white/95 p-3.5 shadow-2xl backdrop-blur-md dark:border-brand-500/30 dark:bg-ink-900/95 sm:max-w-md sm:p-4">
         <div class="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
@@ -130,7 +148,7 @@ function dismiss(): void {
         <div class="min-w-0 flex-1 text-right">
           <p class="text-xs font-bold text-ink-900 dark:text-white sm:text-sm">نسخه جدید مدیریار منتشر شد</p>
           <p class="mt-0.5 text-[11px] leading-5 text-ink-500 dark:text-ink-300 sm:text-xs">
-            جهت بارگذاری آخرین امکانات و بهبودها، به‌روزرسانی کنید.
+            جهت اعمال آخرین بهبودها و امکانات، به‌روزرسانی کنید.
           </p>
         </div>
 
@@ -138,7 +156,7 @@ function dismiss(): void {
           <button
             type="button"
             :disabled="isUpdating"
-            class="flex items-center gap-1 rounded-xl bg-brand-600 px-3 py-2 text-xs font-bold text-white shadow-sm shadow-brand-600/30 transition hover:bg-brand-700 active:scale-95 disabled:opacity-60"
+            class="flex items-center gap-1 rounded-xl bg-brand-600 px-3 py-2 text-xs font-bold text-white shadow-sm shadow-brand-600/30 transition hover:bg-brand-700 active:scale-95 disabled:opacity-60 cursor-pointer"
             @click="refreshApp"
           >
             <span v-if="isUpdating">در حال اعمال...</span>
@@ -147,9 +165,9 @@ function dismiss(): void {
 
           <button
             type="button"
-            class="flex h-8 w-8 items-center justify-center rounded-lg text-ink-400 transition hover:bg-ink-100 hover:text-ink-700 dark:text-ink-400 dark:hover:bg-ink-800 dark:hover:text-ink-100"
-            title="بستن موقت"
-            aria-label="بستن"
+            class="flex h-8 w-8 items-center justify-center rounded-lg text-ink-400 transition hover:bg-ink-100 hover:text-ink-700 dark:text-ink-400 dark:hover:bg-ink-800 dark:hover:text-ink-100 cursor-pointer"
+            title="بستن اعلان"
+            aria-label="بستن اعلان به‌روزرسانی"
             @click="dismiss"
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4">
@@ -167,6 +185,7 @@ function dismiss(): void {
 .slide-up-leave-active {
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
+
 .slide-up-enter-from,
 .slide-up-leave-to {
   opacity: 0;

@@ -35,8 +35,13 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,jpg,jpeg,avif,gif,woff,woff2,json,webmanifest}"],
-        globIgnores: ["**/downloads/**", "**/data/questions/**"],
+        globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,jpg,jpeg,avif,gif,json,webmanifest}"],
+        globIgnores: [
+          "**/downloads/**",
+          "**/data/questions/**",
+          "**/chogan/**",
+          "**/fonts/webfonts/**",
+        ],
         runtimeCaching: [
           {
             urlPattern: ({ url }) => url.pathname.includes('/data/questions/'),
@@ -46,6 +51,37 @@ export default defineConfig({
               expiration: {
                 maxEntries: 30,
                 maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
+          {
+            urlPattern: ({ url }) => url.pathname.includes('/chogan/'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'chogan-games-cache',
+              expiration: {
+                maxEntries: 200,
+                maxAgeSeconds: 60 * 24 * 60 * 60, // 60 days
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
+          {
+            urlPattern: ({ url }) => url.pathname.includes('/fonts/'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'app-fonts-cache',
+              expiration: {
+                maxEntries: 20,
+                maxAgeSeconds: 365 * 24 * 60 * 60, // 1 year
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
               },
             },
           },
