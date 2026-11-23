@@ -34,11 +34,18 @@ const game = computed<ChoganGame | undefined>(() => getChoganGameById(gameId.val
 const iframeRef = ref<HTMLIFrameElement | null>(null)
 const isIframeLoaded = ref(false)
 const isFullscreen = ref(false)
+const questionCardRef = ref<HTMLElement | null>(null)
+const isQuestionCardHighlighted = ref(false)
 
 // مودال‌های پیشرفت
 const showJourneyModal = ref(false)
 const showMedalsModal = ref(false)
 const showAnalyticsModal = ref(false)
+
+// --- سیستم حرکات بر پایه پاسخ صحیح (Move Energy System) ---
+const movesLeft = ref<number>(3) // ۳ حرکت آغازین برای شروع
+const totalMovesMade = ref<number>(0)
+const streak = ref<number>(0)
 
 // --- سیستم سوالات و چالش دانایی ---
 const selectedGrade = ref<number>(4)
@@ -54,7 +61,6 @@ const correctCount = ref(0)
 const wrongCount = ref(0)
 
 // وضعیت چالش سوال درسی
-const showQuestionModal = ref(false)
 const currentQuestion = ref<EducationalQuestion | null>(null)
 const selectedOptionIndex = ref<number | null>(null)
 const hasAnswered = ref(false)
@@ -139,27 +145,36 @@ watch(
 )
 
 watch(selectedGrade, () => {
-  loadQuestionBank()
+  loadQuestionBank().then(() => {
+    pickNextQuestion()
+  })
   if (!availableCourses.value.some((c) => c.id === selectedCourseId.value)) {
     selectedCourseId.value = availableCourses.value[0]?.id || 'math'
   }
 })
 
-// باز کردن چالش سوال دانایی جدید
-function openQuestionChallenge(): void {
+watch(selectedCourseId, () => {
+  pickNextQuestion()
+})
+
+// انتخاب سوال جدید از بانک
+function pickNextQuestion(): void {
   const pool = eligibleQuestions.value.length > 0 ? eligibleQuestions.value : allQuestions.value
   if (!pool.length) return
 
-  const rnd = Math.floor(Math.random() * pool.length)
-  currentQuestion.value = pool[rnd]
+  let nextQ = pool[Math.floor(Math.random() * pool.length)]
+  if (pool.length > 1 && currentQuestion.value && nextQ.id === currentQuestion.value.id) {
+    nextQ = pool[Math.floor(Math.random() * pool.length)]
+  }
+
+  currentQuestion.value = nextQ
   selectedOptionIndex.value = null
   hasAnswered.value = false
   wasCorrect.value = false
   questionStartTime.value = Date.now()
-  showQuestionModal.value = true
 }
 
-// ثبت پاسخ به سوال
+// ثبت پاسخ به سوال و اهدای ۵ حرکت به بازی
 async function submitAnswer(optionIndex: number): Promise<void> {
   if (hasAnswered.value || !currentQuestion.value) return
 
@@ -170,21 +185,31 @@ async function submitAnswer(optionIndex: number): Promise<void> {
   wasCorrect.value = isRight
 
   if (isRight) {
-    sfx.correct()
+    sfx.playCorrect()
     correctCount.value += 1
-    bonusScore.value += 50
-    hasDoubleMultiplier.value = true
+    streak.value += 1
+    const addedPoints = hasDoubleMultiplier.value ? 100 : 50
+    bonusScore.value += addedPoints
+
+    // اهدای ۵ حرکت جدید در ازای پاسخ درست
+    movesLeft.value += 5
+
+    if (streak.value >= 3) {
+      hasDoubleMultiplier.value = true
+    }
 
     // اهدای فوری امتیاز و سکه به پروفایل دانش‌آموز
     if (profilesStore.activeProfile) {
-      profilesStore.activeProfile.xp += 25
-      profilesStore.activeProfile.coins += 15
-      profilesStore.activeProfile.totalScore += 50
+      profilesStore.activeProfile.xp += 30
+      profilesStore.activeProfile.coins += 20
+      profilesStore.activeProfile.totalScore += addedPoints
       await profilesStore.saveProfiles()
     }
   } else {
-    sfx.wrong()
+    sfx.playIncorrect()
     wrongCount.value += 1
+    streak.value = 0
+    hasDoubleMultiplier.value = false
   }
 
   // ثبت در کارنامه تحلیلی جلسه
@@ -203,41 +228,138 @@ async function submitAnswer(optionIndex: number): Promise<void> {
   sessionAnswers.value.push(record)
 }
 
-// بستن مودال چالش سوال و بازگشت به بازی
-function closeQuestionModal(): void {
-  showQuestionModal.value = false
+// توجه دادن به کارت سوال در زمان اتمام حرکات
+function triggerNeedQuestionNotice(): void {
+  sfx.playIncorrect()
+  isQuestionCardHighlighted.value = true
+  setTimeout(() => {
+    isQuestionCardHighlighted.value = false
+  }, 1200)
+
+  if (questionCardRef.value && window.innerWidth < 1024) {
+    questionCardRef.value.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }
 }
 
-// پاسخ به سوال بعدی
-function nextQuestion(): void {
-  openQuestionChallenge()
+// مصرف ۱ حرکت در ازای تعامل کاربر در بازی
+let lastMoveTimestamp = 0
+function handleIframeInputCapture(e: Event): void {
+  const target = e.target as HTMLElement | null
+  // از مسدود کردن دکمه‌های کنترل نوار ابزار یا دیالوگ‌ها صرف‌نظر می‌شود
+  if (
+    target &&
+    target.closest &&
+    (target.closest('.ch-gamebar') ||
+      target.closest('.ch-modal') ||
+      target.closest('.ch-scrim') ||
+      target.closest('.ch-toast') ||
+      target.closest('[data-fs]'))
+  ) {
+    return
+  }
+
+  // اگر حرکتی نیست، رویداد را مسدود کن
+  if (movesLeft.value <= 0) {
+    e.stopPropagation()
+    e.stopImmediatePropagation()
+    e.preventDefault()
+    triggerNeedQuestionNotice()
+    return
+  }
+
+  // مصرف حرکت با کنترل سرعت برای ژست‌ها
+  const now = Date.now()
+  if (now - lastMoveTimestamp > 500) {
+    lastMoveTimestamp = now
+    consumeMove()
+  }
 }
 
-// هماهنگ‌سازی تم تاریک/روشن با آی‌فریم بازی چوگان
-function applyThemeToIframe(): void {
+function handleIframeKeyCapture(e: KeyboardEvent): void {
+  const isActionKey =
+    ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Enter', 'z', 'x', 'c'].includes(e.key) ||
+    e.code.startsWith('Arrow')
+  if (!isActionKey) return
+
+  if (movesLeft.value <= 0) {
+    e.stopPropagation()
+    e.stopImmediatePropagation()
+    e.preventDefault()
+    triggerNeedQuestionNotice()
+    return
+  }
+
+  const now = Date.now()
+  if (now - lastMoveTimestamp > 500) {
+    lastMoveTimestamp = now
+    consumeMove()
+  }
+}
+
+function consumeMove(): void {
+  if (movesLeft.value > 0) {
+    movesLeft.value -= 1
+    totalMovesMade.value += 1
+    if (movesLeft.value === 0) {
+      if (!currentQuestion.value || hasAnswered.value) {
+        pickNextQuestion()
+      }
+    }
+  }
+}
+
+// پل ارتباطی و اتصال رویدادهای آی‌فریم
+function attachIframeBridge(): void {
+  const iframe = iframeRef.value
+  if (!iframe || !iframe.contentDocument || !iframe.contentWindow) return
+
+  const doc = iframe.contentDocument
+  const win = iframe.contentWindow
+
   try {
-    const iframe = iframeRef.value
-    if (!iframe || !iframe.contentDocument) return
+    // اعمال تم دارک/لایت
     const isDark =
       themeStore.mode === 'dark' ||
       (themeStore.mode === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+    doc.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light')
+    doc.documentElement.lang = 'fa'
+    doc.documentElement.dir = 'rtl'
 
-    iframe.contentDocument.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light')
-  } catch (e) {
-    // در صورت سیاست‌های امنیتی دسترسی به آی‌فریم کنترل می‌شود
+    if ((win as unknown as { Chogan?: { setLang?: (l: string) => void; setTheme?: (t: string) => void } }).Chogan) {
+      const c = (win as unknown as { Chogan: { setLang?: (l: string) => void; setTheme?: (t: string) => void } }).Chogan
+      if (c.setLang) c.setLang('fa')
+      if (c.setTheme) c.setTheme(isDark ? 'dark' : 'light')
+    }
+
+    // هدایت اسکرول ماوس به پنجره اصلی سایت
+    win.removeEventListener('wheel', handleIframeWheel)
+    win.addEventListener('wheel', handleIframeWheel, { passive: true })
+
+    // اتصال ناظر فاز Capture برای کنترل حرکات بازی
+    doc.removeEventListener('pointerdown', handleIframeInputCapture, true)
+    doc.addEventListener('pointerdown', handleIframeInputCapture, true)
+
+    win.removeEventListener('keydown', handleIframeKeyCapture, true)
+    win.addEventListener('keydown', handleIframeKeyCapture, true)
+  } catch (err) {
+    console.warn('Iframe bridge connection:', err)
   }
+}
+
+function handleIframeWheel(e: WheelEvent): void {
+  window.scrollBy({ top: e.deltaY, left: e.deltaX, behavior: 'auto' })
 }
 
 function onIframeLoad(): void {
   isIframeLoaded.value = true
-  applyThemeToIframe()
+  attachIframeBridge()
 }
 
-// تغییر تم با تغییر تنظیمات سامانه
+// تغییر تم با تنظیمات سامانه
 watch(
   () => themeStore.mode,
   () => {
-    applyThemeToIframe()
+    attachIframeBridge()
   },
 )
 
@@ -305,7 +427,7 @@ async function finishAndRecordMission(): Promise<void> {
   finishRewardMedals.value = newMedals
   await profilesStore.load()
 
-  sfx.levelUp()
+  sfx.playLevelUp()
   showFinishModal.value = true
 }
 
@@ -314,14 +436,43 @@ function handleMissionModalClose(): void {
   router.push('/games')
 }
 
-onMounted(() => {
-  loadQuestionBank()
-  // در ابتدا یکبار چالش سوال اختیاری را آماده می‌کنیم
-  const timer = setTimeout(() => {
-    applyThemeToIframe()
-  }, 1000)
+const motivationalQuote = computed(() => {
+  if (!MOTIVATIONAL_QUOTES.length) return 'دانایی توانایی است!'
+  const idx =
+    Math.abs(selectedGrade.value * 7 + (currentQuestion.value ? currentQuestion.value.text.length : 0)) %
+    MOTIVATIONAL_QUOTES.length
+  return MOTIVATIONAL_QUOTES[idx].text
+})
 
-  return () => clearTimeout(timer)
+onMounted(async () => {
+  // تنظیم زبان در localStorage قبل از لود آی‌فریم
+  try {
+    const isDark =
+      themeStore.mode === 'dark' ||
+      (themeStore.mode === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+    localStorage.setItem(
+      'chogan.app.settings',
+      JSON.stringify({
+        lang: 'fa',
+        theme: isDark ? 'dark' : 'light',
+      }),
+    )
+  } catch (e) {}
+
+  await loadQuestionBank()
+  pickNextQuestion()
+
+  // شنونده پیام پایان بازی از آی‌فریم
+  ;(window as unknown as { onChoganGameFinish?: (data: unknown) => void }).onChoganGameFinish = (data: unknown) => {
+    const d = (data || {}) as { points?: number; coins?: number; won?: boolean }
+    if (d.points) bonusScore.value += d.points
+    if (d.won) correctCount.value += 1
+    void finishAndRecordMission()
+  }
+})
+
+onBeforeUnmount(() => {
+  delete (window as unknown as { onChoganGameFinish?: unknown }).onChoganGameFinish
 })
 </script>
 
@@ -341,7 +492,7 @@ onMounted(() => {
         </div>
       </section>
 
-      <!-- نوار ابزار و اطلاعات بازی -->
+      <!-- نوار عنوان بازی و کنترل‌ها -->
       <section class="mx-auto max-w-7xl px-4 pt-6 sm:px-6">
         <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <!-- مسیر و عنوان بازی -->
@@ -357,7 +508,7 @@ onMounted(() => {
             <div class="flex items-center gap-3">
               <div
                 v-if="game"
-                class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl p-2 shadow-inner"
+                class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl p-2 shadow-inner"
                 :style="{ backgroundColor: game.soft || '#eff6ff' }"
               >
                 <img :src="game.iconUrl" :alt="game.nameFa" class="h-8 w-8 object-contain" />
@@ -378,19 +529,24 @@ onMounted(() => {
             </div>
           </div>
 
-          <!-- دکمه‌های کنترلی بازی و چالش دانایی -->
+          <!-- دکمه‌های کنترلی بازی -->
           <div class="flex flex-wrap items-center gap-2">
-            <!-- دکمه حل سوال برای دریافت سکه و جان -->
-            <button
-              type="button"
-              class="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 px-4 py-2.5 text-xs font-black text-white shadow-md shadow-orange-500/20 transition hover:from-amber-600 hover:to-orange-600 cursor-pointer"
-              @click="openQuestionChallenge"
+            <!-- نشانگر حرکات فعال با انیمیشن -->
+            <div
+              class="flex items-center gap-2 rounded-2xl border px-3.5 py-2 text-xs font-black shadow-xs transition-all"
+              :class="
+                movesLeft > 2
+                  ? 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-200'
+                  : movesLeft > 0
+                    ? 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-950/60 dark:text-amber-200'
+                    : 'border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-700 dark:bg-rose-950/60 dark:text-rose-200 animate-pulse'
+              "
             >
-              <span>💡</span>
-              <span>چالش سوال دانایی (+سکه و امتیاز ۲×)</span>
-            </button>
+              <span class="text-base">{{ movesLeft > 0 ? '⚡' : '🔒' }}</span>
+              <span>{{ movesLeft > 0 ? `${movesLeft} حرکت فعال` : 'حرکات تمام شد' }}</span>
+            </div>
 
-            <!-- دکمه ثبت پایان بازی در کارنامه -->
+            <!-- دکمه ثبت نتیجه در کارنامه -->
             <button
               type="button"
               class="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-700 cursor-pointer"
@@ -421,258 +577,315 @@ onMounted(() => {
             </button>
           </div>
         </div>
-
-        <!-- نوار وضعیت تقویت‌کننده و امتیاز جلسه -->
-        <div class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-xs shadow-xs dark:border-ink-800 dark:bg-ink-900">
-          <div class="flex items-center gap-4">
-            <div class="flex items-center gap-1.5 font-bold text-ink-900 dark:text-white">
-              <span class="text-amber-500">⭐</span>
-              <span>امتیاز مأموریت: {{ bonusScore }}</span>
-            </div>
-            <div class="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-semibold">
-              <span>✅ پاسخ‌های درست: {{ correctCount }}</span>
-            </div>
-            <div v-if="wrongCount > 0" class="flex items-center gap-1.5 text-rose-500 font-semibold">
-              <span>❌ نادرست: {{ wrongCount }}</span>
-            </div>
-          </div>
-
-          <div class="flex items-center gap-2">
-            <span
-              v-if="hasDoubleMultiplier"
-              class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-10px font-extrabold text-amber-800 dark:bg-amber-950 dark:text-amber-300 animate-pulse"
-            >
-              ⚡ ضریب ۲ برابری امتیاز فعال است!
-            </span>
-            <div class="flex flex-wrap items-center gap-2">
-              <select v-model.number="selectedGrade" aria-label="پایه" class="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100">
-                <option v-for="g in 12" :key="g" :value="g">پایه {{ g }}</option>
-              </select>
-              <select v-model="selectedCourseId" aria-label="درس" class="max-w-40 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100">
-                <option v-for="c in availableCourses" :key="c.id" :value="c.id">{{ c.name }}</option>
-              </select>
-            </div>
-          </div>
-        </div>
       </section>
 
-      <!-- بوم و صحنه بازی (Game Arena) -->
+      <!-- بخش اصلی: گرید دو ستونه یکپارچه بازی و چالش دانایی کتاب درسی -->
       <section class="mx-auto max-w-7xl px-4 pt-4 sm:px-6">
-        <div
-          id="game-arena-container"
-          class="relative w-full overflow-hidden rounded-3xl border border-slate-300 bg-white shadow-xl dark:border-ink-800 dark:bg-ink-900"
-          style="min-height: 640px; height: 75vh;"
-        >
-          <!-- لودینگ بازی -->
-          <div
-            v-if="!isIframeLoaded"
-            class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-100/90 backdrop-blur-sm dark:bg-ink-950/90"
-          >
-            <div class="h-10 w-10 animate-spin rounded-full border-4 border-brand-500 border-t-transparent"></div>
-            <p class="mt-4 text-xs font-bold text-slate-600 dark:text-ink-300">
-              در حال بارگذاری صحنه بازی...
-            </p>
+        <div class="grid grid-cols-1 gap-6 lg:grid-cols-12">
+          <!-- ستون اول: میدان بازی (Game Arena) -->
+          <div class="lg:col-span-8 flex flex-col gap-3">
+            <div
+              id="game-arena-container"
+              class="relative w-full overflow-hidden rounded-3xl border border-slate-300 bg-white shadow-xl dark:border-ink-800 dark:bg-ink-900"
+              style="min-height: 580px; height: 75vh;"
+            >
+              <!-- لودینگ بازی -->
+              <div
+                v-if="!isIframeLoaded"
+                class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-100/90 backdrop-blur-sm dark:bg-ink-950/90"
+              >
+                <div class="h-10 w-10 animate-spin rounded-full border-4 border-brand-500 border-t-transparent"></div>
+                <p class="mt-4 text-xs font-bold text-slate-600 dark:text-ink-300">
+                  در حال بارگذاری صحنه بازی...
+                </p>
+              </div>
+
+              <!-- پرده قفل حرکات (Move Lock Overlay) -->
+              <div
+                v-if="movesLeft <= 0 && isIframeLoaded"
+                class="absolute inset-0 z-20 flex flex-col items-center justify-center bg-ink-950/80 p-6 backdrop-blur-xs text-center transition-all animate-in fade-in"
+              >
+                <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-500/20 text-3xl shadow-lg ring-1 ring-amber-500/40 animate-bounce">
+                  🔒
+                </div>
+                <h3 class="mt-3 text-lg font-black text-white sm:text-xl">
+                  حرکات شما به پایان رسید!
+                </h3>
+                <p class="mt-1.5 max-w-sm text-xs font-medium text-ink-200 leading-relaxed">
+                  برای دریافت <span class="font-bold text-amber-400">۵ حرکت جدید</span>، به سوال چالش درسی در
+                  <span class="hidden lg:inline">پنل کنار صفحه</span>
+                  <span class="lg:hidden">بخش زیر بازی</span>
+                  پاسخ دهید.
+                </p>
+                <button
+                  type="button"
+                  class="mt-4 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 px-5 py-2.5 text-xs font-black text-white shadow-lg shadow-orange-500/30 hover:from-amber-600 hover:to-orange-600 cursor-pointer"
+                  @click="triggerNeedQuestionNotice"
+                >
+                  <span>💡</span>
+                  <span>حل سوال کتاب درسی و دریافت ۵ حرکت</span>
+                </button>
+              </div>
+
+              <!-- آی‌فریم بازی چوگان -->
+              <iframe
+                v-if="game"
+                ref="iframeRef"
+                :src="game.playUrl"
+                class="h-full w-full border-0"
+                allow="fullscreen"
+                @load="onIframeLoad"
+              ></iframe>
+            </div>
+
+            <!-- نوار وضعیت امتیاز و آمار زیر بازی -->
+            <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs shadow-xs dark:border-ink-800 dark:bg-ink-900">
+              <div class="flex items-center gap-4">
+                <div class="flex items-center gap-1.5 font-bold text-ink-900 dark:text-white">
+                  <span class="text-amber-500">⭐</span>
+                  <span>امتیاز بازی: {{ bonusScore }}</span>
+                </div>
+                <div class="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-semibold">
+                  <span>✅ درست: {{ correctCount }}</span>
+                </div>
+                <div v-if="wrongCount > 0" class="flex items-center gap-1.5 text-rose-500 font-semibold">
+                  <span>❌ نادرست: {{ wrongCount }}</span>
+                </div>
+                <div v-if="streak >= 2" class="flex items-center gap-1 text-amber-600 dark:text-amber-400 font-bold">
+                  <span>🔥</span>
+                  <span>زنجیره: {{ streak }}</span>
+                </div>
+              </div>
+
+              <div class="flex items-center gap-2 text-11px text-slate-500 dark:text-ink-400">
+                <span>مجموع حرکات انجام‌شده: {{ totalMovesMade }}</span>
+              </div>
+            </div>
           </div>
 
-          <!-- آی‌فریم بازی چوگان -->
-          <iframe
-            v-if="game"
-            ref="iframeRef"
-            :src="game.playUrl"
-            class="h-full w-full border-0"
-            allow="fullscreen"
-            @load="onIframeLoad"
-          ></iframe>
+          <!-- ستون دوم: کارت چالش دانایی کتاب درسی (HoloDeck Question Challenge) -->
+          <div class="lg:col-span-4">
+            <div
+              ref="questionCardRef"
+              class="lg:sticky lg:top-4 flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-xl transition-all duration-300 dark:border-ink-800 dark:bg-ink-900"
+              :class="{
+                'ring-4 ring-amber-400/50 border-amber-400 shadow-amber-500/20': isQuestionCardHighlighted,
+              }"
+            >
+              <!-- سربرگ کارت چالش -->
+              <div class="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-ink-800">
+                <div class="flex items-center gap-2">
+                  <span class="flex h-9 w-9 items-center justify-center rounded-2xl bg-brand-50 text-brand-600 dark:bg-brand-950 dark:text-brand-300 text-lg shadow-xs">
+                    💡
+                  </span>
+                  <div>
+                    <h2 class="text-sm font-black text-ink-900 dark:text-white">چالش سوال دانایی</h2>
+                    <p class="text-[11px] text-slate-500 dark:text-ink-400">پاسخ درست = +۵ حرکت در بازی</p>
+                  </div>
+                </div>
+
+                <!-- نشانگر انرژی حرکات -->
+                <div
+                  class="flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-black shadow-xs"
+                  :class="
+                    movesLeft > 0
+                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                      : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 animate-pulse'
+                  "
+                >
+                  <span>{{ movesLeft > 0 ? '⚡' : '🔒' }}</span>
+                  <span>{{ movesLeft }} حرکت</span>
+                </div>
+              </div>
+
+              <!-- فیلترهای پایه و درس -->
+              <div class="grid grid-cols-2 gap-2 bg-slate-50 p-2.5 rounded-2xl dark:bg-ink-950/60 border border-slate-100 dark:border-ink-800/60">
+                <div>
+                  <label class="block text-[10px] font-bold text-slate-500 dark:text-ink-400 mb-1">پایه تحصیلی:</label>
+                  <select
+                    v-model.number="selectedGrade"
+                    aria-label="پایه"
+                    class="w-full rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-xs font-semibold text-slate-800 dark:border-ink-700 dark:bg-ink-800 dark:text-white focus:outline-none focus:border-brand-500"
+                  >
+                    <optgroup label="دبستان">
+                      <option v-for="g in [1, 2, 3, 4, 5, 6]" :key="g" :value="g">پایه {{ g }} ابتدایی</option>
+                    </optgroup>
+                    <optgroup label="متوسطه اول">
+                      <option v-for="g in [7, 8, 9]" :key="g" :value="g">پایه {{ g }} متوسطه اول</option>
+                    </optgroup>
+                    <optgroup label="متوسطه دوم">
+                      <option v-for="g in [10, 11, 12]" :key="g" :value="g">پایه {{ g }} متوسطه دوم</option>
+                    </optgroup>
+                  </select>
+                </div>
+
+                <div>
+                  <label class="block text-[10px] font-bold text-slate-500 dark:text-ink-400 mb-1">کتاب درسی:</label>
+                  <select
+                    v-model="selectedCourseId"
+                    aria-label="درس"
+                    class="w-full rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-xs font-semibold text-slate-800 dark:border-ink-700 dark:bg-ink-800 dark:text-white focus:outline-none focus:border-brand-500"
+                  >
+                    <option v-for="c in availableCourses" :key="c.id" :value="c.id">{{ c.name }}</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- بدنه سوال -->
+              <div v-if="currentQuestion" class="flex flex-col gap-3">
+                <div class="flex items-center justify-between text-[11px] text-slate-400 dark:text-ink-500">
+                  <span>{{ findCourse(BASE_COURSES, currentQuestion.courseId)?.name }} · پایه {{ currentQuestion.grade }}</span>
+                  <span class="rounded bg-slate-100 px-1.5 py-0.5 font-bold text-slate-600 dark:bg-ink-800 dark:text-ink-300">
+                    سطح {{ currentQuestion.difficulty }}
+                  </span>
+                </div>
+
+                <!-- متن سوال -->
+                <p class="text-xs sm:text-sm font-bold leading-relaxed text-slate-800 dark:text-white">
+                  {{ currentQuestion.text }}
+                </p>
+
+                <!-- گزینه‌های چهارگانه -->
+                <div class="flex flex-col gap-2 mt-1">
+                  <button
+                    v-for="(option, idx) in currentQuestion.options"
+                    :key="idx"
+                    type="button"
+                    class="flex items-center justify-between rounded-2xl border p-3 text-right text-xs font-semibold transition-all cursor-pointer"
+                    :class="[
+                      selectedOptionIndex === idx
+                        ? wasCorrect
+                          ? 'border-emerald-500 bg-emerald-50 text-emerald-900 ring-2 ring-emerald-500 dark:bg-emerald-950/60 dark:text-emerald-200'
+                          : 'border-rose-500 bg-rose-50 text-rose-900 ring-2 ring-rose-500 dark:bg-rose-950/60 dark:text-rose-200'
+                        : hasAnswered && String(idx) === String(currentQuestion.correctAnswer)
+                          ? 'border-emerald-500 bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300'
+                          : 'border-slate-200 bg-slate-50/70 text-slate-700 hover:border-brand-400 hover:bg-brand-50/50 dark:border-ink-800 dark:bg-ink-950/40 dark:text-ink-200 dark:hover:border-brand-600',
+                    ]"
+                    :disabled="hasAnswered"
+                    @click="submitAnswer(idx)"
+                  >
+                    <span>{{ option }}</span>
+                    <span
+                      class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
+                      :class="
+                        selectedOptionIndex === idx && wasCorrect
+                          ? 'bg-emerald-500 text-white'
+                          : selectedOptionIndex === idx && !wasCorrect
+                            ? 'bg-rose-500 text-white'
+                            : 'bg-slate-200 text-slate-600 dark:bg-ink-800 dark:text-ink-300'
+                      "
+                    >
+                      {{ idx + 1 }}
+                    </span>
+                  </button>
+                </div>
+
+                <!-- بازخورد پاسخ صحیح -->
+                <div
+                  v-if="hasAnswered && wasCorrect"
+                  class="rounded-2xl border border-emerald-300 bg-emerald-50/80 p-3 text-xs text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200 flex flex-col gap-2"
+                >
+                  <div class="flex items-center gap-1.5 font-bold">
+                    <span>🎉</span>
+                    <span>آفرین! ۵ حرکت جدید به شما اضافه شد.</span>
+                  </div>
+                  <button
+                    type="button"
+                    class="w-full rounded-xl bg-emerald-600 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 transition cursor-pointer"
+                    @click="pickNextQuestion"
+                  >
+                    سوال بعدی (+۵ حرکت بیشتر) 🔄
+                  </button>
+                </div>
+
+                <!-- بازخورد پاسخ اشتباه -->
+                <div
+                  v-if="hasAnswered && !wasCorrect"
+                  class="rounded-2xl border border-rose-300 bg-rose-50/80 p-3 text-xs text-rose-800 dark:border-rose-800 dark:bg-rose-950/60 dark:text-rose-200 flex flex-col gap-2"
+                >
+                  <div class="flex items-center gap-1.5 font-bold text-rose-700 dark:text-rose-300">
+                    <span>❌</span>
+                    <span>پاسخ صحیح: گزینه {{ Number(currentQuestion.correctAnswer) + 1 }} بود.</span>
+                  </div>
+                  <p class="text-[11px] leading-relaxed text-slate-600 dark:text-ink-300">
+                    💡 <span class="font-bold">نکته آموزشی:</span> {{ currentQuestion.explanation }}
+                  </p>
+                  <button
+                    type="button"
+                    class="w-full rounded-xl bg-rose-600 py-2 text-xs font-bold text-white shadow-xs hover:bg-rose-700 transition cursor-pointer"
+                    @click="pickNextQuestion"
+                  >
+                    سوال بعدی / تلاش مجدد 🔄
+                  </button>
+                </div>
+              </div>
+
+              <!-- لودینگ در صورت عدم وجود سوال -->
+              <div v-else class="py-8 text-center text-xs text-slate-400 dark:text-ink-500">
+                در حال بارگذاری سوالات درسی...
+              </div>
+
+              <!-- جمله انگیزشی -->
+              <div class="mt-auto border-t border-slate-100 pt-3 text-center text-[11px] text-slate-400 dark:border-ink-800 dark:text-ink-500">
+                ✨ {{ motivationalQuote }}
+              </div>
+            </div>
+          </div>
         </div>
       </section>
     </main>
 
-    <!-- مودال چالش سوال دانایی (Curriculum Question Modal) -->
-    <div
-      v-if="showQuestionModal && currentQuestion"
-      class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-950/70 backdrop-blur-xs animate-in fade-in"
-      dir="rtl"
-    >
-      <div class="relative w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-ink-800 dark:bg-ink-900">
-        <!-- هدر سوال -->
-        <div class="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-ink-800">
-          <div class="flex items-center gap-2">
-            <span class="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-100 text-amber-600 dark:bg-amber-950 dark:text-amber-300 text-sm">
-              💡
-            </span>
-            <div>
-              <div class="text-xs font-bold text-brand-600 dark:text-brand-400">
-                چالش درسی دانایی · {{ findCourse(BASE_COURSES, currentQuestion.courseId)?.name || 'کتاب درسی' }}
-              </div>
-              <div class="text-10px text-slate-400 dark:text-ink-500">
-                پایه {{ currentQuestion.grade }}م · سطح {{ currentQuestion.difficulty }}
-              </div>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            class="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 dark:hover:bg-ink-800"
-            @click="closeQuestionModal"
-          >
-            ✕
-          </button>
-        </div>
-
-        <!-- متن سوال -->
-        <div class="mt-4">
-          <p class="text-sm font-bold text-ink-900 dark:text-white leading-relaxed">
-            {{ currentQuestion.text }}
-          </p>
-        </div>
-
-        <!-- گزینه‌های چهارگانه -->
-        <div class="mt-4 grid gap-2.5">
-          <button
-            v-for="(opt, idx) in currentQuestion.options"
-            :key="idx"
-            type="button"
-            class="flex items-center justify-between rounded-2xl border p-3.5 text-right text-xs font-medium transition-all cursor-pointer"
-            :class="[
-              selectedOptionIndex === idx
-                ? wasCorrect
-                  ? 'border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-2 ring-emerald-500'
-                  : 'border-rose-500 bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-2 ring-rose-500'
-                : hasAnswered && String(idx) === String(currentQuestion.correctAnswer)
-                  ? 'border-emerald-500 bg-emerald-500/20 text-emerald-800 dark:text-emerald-200'
-                  : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-ink-900 dark:border-ink-800 dark:bg-ink-800/80 dark:text-ink-100 dark:hover:bg-ink-800',
-            ]"
-            :disabled="hasAnswered"
-            @click="submitAnswer(idx)"
-          >
-            <span>{{ opt }}</span>
-            <span
-              class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-10px font-bold"
-              :class="selectedOptionIndex === idx && wasCorrect ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-600 dark:bg-ink-700 dark:text-ink-300'"
-            >
-              {{ idx + 1 }}
-            </span>
-          </button>
-        </div>
-
-        <!-- بازخورد پاسخ درست -->
-        <div
-          v-if="hasAnswered && wasCorrect"
-          class="mt-4 rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-xs dark:border-emerald-900/60 dark:bg-emerald-950/40"
-        >
-          <div class="flex items-center gap-2 font-bold text-emerald-700 dark:text-emerald-300">
-            <span>🎉 آفرین! پاسخ کاملاً درست است.</span>
-          </div>
-          <p class="mt-1 text-slate-600 dark:text-ink-300">
-            ۲۵ امتیاز، ۱۵ سکه و ضریب امتیاز دو برابری به پروفایل شما افزوده شد!
-          </p>
-          <div class="mt-3 flex items-center justify-end gap-2">
-            <button
-              type="button"
-              class="rounded-xl bg-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-300 dark:bg-ink-800 dark:text-ink-200"
-              @click="nextQuestion"
-            >
-              یک سوال دیگر
-            </button>
-            <button
-              type="button"
-              class="rounded-xl bg-emerald-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-emerald-700"
-              @click="closeQuestionModal"
-            >
-              ادامه بازی 🎮
-            </button>
-          </div>
-        </div>
-
-        <!-- بازخورد پاسخ نادرست و نکته آموزشی -->
-        <div
-          v-if="hasAnswered && !wasCorrect"
-          class="mt-4 rounded-2xl border border-rose-300 bg-rose-50 p-4 text-xs dark:border-rose-900/60 dark:bg-rose-950/40"
-        >
-          <div class="flex items-center gap-2 font-bold text-rose-700 dark:text-rose-300">
-            <span>❌ پاسخ نادرست بود.</span>
-          </div>
-          <p class="mt-1 text-slate-700 dark:text-ink-200">
-            پاسخ صحیح گزینه {{ Number(currentQuestion.correctAnswer) + 1 }} یعنی «{{ currentQuestion.options[Number(currentQuestion.correctAnswer)] }}» است.
-          </p>
-          <p v-if="currentQuestion.explanation" class="mt-2 text-slate-600 dark:text-ink-300 border-t border-rose-200 dark:border-rose-900/60 pt-2">
-            💡 <span class="font-bold text-amber-600 dark:text-amber-400">نکته یادگیری:</span> {{ currentQuestion.explanation }}
-          </p>
-          <div class="mt-3 flex items-center justify-end gap-2">
-            <button
-              type="button"
-              class="rounded-xl bg-brand-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-brand-700"
-              @click="nextQuestion"
-            >
-              امتحان سوال بعدی
-            </button>
-            <button
-              type="button"
-              class="rounded-xl bg-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-300 dark:bg-ink-800 dark:text-ink-200"
-              @click="closeQuestionModal"
-            >
-              بازگشت به بازی
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- مودال پایان مأموریت و ثبت در کارنامه (Finish Session Modal) -->
+    <!-- مودال پایان مأموریت و ثبت نتیجه -->
     <div
       v-if="showFinishModal"
-      class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-950/75 backdrop-blur-sm animate-in fade-in"
+      class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-950/80 backdrop-blur-sm animate-in fade-in"
       dir="rtl"
     >
-      <div class="relative w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 text-center shadow-2xl dark:border-ink-800 dark:bg-ink-900">
-        <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 text-3xl shadow-lg shadow-orange-500/30">
+      <div class="relative w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-ink-800 dark:bg-ink-900 text-center">
+        <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-100 text-3xl dark:bg-emerald-950 text-emerald-600 dark:text-emerald-300 shadow-inner">
           🏆
         </div>
-        <h3 class="mt-4 text-xl font-black text-ink-900 dark:text-white">
-          مأموریت با موفقیت به پایان رسید!
-        </h3>
+        <h2 class="mt-4 text-xl font-black text-ink-900 dark:text-white">
+          مأموریت دانایی با موفقیت ثبت شد!
+        </h2>
         <p class="mt-1 text-xs text-slate-500 dark:text-ink-400">
-          نتایج بازی «{{ game?.nameFa }}» در کارنامه و لیگ قهرمانان ثبت شد.
+          نتایج این بازی در کارنامه تحلیلی و تابلوی لیگ هفتگی ذخیره شد.
         </p>
 
-        <!-- آمار مأموریت -->
-        <div class="mt-5 grid grid-cols-3 gap-2 rounded-2xl bg-slate-50 p-3 dark:bg-ink-800/80">
-          <div class="text-center">
-            <div class="text-base font-black text-brand-600 dark:text-brand-400">+{{ bonusScore }}</div>
-            <div class="text-10px text-slate-400 dark:text-ink-400">امتیاز کسب‌شده</div>
-          </div>
-          <div class="text-center">
-            <div class="text-base font-black text-emerald-600 dark:text-emerald-400">{{ correctCount }}</div>
-            <div class="text-10px text-slate-400 dark:text-ink-400">پاسخ درست</div>
-          </div>
-          <div class="text-center">
-            <div class="text-base font-black text-amber-500">{{ sessionAnswers.length > 0 ? Math.round((correctCount / sessionAnswers.length) * 100) : 100 }}٪</div>
-            <div class="text-10px text-slate-400 dark:text-ink-400">دقت علمی</div>
+        <!-- مدال‌های دریافتی -->
+        <div v-if="finishRewardMedals.length" class="mt-4 rounded-2xl bg-amber-50 p-3 border border-amber-200 dark:bg-amber-950/40 dark:border-amber-800/40">
+          <div class="text-xs font-bold text-amber-800 dark:text-amber-200 mb-1">🏅 مدال‌های جدید کسب‌شده:</div>
+          <div class="flex flex-wrap justify-center gap-1.5">
+            <span
+              v-for="m in finishRewardMedals"
+              :key="m"
+              class="rounded-lg bg-amber-200/60 px-2 py-0.5 text-xs font-black text-amber-900 dark:bg-amber-900/60 dark:text-amber-100"
+            >
+              {{ m }}
+            </span>
           </div>
         </div>
 
-        <!-- مدال‌های جدید آنلاک‌شده -->
-        <div v-if="finishRewardMedals.length > 0" class="mt-4 rounded-xl bg-amber-50 p-3 text-xs dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/50">
-          <div class="font-bold text-amber-800 dark:text-amber-300 flex items-center justify-center gap-1">
-            <span>🎖️</span>
-            <span>تبریک! مدال‌های جدیدی آزاد کردید:</span>
-          </div>
-          <div class="mt-1 text-slate-700 dark:text-ink-200 text-10px">
-            {{ finishRewardMedals.join(' ، ') }}
-          </div>
+        <div class="mt-6 flex gap-3">
+          <button
+            type="button"
+            class="flex-1 rounded-xl bg-brand-600 py-2.5 text-xs font-bold text-white shadow-md hover:bg-brand-700 transition"
+            @click="handleMissionModalClose"
+          >
+            باشگاه بازی‌ها ➔
+          </button>
+          <button
+            type="button"
+            class="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-ink-700 dark:text-ink-300 dark:hover:bg-ink-800"
+            @click="showFinishModal = false"
+          >
+            ادامه بازی
+          </button>
         </div>
-
-        <button
-          type="button"
-          class="mt-6 w-full rounded-2xl bg-brand-600 py-3 text-xs font-black text-white shadow-lg shadow-brand-600/30 hover:bg-brand-700 transition"
-          @click="handleMissionModalClose"
-        >
-          بازگشت به باشگاه بازی‌ها
-        </button>
       </div>
     </div>
 
-    <!-- مودال‌های پیشرفت، مدال‌ها و تحلیل بازی -->
+    <!-- مودال‌های پیشرفت، مدال‌ها و تحلیل -->
     <GameJourneyModal v-if="showJourneyModal" :is-open="showJourneyModal" @close="showJourneyModal = false" />
     <GameMedalsModal v-if="showMedalsModal" :is-open="showMedalsModal" @close="showMedalsModal = false" />
     <GameAnalyticsModal v-if="showAnalyticsModal" :is-open="showAnalyticsModal" @close="showAnalyticsModal = false" />

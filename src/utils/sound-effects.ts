@@ -48,6 +48,10 @@ class SoundEffectsManager {
     })
   }
 
+  correct(): void {
+    this.playCorrect()
+  }
+
   // صدای پاسخ غلط (Buzz آرام)
   playIncorrect(): void {
     if (!this.enabled) return
@@ -70,6 +74,14 @@ class SoundEffectsManager {
 
     osc.start(now)
     osc.stop(now + 0.3)
+  }
+
+  wrong(): void {
+    this.playIncorrect()
+  }
+
+  levelUp(): void {
+    this.playLevelUp()
   }
 
   // صدای پرتاب موشک

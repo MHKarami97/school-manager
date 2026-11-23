@@ -212,27 +212,13 @@
 
   /* ========================================================= وضعیت اپ */
 
-  // زبان پیش‌فرض از خود دستگاه. فارسی زبان اول پروژه است ولی روی گوشی
-  // انگلیسی، صفحه‌ی خوشامد فارسی باز می‌شد. کاربر در همان صفحه و بعد هم در
-  // تنظیمات می‌تواند عوضش کند. همان قاعده‌ای که لیبل لانچر با values-fa دارد.
+  // زبان در سامانه مدیریار همواره فارسی است
   function deviceLang() {
-    try {
-      var l = ((global.navigator.languages && global.navigator.languages[0]) || global.navigator.language || '').toLowerCase();
-      if (/^fa\b|^fa-/.test(l)) return 'fa';
-      // فقط چینی ساده‌شده ترجمه داریم، پس zh-TW و zh-HK به انگلیسی می‌روند
-      if (l === 'zh' || /^zh-(cn|sg|hans)/.test(l)) return 'zh';
-      if (/^de\b|^de-/.test(l)) return 'de';
-      if (/^es\b|^es-/.test(l)) return 'es';
-      if (/^pl\b|^pl-/.test(l)) return 'pl';
-      if (/^fr\b|^fr-/.test(l)) return 'fr';
-      if (/^ar\b|^ar-/.test(l)) return 'ar';
-      if (/^hi\b|^hi-/.test(l)) return 'hi';
-      return 'en';
-    } catch (e) { return 'fa'; }
+    return 'fa';
   }
 
   var DEFAULT_SETTINGS = {
-    lang: deviceLang(),
+    lang: 'fa',
     theme: 'auto',   // auto | light | dark
     motion: 'auto',  // auto | on | off: Auto follows the system, On ignores its reduce-motion flag (#881)
     sfx: true,
@@ -264,8 +250,14 @@
     return s;
   }
 
+  var initialSavedSettings = appStore.get('settings', {});
+  if (!initialSavedSettings || initialSavedSettings.lang !== 'fa') {
+    initialSavedSettings = Object.assign({}, initialSavedSettings, { lang: 'fa' });
+    appStore.set('settings', initialSavedSettings);
+  }
+
   var state = {
-    settings: Object.assign({}, DEFAULT_SETTINGS, appStore.get('settings', {})),
+    settings: Object.assign({}, DEFAULT_SETTINGS, initialSavedSettings),
     // شناسه‌ی ناشناس تصادفی. الان هیچ‌جا فرستاده نمی‌شود؛
     // فقط برای اینکه اگر روزی همگام‌سازی آمد، مدل داده عوض نشود.
     profile: Object.assign({ name: '', country: '', uid: '' }, appStore.get('profile', {})),
@@ -283,7 +275,9 @@
   // از چیزی که صفحه‌ی بازی در حافظه‌ی محلی نوشته عقب می‌ماند. شیء state سر
   // جایش تازه می‌شود، نه جایگزین، چون همه‌جا به همین ارجاع چسبیده‌اند.
   Chogan.reloadState = function () {
-    state.settings = Object.assign({}, DEFAULT_SETTINGS, appStore.get('settings', {}));
+    var saved = appStore.get('settings', {});
+    if (!saved || saved.lang !== 'fa') saved = Object.assign({}, saved, { lang: 'fa' });
+    state.settings = Object.assign({}, DEFAULT_SETTINGS, saved);
     state.profile = Object.assign({ name: '', country: '', uid: state.profile.uid }, appStore.get('profile', {}));
     state.coins = appStore.get('coins', 0);
     state.unlocks = appStore.get('unlocks', []);
@@ -3820,7 +3814,10 @@
     // whole menu (#214). The flag lives for the tab, so a reload keeps it; the
     // system back button still closes the game.
     var standalone = (function () {
-      try { if (new URLSearchParams(location.search).get('from') === 'shortcut') ss(SHORTCUT_KEY, cfg.id); } catch (e) { /* no URL API: never standalone */ }
+      try {
+        if (typeof window !== 'undefined' && window.parent && window.parent !== window) return true;
+        if (new URLSearchParams(location.search).get('from') === 'shortcut') ss(SHORTCUT_KEY, cfg.id);
+      } catch (e) { /* no URL API: never standalone */ }
       return ss(SHORTCUT_KEY) === cfg.id;
     })();
 
@@ -3941,6 +3938,11 @@
           coins: o.coins || 0
         });
         ctx.clearSave();
+        try {
+          if (typeof window !== 'undefined' && window.parent && window.parent.onChoganGameFinish) {
+            window.parent.onChoganGameFinish(Object.assign({ gameId: cfg.id, points: o.points || 0, coins: o.coins || 0 }, o));
+          }
+        } catch (e) {}
         if (o.won) { audioApi.sfx('win'); Chogan.haptic('win'); ui.confetti(); }
         else { audioApi.sfx('lose'); Chogan.haptic('error'); }
 
@@ -4504,6 +4506,17 @@
   // When this build reached the player: the web deploy's stamp, else the release day
   // the Android app ships with (#659). Empty when neither is a valid time.
   Chogan.builtAt = [global.APP_DEPLOYED_AT, global.APP_RELEASED].filter(function (v) { return !!parseWhen(v); })[0] || '';
+
+  // اتصال اسکرول ماوس به پنجره اصلی مدیریار در زمان چرخش غلطک ماوس روی بازی
+  if (typeof window !== 'undefined') {
+    window.addEventListener('wheel', function (e) {
+      try {
+        if (window.parent && window.parent !== window) {
+          window.parent.scrollBy({ top: e.deltaY, left: e.deltaX, behavior: 'auto' });
+        }
+      } catch (err) {}
+    }, { passive: true });
+  }
 
   // برای تست‌های خودکار در نود
   if (typeof module !== 'undefined' && module.exports) module.exports = Chogan;
