@@ -8,6 +8,7 @@ import { BASE_COURSES, findCourse } from '@/config/courses.config'
 import { LESSON_PLAN_STATUS_LABELS, LESSON_PLAN_STATUS_BADGE_CLASSES } from '@/config/lesson-plan.config'
 import { formatTeacherName } from '@/utils/teacher-format'
 import AppHeader from '@/components/layout/AppHeader.vue'
+import PrebuiltLessonPlansModal from '@/components/lessonPlan/PrebuiltLessonPlansModal.vue'
 import type { LessonPlan, LevelId } from '@/types'
 
 const lessonPlansStore = useLessonPlansStore()
@@ -18,6 +19,7 @@ onMounted(async () => {
 })
 
 const viewMode = ref<'list' | 'calendar'>('list')
+const isPrebuiltModalOpen = ref(false)
 
 const searchText = ref('')
 const filterTeacherId = ref<string>('')
@@ -87,12 +89,21 @@ async function duplicatePlan(id: string): Promise<void> {
             {{ lessonPlansStore.items.length }} طرح درس ثبت‌شده
           </p>
         </div>
-        <RouterLink
-          to="/lesson-plans/new"
-          class="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-700"
-        >
-          + طرح درس جدید
-        </RouterLink>
+        <div class="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            class="flex items-center gap-1.5 rounded-xl border border-brand-200 bg-brand-50 px-3.5 py-2 text-sm font-semibold text-brand-700 shadow-xs transition hover:bg-brand-100 dark:border-brand-800 dark:bg-brand-900/30 dark:text-brand-300 dark:hover:bg-brand-900/50"
+            @click="isPrebuiltModalOpen = true"
+          >
+            📚 بانک طرح درس‌های آماده
+          </button>
+          <RouterLink
+            to="/lesson-plans/new"
+            class="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-xs hover:bg-brand-700"
+          >
+            + طرح درس جدید
+          </RouterLink>
+        </div>
       </div>
 
       <div class="mb-4 flex gap-2">
@@ -155,7 +166,17 @@ async function duplicatePlan(id: string): Promise<void> {
       </div>
 
       <div v-if="!filteredPlans.length" class="rounded-2xl border border-dashed border-ink-200 bg-white p-10 text-center dark:border-ink-700 dark:bg-ink-900">
-        <p class="text-ink-500 dark:text-ink-400">طرح درسی با این فیلترها یافت نشد.</p>
+        <p class="text-ink-500 dark:text-ink-400">طرح درسی با این فیلترها در لیست شخصی شما یافت نشد.</p>
+        <p class="mt-2 text-xs text-ink-400 dark:text-ink-500">
+          می‌توانید از بیش از ۳۴۰ طرح درس آماده استاندارد برای تمامی پایه‌ها استفاده کنید.
+        </p>
+        <button
+          type="button"
+          class="mt-4 inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-brand-700"
+          @click="isPrebuiltModalOpen = true"
+        >
+          📚 مشاهده و انتخاب از بانک طرح درس‌های آماده
+        </button>
       </div>
 
       <!-- نمای لیست -->
@@ -239,5 +260,7 @@ async function duplicatePlan(id: string): Promise<void> {
         </div>
       </div>
     </div>
+
+    <PrebuiltLessonPlansModal v-model="isPrebuiltModalOpen" />
   </div>
 </template>

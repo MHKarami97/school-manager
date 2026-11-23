@@ -212,6 +212,8 @@ export interface LessonPlanSnapshot {
   levelId: LevelId;
   sessionDate: string;
   weekNumber: number;
+  chapter?: string;
+  lessonName?: string;
   objectives: string;
   teachingMethod: string;
   resources: string;

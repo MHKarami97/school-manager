@@ -29,6 +29,9 @@ from secondary_science_generator import get_secondary_science_questions
 from secondary_languages_generator import get_secondary_languages_questions
 from secondary_social_and_general_generator import get_secondary_social_and_general_questions
 
+# ماژول توسعه و افزایش سوالات جامع
+from comprehensive_k12_expander import get_comprehensive_expander_questions
+
 def build_all_questions():
     print("Collecting questions from all 11 curriculum modules...")
     questions = []
@@ -61,13 +64,26 @@ def build_all_questions():
     questions.extend(sec_lang)
     questions.extend(sec_soc)
     
-    print(f"Total raw questions collected across K-12: {len(questions)}")
+    print(f"Total base questions collected across K-12: {len(questions)}")
+
+    # ۴. بخش توسعه و افزایش سوالات بدون تکرار
+    existing_texts = set(q["text"].strip() for q in questions)
+    expanded_extra = get_comprehensive_expander_questions(existing_texts)
+    questions.extend(expanded_extra)
+    print(f"Total after comprehensive expansion: {len(questions)} questions")
     
     # اعتبارسنجی جامع و ساخت شناسه‌های پایدار و یکتا
     seen_ids = set()
+    seen_texts = set()
     validated = []
     
     for q in questions:
+        clean_text = q["text"].strip()
+        # تضمین اکید عدم وجود هرگونه سوال تکراری
+        if clean_text in seen_texts:
+            continue
+        seen_texts.add(clean_text)
+
         # بررسی و تضمین ۴ گزینه بودن و متمایز بودن
         assert len(q["options"]) == 4, f"Options count must be 4: {q['text']}"
         if len(set(q["options"])) < 4:

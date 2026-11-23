@@ -122,63 +122,63 @@ const QUESTION_PACKS: QuestionPackInfo[] = [
   {
     grade: 1,
     title: 'پایه اول ابتدایی',
-    description: '۴ درس (ریاضی، علوم، فارسی، قرآن) - ۲۰۰ سوال برای هر درس',
+    description: '۴ درس (ریاضی، علوم، فارسی، قرآن) - بیش از ۱,۱۸۰ سوال',
     subjectsCount: 4,
-    questionsCount: 800,
+    questionsCount: 1180,
     excelFile: 'grade-1-questions.xlsx',
     jsonFile: 'grade-1.json',
   },
   {
     grade: 2,
     title: 'پایه دوم ابتدایی',
-    description: '۵ درس (ریاضی، علوم، فارسی، قرآن، هدیه‌های آسمان) - ۲۰۰ سوال هر درس',
+    description: '۵ درس (ریاضی، علوم، فارسی، قرآن، هدیه‌ها) - بیش از ۱,۱۷۰ سوال',
     subjectsCount: 5,
-    questionsCount: 1000,
+    questionsCount: 1174,
     excelFile: 'grade-2-questions.xlsx',
     jsonFile: 'grade-2.json',
   },
   {
     grade: 3,
     title: 'پایه سوم ابتدایی',
-    description: '۶ درس (ریاضی، علوم، فارسی، قرآن، هدیه‌ها، مطالعات) - ۲۰۰ سوال هر درس',
+    description: '۶ درس (ریاضی، علوم، فارسی، قرآن، هدیه‌ها، مطالعات) - بیش از ۱,۲۵۰ سوال',
     subjectsCount: 6,
-    questionsCount: 1200,
+    questionsCount: 1252,
     excelFile: 'grade-3-questions.xlsx',
     jsonFile: 'grade-3.json',
   },
   {
     grade: 4,
     title: 'پایه چهارم ابتدایی',
-    description: '۶ درس (ریاضی، علوم، فارسی، قرآن، هدیه‌ها، مطالعات) - ۲۰۰ سوال هر درس',
+    description: '۶ درس (ریاضی، علوم، فارسی، قرآن، هدیه‌ها، مطالعات) - بیش از ۱,۵۹۰ سوال',
     subjectsCount: 6,
-    questionsCount: 1200,
+    questionsCount: 1591,
     excelFile: 'grade-4-questions.xlsx',
     jsonFile: 'grade-4.json',
   },
   {
     grade: 5,
     title: 'پایه پنجم ابتدایی',
-    description: '۶ درس (ریاضی، علوم، فارسی، قرآن، هدیه‌ها، مطالعات) - ۲۰۰ سوال هر درس',
+    description: '۶ درس (ریاضی، علوم، فارسی، قرآن، هدیه‌ها، مطالعات) - بیش از ۱,۲۱۰ سوال',
     subjectsCount: 6,
-    questionsCount: 1200,
+    questionsCount: 1216,
     excelFile: 'grade-5-questions.xlsx',
     jsonFile: 'grade-5.json',
   },
   {
     grade: 6,
     title: 'پایه ششم ابتدایی',
-    description: '۸ درس (ریاضی، علوم، فارسی، قرآن، هدیه‌ها، مطالعات، تفکر، کار و فناوری)',
+    description: '۸ درس (ریاضی، علوم، فارسی، قرآن، هدیه‌ها، مطالعات، تفکر، کار و فناوری) - بیش از ۱,۵۷۰ سوال',
     subjectsCount: 8,
-    questionsCount: 1600,
+    questionsCount: 1575,
     excelFile: 'grade-6-questions.xlsx',
     jsonFile: 'grade-6.json',
   },
   {
     grade: 'elem-all',
     title: 'بسته جامع کل دوره ابتدایی (پایه‌های ۱ تا ۶)',
-    description: '۳۵ درس/پایه با حداقل ۲۰۰ سوال برای هر درس (مجموعاً ۷,۰۰۰ سوال)',
+    description: '۳۵ درس/پایه با حداقل ۲۰۰ تا ۴۰۰ سوال برای هر درس (مجموعاً ۷,۹۸۸ سوال)',
     subjectsCount: 35,
-    questionsCount: 7000,
+    questionsCount: 7988,
     excelFile: 'elementary-all-grades-questions.xlsx',
     jsonFile: 'elementary-curriculum-questions.json',
   },
@@ -187,36 +187,36 @@ const QUESTION_PACKS: QuestionPackInfo[] = [
   {
     grade: 7,
     title: 'پایه هفتم (متوسطه اول)',
-    description: '۸ درس (ریاضی، علوم، فارسی، عربی، زبان، قرآن و دینی، مطالعات، کار و فناوری)',
+    description: '۸ درس (ریاضی، علوم، فارسی، عربی، زبان، قرآن و دینی، مطالعات، کار و فناوری) - بیش از ۱,۶۳۰ سوال',
     subjectsCount: 8,
-    questionsCount: 1600,
+    questionsCount: 1632,
     excelFile: 'grade-7-questions.xlsx',
     jsonFile: 'grade-7.json',
   },
   {
     grade: 8,
     title: 'پایه هشتم (متوسطه اول)',
-    description: '۸ درس (ریاضی، علوم، فارسی، عربی، زبان، قرآن و دینی، مطالعات، کار و فناوری)',
+    description: '۸ درس (ریاضی، علوم، فارسی، عربی، زبان، قرآن و دینی، مطالعات، کار و فناوری) - بیش از ۱,۶۰۰ سوال',
     subjectsCount: 8,
-    questionsCount: 1600,
+    questionsCount: 1609,
     excelFile: 'grade-8-questions.xlsx',
     jsonFile: 'grade-8.json',
   },
   {
     grade: 9,
     title: 'پایه نهم (متوسطه اول)',
-    description: '۸ درس (ریاضی، علوم، فارسی، عربی، زبان، قرآن و دینی، مطالعات، آمادگی دفاعی)',
+    description: '۸ درس (ریاضی، علوم، فارسی، عربی، زبان، قرآن و دینی، مطالعات، آمادگی دفاعی) - بیش از ۱,۶۰۰ سوال',
     subjectsCount: 8,
-    questionsCount: 1600,
+    questionsCount: 1603,
     excelFile: 'grade-9-questions.xlsx',
     jsonFile: 'grade-9.json',
   },
   {
     grade: 'lower-all',
     title: 'بسته جامع کل دوره اول متوسطه (پایه‌های ۷ تا ۹)',
-    description: '۲۴ درس/پایه با حداقل ۲۰۰ سوال برای هر درس (مجموعاً ۴,۸۰۰ سوال)',
+    description: '۲۴ درس/پایه با حداقل ۲۰۰ تا ۳۰۰ سوال برای هر درس (مجموعاً ۴,۸۴۴ سوال)',
     subjectsCount: 24,
-    questionsCount: 4800,
+    questionsCount: 4844,
     excelFile: 'lower-secondary-all-grades-questions.xlsx',
     jsonFile: 'lower-secondary-curriculum-questions.json',
   },
@@ -225,45 +225,45 @@ const QUESTION_PACKS: QuestionPackInfo[] = [
   {
     grade: 10,
     title: 'پایه دهم (متوسطه دوم)',
-    description: '۱۰ درس (ریاضی، فیزیک، شیمی، زیست، ادبیات، عربی، زبان، دینی، جغرافیا، دفاعی)',
+    description: '۱۰ درس (ریاضی، فیزیک، شیمی، زیست، ادبیات، عربی، زبان، دینی، جغرافیا، دفاعی) - ۱,۹۷۰ سوال',
     subjectsCount: 10,
-    questionsCount: 2000,
+    questionsCount: 1970,
     excelFile: 'grade-10-questions.xlsx',
     jsonFile: 'grade-10.json',
   },
   {
     grade: 11,
     title: 'پایه یازدهم (متوسطه دوم)',
-    description: '۱۱ درس (ریاضی/حسابان، فیزیک، شیمی، زیست، ادبیات، عربی، زبان، دینی، تاریخ، زمین‌شناسی، محیط‌زیست)',
+    description: '۱۱ درس (ریاضی/حسابان، فیزیک، شیمی، زیست، ادبیات، عربی، زبان، دینی، تاریخ، زمین‌شناسی، محیط‌زیست) - ۲,۲۰۸ سوال',
     subjectsCount: 11,
-    questionsCount: 2200,
+    questionsCount: 2208,
     excelFile: 'grade-11-questions.xlsx',
     jsonFile: 'grade-11.json',
   },
   {
     grade: 12,
     title: 'پایه دوازدهم (متوسطه دوم)',
-    description: '۹ درس (ریاضیات، فیزیک، شیمی، زیست، ادبیات، عربی، زبان، دینی، سلامت و بهداشت)',
+    description: '۹ درس (ریاضیات، فیزیک، شیمی، زیست، ادبیات، عربی، زبان، دینی، سلامت و بهداشت) - ۱,۷۶۲ سوال',
     subjectsCount: 9,
-    questionsCount: 1800,
+    questionsCount: 1762,
     excelFile: 'grade-12-questions.xlsx',
     jsonFile: 'grade-12.json',
   },
   {
     grade: 'upper-all',
     title: 'بسته جامع کل دوره دوم متوسطه (پایه‌های ۱۰ تا ۱۲)',
-    description: '۳۰ درس/پایه با حداقل ۲۰۰ سوال برای هر درس (مجموعاً ۶,۰۰۰ سوال)',
+    description: '۳۰ درس/پایه با حداقل ۲۰۰ سوال هر درس (مجموعاً ۵,۹۴۰ سوال)',
     subjectsCount: 30,
-    questionsCount: 6000,
+    questionsCount: 5940,
     excelFile: 'upper-secondary-all-grades-questions.xlsx',
     jsonFile: 'upper-secondary-curriculum-questions.json',
   },
   {
     grade: 'all',
     title: 'بسته جامع مدارس کل کشور (پایه‌های ۱ تا ۱۲)',
-    description: '۸۹ عنوان درسی در ۳ دوره تحصیلی، حداقل ۲۰۰ سوال هر درس (مجموعاً ۱۷,۸۰۰ سوال)',
+    description: '۸۹ عنوان درسی در ۳ دوره تحصیلی، کاملاً غیرتکراری و استاندارد (مجموعاً ۱۸,۷۷۲ سوال)',
     subjectsCount: 89,
-    questionsCount: 17800,
+    questionsCount: 18772,
     excelFile: 'all-curriculum-questions.xlsx',
     jsonFile: 'all-curriculum-questions.json',
   },
@@ -305,12 +305,41 @@ async function loadCurriculumPack(pack: QuestionPackInfo): Promise<void> {
           <p class="mt-1 text-sm text-ink-500 dark:text-ink-400">{{ questionsStore.items.length }} سوال ثبت‌شده</p>
         </div>
         <div class="flex flex-wrap gap-2">
+          <RouterLink to="/lesson-plans" class="rounded-xl border border-brand-200 bg-brand-50 px-4 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-100 dark:border-brand-800 dark:bg-brand-900/30 dark:text-brand-300">
+            📋 بانک طرح درس‌ها
+          </RouterLink>
           <RouterLink to="/exams" class="rounded-xl border border-ink-200 bg-white px-4 py-2 text-sm font-medium text-ink-700 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200">
             آزمون‌ها
           </RouterLink>
-          <RouterLink to="/question-bank/new" class="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-700">
+          <RouterLink to="/question-bank/new" class="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-xs hover:bg-brand-700">
             + سوال جدید
           </RouterLink>
+        </div>
+      </div>
+
+      <!-- بنر معرفی بانک‌های جامع آموزشی سامانه -->
+      <div class="mb-6 grid gap-4">
+        <div class="flex items-center justify-between rounded-2xl border border-purple-200 bg-gradient-to-l from-purple-50 to-white p-4.5 dark:border-purple-800/50 dark:from-purple-950/20 dark:to-ink-900">
+          <div class="flex items-center gap-3">
+            <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-purple-600 text-xl text-white shadow-xs">
+              📚
+            </span>
+            <div>
+              <h2 class="text-xs font-bold text-purple-950 dark:text-purple-200">
+                بانک ۱۸,۷۷۲ سوال استاندارد
+              </h2>
+              <p class="mt-0.5 text-[11px] text-purple-800 dark:text-purple-400">
+                شامل ۸۹ عنوان درسی در پایه‌های ۱ تا ۱۲ بدون سوال تکراری
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            class="rounded-xl bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-xs transition hover:bg-purple-700"
+            @click="showPacksModal = true"
+          >
+            دانلود و بارگذاری بسته‌ها
+          </button>
         </div>
       </div>
 
@@ -356,10 +385,10 @@ async function loadCurriculumPack(pack: QuestionPackInfo): Promise<void> {
         <div class="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-ink-100 pb-3 dark:border-ink-800">
           <div>
             <h2 class="text-base font-bold text-ink-900 dark:text-ink-100">
-              📚 بسته‌های سوالات درسی پایه‌های اول تا ششم (حداقل ۱۰۰ سوال برای هر درس)
+              📚 بسته‌های سوالات استاندارد مدارس کشور (پایه‌های ۱ تا ۱۲ - ۱۸,۷۷۲ سوال)
             </h2>
             <p class="mt-1 text-xs text-ink-500 dark:text-ink-400">
-              مجموعاً ۳,۵۰۰ سوال ۴گزینه‌ای استاندارد، به همراه پاسخ صحیح، بارم و سطح دشواری منطبق بر کتاب‌های درسی.
+              مجموعاً ۱۸,۷۷۲ سوال ۴گزینه‌ای استاندارد و کاملاً غیرتکراری برای ۸۹ عنوان درسی، به همراه کلید پاسخ، بارم و تگ‌های موضوعی.
             </p>
           </div>
           <button

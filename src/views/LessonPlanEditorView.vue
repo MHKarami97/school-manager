@@ -6,6 +6,7 @@ import { useTeachersStore } from '@/stores/teachers'
 import { LEVELS, getLevelById, gradeLabel } from '@/config/levels.config'
 import { BASE_COURSES, findCourse } from '@/config/courses.config'
 import { LESSON_PLAN_STATUSES, LESSON_PLAN_STATUS_LABELS } from '@/config/lesson-plan.config'
+import { coursesAllowedForGrade } from '@/utils/question-bank-helpers'
 import { formatTeacherName } from '@/utils/teacher-format'
 import { printPage } from '@/utils/export'
 import AppHeader from '@/components/layout/AppHeader.vue'
@@ -13,6 +14,7 @@ import LessonPlanBlockEditor from '@/components/lessonPlan/LessonPlanBlockEditor
 import LessonPlanHistoryModal from '@/components/lessonPlan/LessonPlanHistoryModal.vue'
 import PrintableLessonPlan from '@/components/lessonPlan/PrintableLessonPlan.vue'
 import JalaliDatePicker from '@/components/lessonPlan/JalaliDatePicker.vue'
+import PrebuiltLessonPlansModal from '@/components/lessonPlan/PrebuiltLessonPlansModal.vue'
 import type { LessonPlan, LevelId } from '@/types'
 
 const props = defineProps<{ id?: string }>()
@@ -25,6 +27,24 @@ const plan = ref<LessonPlan | null>(null)
 const saveMessage = ref('')
 const isHistoryOpen = ref(false)
 const isPrinting = ref(false)
+const isPrebuiltModalOpen = ref(false)
+
+function applyPrebuiltPlan(selected: LessonPlan): void {
+  if (!plan.value) return
+  plan.value.title = selected.title
+  plan.value.levelId = selected.levelId
+  plan.value.grade = selected.grade
+  plan.value.courseId = selected.courseId
+  plan.value.objectives = selected.objectives
+  plan.value.teachingMethod = selected.teachingMethod
+  plan.value.resources = selected.resources
+  plan.value.assessment = selected.assessment
+  plan.value.chapter = selected.chapter
+  plan.value.lessonName = selected.lessonName
+  plan.value.blocks = JSON.parse(JSON.stringify(selected.blocks))
+  saveMessage.value = 'طرح درس آماده با موفقیت در فرم درج شد. می‌توانید بخش‌های مختلف را ویرایش کنید.'
+  setTimeout(() => (saveMessage.value = ''), 4000)
+}
 
 onMounted(async () => {
   await Promise.all([lessonPlansStore.loadFromDb(), teachersStore.loadFromDb()])
@@ -70,6 +90,25 @@ watch(
     const grades = getLevelById(levelId as LevelId)?.grades ?? []
     if (!grades.includes(plan.value.grade)) {
       plan.value.grade = grades[0] ?? plan.value.grade
+    }
+  },
+)
+
+/** لیست دروس مجاز بر اساس پایه تحصیلی انتخاب‌شده */
+const availableCourses = computed(() => {
+  if (!plan.value) return BASE_COURSES
+  const allowed = coursesAllowedForGrade(plan.value.grade)
+  return allowed.length > 0 ? allowed : BASE_COURSES
+})
+
+// اگر پایه تغییر کرد و درس انتخابی قبلی جزو دروس مجاز این پایه نبود، به اولین درس مجاز تغییر کند
+watch(
+  () => plan.value?.grade,
+  (newGrade) => {
+    if (!plan.value || !newGrade) return
+    const allowed = coursesAllowedForGrade(newGrade)
+    if (allowed.length > 0 && !allowed.some((c) => c.id === plan.value!.courseId)) {
+      plan.value.courseId = allowed[0].id
     }
   },
 )
@@ -152,6 +191,30 @@ async function handlePrint(): Promise<void> {
           </RouterLink>
         </div>
 
+        <!-- بنر دسترسی سریع به طرح درس‌های آماده -->
+        <div class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-brand-200 bg-brand-50/70 p-4 dark:border-brand-900/40 dark:bg-brand-900/10">
+          <div class="flex items-center gap-3">
+            <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600 text-base text-white">
+              📋
+            </span>
+            <div>
+              <p class="text-xs font-bold text-brand-900 dark:text-brand-200">
+                صرفه‌جویی در زمان با طرح درس‌های آماده
+              </p>
+              <p class="text-[11px] text-brand-700 dark:text-brand-400">
+                می‌توانید به جای نوشتن دستی، از ۳۴۰+ طرح درس استاندارد مصوب آموزش و پرورش برای این درس استفاده کنید و آن را ویرایش نمایید.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            class="rounded-xl bg-brand-600 px-4 py-2 text-xs font-semibold text-white shadow-xs transition hover:bg-brand-700"
+            @click="isPrebuiltModalOpen = true"
+          >
+            📚 انتخاب از طرح درس‌های آماده
+          </button>
+        </div>
+
         <!-- بخش ۱: اطلاعات جلسه -->
         <div class="mb-4 rounded-2xl border border-ink-100 bg-white p-5 dark:border-ink-800 dark:bg-ink-900">
           <p class="mb-3 text-sm font-semibold text-ink-800 dark:text-ink-200">اطلاعات جلسه</p>
@@ -226,7 +289,7 @@ async function handlePrint(): Promise<void> {
                 v-model="plan.courseId"
                 class="w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200"
               >
-                <option v-for="c in BASE_COURSES" :key="c.id" :value="c.id">{{ c.name }}</option>
+                <option v-for="c in availableCourses" :key="c.id" :value="c.id">{{ c.name }}</option>
               </select>
             </div>
             <div>
@@ -358,5 +421,13 @@ async function handlePrint(): Promise<void> {
     </div>
 
     <LessonPlanHistoryModal v-model="isHistoryOpen" :plan="plan" />
+    <PrebuiltLessonPlansModal
+      v-if="plan"
+      v-model="isPrebuiltModalOpen"
+      :initial-grade="plan.grade"
+      :initial-course-id="plan.courseId"
+      mode="select"
+      @select="applyPrebuiltPlan"
+    />
   </div>
 </template>

@@ -76,7 +76,7 @@ function onVisibilityChange(): void {
 onMounted(async () => {
   window.addEventListener('focus', checkForUpdate)
   document.addEventListener('visibilitychange', onVisibilityChange)
-  setTimeout(checkForUpdate, 500)
+  setTimeout(checkForUpdate, 2000)
 
   // Direct check for existing waiting worker on mount
   if ('serviceWorker' in navigator) {

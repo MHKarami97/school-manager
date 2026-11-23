@@ -97,6 +97,57 @@ function questionOf(questionId: string) {
   return questionsStore.byId(questionId)
 }
 
+const isQuickLoadingQuestions = ref(false)
+const quickLoadMessage = ref('')
+
+/** تعداد سوالات موجود در دیتابیس برای درس و پایه جاری */
+const currentCourseQuestionsCount = computed(() => {
+  if (!exam.value?.courseId || !exam.value?.grade) return 0
+  return questionsStore.items.filter(
+    (q) => q.grade === exam.value?.grade && q.courseId === exam.value?.courseId,
+  ).length
+})
+
+/** بارگذاری فوری سوالات استاندارد درس انتخابی از فایل JSON بانک جامع */
+async function quickLoadCourseQuestions(): Promise<void> {
+  if (!exam.value?.grade || !exam.value?.courseId) return
+  isQuickLoadingQuestions.value = true
+  quickLoadMessage.value = 'در حال بارگذاری سوالات استاندارد این درس از بانک جامع...'
+  try {
+    const res = await fetch(`/data/questions/grade-${exam.value.grade}.json`)
+    if (!res.ok) throw new Error('خطا در دریافت فایل سوالات')
+    const packQuestions: any[] = await res.json()
+    const targetCourseQuestions = packQuestions.filter((q) => q.courseId === exam.value?.courseId)
+    const existingTexts = new Set(questionsStore.items.map((q) => q.text.trim()))
+    const toAdd = targetCourseQuestions.filter((q) => !existingTexts.has(q.text.trim()))
+
+    if (!toAdd.length) {
+      quickLoadMessage.value = 'تمامی سوالات استاندارد این درس از قبل در بانک سوالات شما موجود هستند.'
+      setTimeout(() => (quickLoadMessage.value = ''), 4000)
+      return
+    }
+    await questionsStore.addBulk(toAdd)
+    quickLoadMessage.value = `${toAdd.length} سوال استاندارد برای این درس با موفقیت به بانک شما افزوده شد.`
+    setTimeout(() => (quickLoadMessage.value = ''), 4000)
+  } catch (err) {
+    console.error(err)
+    quickLoadMessage.value = 'خطا در بارگذاری سوالات از بانک جامع.'
+    setTimeout(() => (quickLoadMessage.value = ''), 4000)
+  } finally {
+    isQuickLoadingQuestions.value = false
+  }
+}
+
+/** افزودن تصادفی چند سوال از سوالات فیلترشده به آزمون */
+function addRandomQuestions(count: number): void {
+  if (!bankMatches.value.length) return
+  const shuffled = [...bankMatches.value].sort(() => 0.5 - Math.random())
+  const selected = shuffled.slice(0, count)
+  for (const q of selected) {
+    addQuestionToExam(q.id)
+  }
+}
+
 const orderedRefs = computed(() =>
   exam.value ? [...exam.value.questionRefs].sort((a, b) => a.order - b.order) : [],
 )
@@ -199,6 +250,36 @@ function handlePrint(mode: 'with-answers' | 'without-answers'): void {
           </RouterLink>
         </div>
 
+        <!-- بنر اطلاع‌رسانی بانک جامع سوالات و طرح درس -->
+        <div class="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-brand-200 bg-brand-50/70 p-4 dark:border-brand-900/40 dark:bg-brand-900/15">
+          <div class="flex items-center gap-3">
+            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-brand-600 text-lg text-white">
+              📚
+            </span>
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-bold text-brand-900 dark:text-brand-200">
+                  بانک جامع ۱۸,۷۰۰+ سوال درسی
+                </span>
+                <span class="rounded-full bg-brand-200/60 px-2 py-0.5 text-[10px] font-bold text-brand-800 dark:bg-brand-800/60 dark:text-brand-200">
+                  فعال
+                </span>
+              </div>
+              <p class="mt-0.5 text-[11px] text-brand-700 dark:text-brand-400">
+                سوالات استاندارد این درس را مستقیماً در زیر بارگذاری کنید.
+              </p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <RouterLink
+              to="/question-bank"
+              class="rounded-xl border border-brand-300 bg-white px-3 py-1.5 text-xs font-semibold text-brand-700 shadow-2xs hover:bg-brand-50 dark:border-brand-700 dark:bg-ink-800 dark:text-brand-300 dark:hover:bg-ink-700"
+            >
+              📚 مدیریت بانک سوالات
+            </RouterLink>
+          </div>
+        </div>
+
         <!-- اطلاعات آزمون -->
         <div class="mb-4 rounded-2xl border border-ink-100 bg-white p-5 dark:border-ink-800 dark:bg-ink-900">
           <p class="mb-3 text-sm font-semibold text-ink-800 dark:text-ink-200">اطلاعات آزمون</p>
@@ -254,26 +335,80 @@ function handlePrint(mode: 'with-answers' | 'without-answers'): void {
           </div>
         </div>
 
-        <!-- افزودن دستی از بانک سوال -->
+        <!-- افزودن دستی و هوشمند از بانک سوال -->
         <div class="mb-4 rounded-2xl border border-ink-100 bg-white p-5 dark:border-ink-800 dark:bg-ink-900">
-          <div class="mb-3 flex items-center justify-between">
-            <p class="text-sm font-semibold text-ink-800 dark:text-ink-200">افزودن دستی از بانک سوال</p>
-            <div class="flex items-center gap-3">
+          <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p class="text-sm font-semibold text-ink-800 dark:text-ink-200">بانک سوالات این درس</p>
+              <p class="text-[11px] text-ink-500 dark:text-ink-400">
+                موجودی بانک شما: <strong>{{ currentCourseQuestionsCount }}</strong> سوال
+                <span v-if="bankMatches.length"> · قابل انتخاب: {{ bankMatches.length }} سوال</span>
+              </p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <button
+                v-if="bankMatches.length >= 5"
+                type="button"
+                class="rounded-lg border border-ink-200 bg-ink-50 px-2.5 py-1 text-[11px] font-medium text-ink-700 hover:bg-ink-100 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-300"
+                @click="addRandomQuestions(5)"
+              >
+                🎲 ۵ سوال تصادفی
+              </button>
+              <button
+                v-if="bankMatches.length >= 10"
+                type="button"
+                class="rounded-lg border border-ink-200 bg-ink-50 px-2.5 py-1 text-[11px] font-medium text-ink-700 hover:bg-ink-100 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-300"
+                @click="addRandomQuestions(10)"
+              >
+                🎲 ۱۰ سوال تصادفی
+              </button>
               <button type="button" class="text-11px font-medium text-brand-600 hover:underline dark:text-brand-400" @click="openNewQuestion">
-                + سوال جدید
+                + سوال دستی جدید
               </button>
               <RouterLink to="/question-bank" class="inline-flex items-center gap-1 rounded-lg border border-brand-200 px-2.5 py-1 text-11px font-medium text-brand-700 hover:bg-brand-50 dark:border-brand-800 dark:text-brand-300 dark:hover:bg-brand-900/20">
-                📚 بانک سوالات
+                📚 بانک جامع سوالات
               </RouterLink>
             </div>
           </div>
-          <input v-model="bankSearch" type="text" placeholder="جست‌وجو در بانک سوال..." class="mb-3 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200" />
+
+          <!-- نوار بارگذاری سریع سوالات درس در صورت نیاز -->
+          <div
+            v-if="exam.courseId && currentCourseQuestionsCount < 20"
+            class="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200"
+          >
+            <span>هنوز سوالات استاندارد این درس را در بانک خود بارگذاری نکرده‌اید یا تعداد آنها کم است.</span>
+            <button
+              type="button"
+              :disabled="isQuickLoadingQuestions"
+              class="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white shadow-2xs hover:bg-brand-700 disabled:opacity-50"
+              @click="quickLoadCourseQuestions"
+            >
+              {{ isQuickLoadingQuestions ? 'در حال بارگذاری...' : '📥 بارگذاری فوری سوالات این درس از بانک جامع' }}
+            </button>
+          </div>
+
+          <div v-if="quickLoadMessage" class="mb-3 rounded-xl bg-emerald-50 p-2.5 text-center text-xs font-medium text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">
+            {{ quickLoadMessage }}
+          </div>
+
+          <input v-model="bankSearch" type="text" placeholder="جست‌وجو در متن سوالات این درس..." class="mb-3 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200" />
+          
           <div class="grid max-h-72 gap-2 overflow-y-auto sm:grid-cols-2">
-            <div v-for="question in bankMatches.slice(0, 20)" :key="question.id" class="flex items-center justify-between rounded-lg bg-ink-50 px-3 py-2 text-xs dark:bg-ink-800">
+            <div v-for="question in bankMatches.slice(0, 24)" :key="question.id" class="flex items-center justify-between gap-2 rounded-lg bg-ink-50 px-3 py-2 text-xs dark:bg-ink-800">
               <span class="truncate text-ink-700 dark:text-ink-200">{{ question.text }}</span>
-              <button type="button" class="shrink-0 text-brand-600 dark:text-brand-400" @click="addQuestionToExam(question.id)">+ افزودن</button>
+              <button type="button" class="shrink-0 font-medium text-brand-600 hover:underline dark:text-brand-400" @click="addQuestionToExam(question.id)">+ افزودن</button>
             </div>
-            <p v-if="!bankMatches.length" class="text-11px text-ink-400 sm:col-span-2 dark:text-ink-500">سوالی پیدا نشد.</p>
+            <div v-if="!bankMatches.length" class="py-6 text-center text-xs sm:col-span-2">
+              <p class="text-ink-400 dark:text-ink-500">سوالی برای افزودن یافت نشد.</p>
+              <button
+                v-if="exam.courseId"
+                type="button"
+                class="mt-2 text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400"
+                @click="quickLoadCourseQuestions"
+              >
+                📥 بارگذاری بیش از ۲۰۰ سوال آماده برای این درس از بانک جامع
+              </button>
+            </div>
           </div>
         </div>
 

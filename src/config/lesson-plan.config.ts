@@ -39,6 +39,8 @@ export function toLessonPlanSnapshot(plan: LessonPlan): LessonPlanSnapshot {
     levelId: plan.levelId,
     sessionDate: plan.sessionDate,
     weekNumber: plan.weekNumber,
+    chapter: plan.chapter,
+    lessonName: plan.lessonName,
     objectives: plan.objectives,
     teachingMethod: plan.teachingMethod,
     resources: plan.resources,
