@@ -930,8 +930,7 @@ onBeforeUnmount(() => {
         <div class="relative w-full">
           <div
             id="game-arena-container"
-            class="relative w-full overflow-hidden rounded-3xl border border-slate-300 bg-white shadow-xl dark:border-ink-800 dark:bg-ink-900"
-            style="min-height: 580px; height: 75vh;"
+            class="relative w-full min-h-[300px] sm:min-h-[540px] h-[75dvh] overflow-hidden rounded-3xl border border-slate-300 bg-white shadow-xl dark:border-ink-800 dark:bg-ink-900"
           >
             <!-- لودینگ بازی -->
             <div
@@ -1017,27 +1016,27 @@ onBeforeUnmount(() => {
     <!-- ۳. پنجره چالش دانایی کتاب درسی (In-place Modal Overlay - بدون نیاز به اسکرول روی موبایل) -->
     <div
       v-if="showQuestionOverlay && currentQuestion"
-      class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-950/80 backdrop-blur-md animate-in fade-in"
+      class="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-ink-950/80 backdrop-blur-md animate-in fade-in overflow-y-auto"
       dir="rtl"
     >
-      <div class="relative w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-ink-800 dark:bg-ink-900">
+      <div class="relative flex flex-col w-full max-w-lg max-h-[calc(100dvh-1rem)] sm:max-h-[90dvh] rounded-2xl sm:rounded-3xl border border-slate-200 bg-white p-3.5 sm:p-6 shadow-2xl dark:border-ink-800 dark:bg-ink-900 overflow-hidden">
         <!-- سربرگ چالش -->
-        <div class="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-ink-800">
-          <div class="flex items-center gap-2.5">
-            <span class="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-300 text-xl shadow-xs">
+        <div class="flex shrink-0 items-center justify-between border-b border-slate-100 pb-2 sm:pb-3 dark:border-ink-800">
+          <div class="flex items-center gap-2 sm:gap-2.5 min-w-0">
+            <span class="flex h-8 w-8 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl sm:rounded-2xl bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-300 text-base sm:text-xl shadow-xs">
               💡
             </span>
-            <div>
-              <h2 class="text-sm sm:text-base font-black text-ink-900 dark:text-white">
+            <div class="min-w-0">
+              <h2 class="text-xs sm:text-base font-black text-ink-900 dark:text-white truncate">
                 چالش سوال دانایی
               </h2>
-              <p class="text-[11px] text-slate-500 dark:text-ink-400">
+              <p class="text-[10px] sm:text-[11px] text-slate-500 dark:text-ink-400 truncate">
                 {{ findCourse(BASE_COURSES, currentQuestion.courseId)?.name || 'کتاب درسی' }} · پایه {{ currentQuestion.grade }} تحصیلی
               </p>
             </div>
           </div>
 
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <span class="rounded-lg bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-ink-800 dark:text-ink-300">
               سطح {{ currentQuestion.difficulty }}
             </span>
@@ -1053,19 +1052,19 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <!-- متن سوال -->
-        <div class="mt-4 flex flex-col gap-3">
-          <p class="text-sm sm:text-base font-bold leading-relaxed text-slate-800 dark:text-white">
+        <!-- متن سوال و گزینه‌ها (اسکرول‌پذیر در صفحات کوتاه افقی) -->
+        <div class="mt-2.5 sm:mt-4 flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-2.5 sm:gap-3 pr-0.5">
+          <p class="text-xs sm:text-base font-bold leading-relaxed text-slate-800 dark:text-white">
             {{ currentQuestion.text }}
           </p>
 
           <!-- گزینه‌های چهارگانه پاسخ -->
-          <div class="flex flex-col gap-2 mt-2">
+          <div class="grid grid-cols-1 min-[480px]:grid-cols-2 gap-1.5 sm:gap-2 mt-1">
             <button
               v-for="(option, idx) in currentQuestion.options"
               :key="idx"
               type="button"
-              class="flex items-center justify-between rounded-2xl border p-3.5 text-right text-xs sm:text-sm font-semibold transition-all cursor-pointer"
+              class="flex items-center justify-between gap-2 rounded-xl sm:rounded-2xl border p-2.5 sm:p-3.5 text-right text-xs sm:text-sm font-semibold transition-all cursor-pointer"
               :class="[
                 selectedOptionIndex === idx
                   ? wasCorrect
@@ -1078,9 +1077,9 @@ onBeforeUnmount(() => {
               :disabled="hasAnswered"
               @click="submitAnswer(idx)"
             >
-              <span>{{ option }}</span>
+              <span class="min-w-0 break-words">{{ option }}</span>
               <span
-                class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold"
+                class="flex h-5 w-5 sm:h-6 sm:w-6 shrink-0 items-center justify-center rounded-full text-[10px] sm:text-xs font-bold"
                 :class="
                   selectedOptionIndex === idx && wasCorrect
                     ? 'bg-emerald-500 text-white'
@@ -1093,57 +1092,61 @@ onBeforeUnmount(() => {
               </span>
             </button>
           </div>
+        </div>
 
-          <!-- بازخورد پاسخ صحیح -->
-          <div
-            v-if="hasAnswered && wasCorrect"
-            class="mt-2 rounded-2xl border border-emerald-300 bg-emerald-50/90 p-4 text-xs text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-200 flex flex-col gap-3"
-          >
-            <div class="flex items-center gap-2 font-black text-sm">
+        <!-- بازخورد پاسخ صحیح (همیشه نمایان در پایین باکس) -->
+        <div
+          v-if="hasAnswered && wasCorrect"
+          class="mt-2.5 sm:mt-3 shrink-0 rounded-xl sm:rounded-2xl border border-emerald-300 bg-emerald-50/90 p-2.5 sm:p-4 text-xs text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-200 flex flex-col gap-2 sm:gap-3"
+        >
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-1.5 font-black text-xs sm:text-sm">
               <span>🎉</span>
               <span>آفرین! پاسخ کاملاً درست است.</span>
             </div>
-            <p class="text-xs text-emerald-700 dark:text-emerald-300">
-              ۵ حرکت جدید به بازی شما اضافه شد و امتیاز به پروفایل ثبت گردید.
-            </p>
-            <div class="flex gap-2">
-              <button
-                type="button"
-                class="flex-1 rounded-xl bg-emerald-600 py-3 text-xs sm:text-sm font-black text-white shadow-md hover:bg-emerald-700 transition cursor-pointer"
-                @click="showQuestionOverlay = false"
-              >
-                🎮 ادامه بازی با حرکات جدید
-              </button>
-              <button
-                type="button"
-                class="rounded-xl border border-emerald-300 bg-white/70 px-3 py-3 text-xs font-bold text-emerald-800 hover:bg-emerald-100 transition dark:bg-ink-900 dark:border-emerald-700 dark:text-emerald-200 cursor-pointer"
-                @click="pickNextQuestion"
-              >
-                سوال بعدی 🔄
-              </button>
-            </div>
+            <span class="hidden sm:inline text-[11px] text-emerald-700 dark:text-emerald-300">
+              +۵ حرکت جدید
+            </span>
           </div>
+          <div class="flex gap-2">
+            <button
+              type="button"
+              class="flex-1 rounded-xl bg-emerald-600 py-2 sm:py-3 text-xs sm:text-sm font-black text-white shadow-md hover:bg-emerald-700 transition cursor-pointer"
+              @click="showQuestionOverlay = false"
+            >
+              🎮 ادامه بازی با حرکات جدید
+            </button>
+            <button
+              type="button"
+              class="rounded-xl border border-emerald-300 bg-white/70 px-3 py-2 sm:py-3 text-xs font-bold text-emerald-800 hover:bg-emerald-100 transition dark:bg-ink-900 dark:border-emerald-700 dark:text-emerald-200 cursor-pointer"
+              @click="pickNextQuestion"
+            >
+              سوال بعدی 🔄
+            </button>
+          </div>
+        </div>
 
-          <!-- بازخورد پاسخ اشتباه -->
-          <div
-            v-if="hasAnswered && !wasCorrect"
-            class="mt-2 rounded-2xl border border-rose-300 bg-rose-50/90 p-4 text-xs text-rose-800 dark:border-rose-800 dark:bg-rose-950/70 dark:text-rose-200 flex flex-col gap-3"
-          >
-            <div class="flex items-center gap-2 font-bold text-sm text-rose-700 dark:text-rose-300">
+        <!-- بازخورد پاسخ اشتباه (همیشه نمایان در پایین باکس) -->
+        <div
+          v-if="hasAnswered && !wasCorrect"
+          class="mt-2.5 sm:mt-3 shrink-0 rounded-xl sm:rounded-2xl border border-rose-300 bg-rose-50/90 p-2.5 sm:p-4 text-xs text-rose-800 dark:border-rose-800 dark:bg-rose-950/70 dark:text-rose-200 flex flex-col gap-2 sm:gap-3"
+        >
+          <div class="max-h-20 sm:max-h-none overflow-y-auto space-y-1">
+            <div class="flex items-center gap-1.5 font-bold text-xs sm:text-sm text-rose-700 dark:text-rose-300">
               <span>❌</span>
               <span>پاسخ صحیح: گزینه {{ Number(currentQuestion.correctAnswer) + 1 }} بود.</span>
             </div>
-            <p class="text-xs leading-relaxed text-slate-700 dark:text-ink-200">
+            <p class="text-[11px] sm:text-xs leading-relaxed text-slate-700 dark:text-ink-200">
               💡 <span class="font-bold">نکته آموزشی:</span> {{ currentQuestion.explanation }}
             </p>
-            <button
-              type="button"
-              class="w-full rounded-xl bg-rose-600 py-3 text-xs sm:text-sm font-bold text-white shadow-md hover:bg-rose-700 transition cursor-pointer"
-              @click="pickNextQuestion"
-            >
-              سوال بعدی / تلاش مجدد 🔄
-            </button>
           </div>
+          <button
+            type="button"
+            class="w-full rounded-xl bg-rose-600 py-2 sm:py-3 text-xs sm:text-sm font-bold text-white shadow-md hover:bg-rose-700 transition cursor-pointer"
+            @click="pickNextQuestion"
+          >
+            سوال بعدی / تلاش مجدد 🔄
+          </button>
         </div>
       </div>
     </div>
@@ -1151,10 +1154,10 @@ onBeforeUnmount(() => {
     <!-- مودال پایان مأموریت و ثبت نتیجه -->
     <div
       v-if="showFinishModal"
-      class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-950/80 backdrop-blur-sm animate-in fade-in"
+      class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-ink-950/80 backdrop-blur-sm animate-in fade-in overflow-y-auto"
       dir="rtl"
     >
-      <div class="relative w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-ink-800 dark:bg-ink-900 text-center">
+      <div class="relative w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-3xl border border-slate-200 bg-white p-5 sm:p-6 shadow-2xl dark:border-ink-800 dark:bg-ink-900 text-center">
         <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-100 text-3xl dark:bg-emerald-950 text-emerald-600 dark:text-emerald-300 shadow-inner">
           🏆
         </div>

@@ -1798,31 +1798,31 @@ onBeforeUnmount(() => {
         <!-- HUD هولوگرافیک سوالات کتاب درسی (مستقر در سمت راست میدان نبرد) -->
         <div
           v-if="currentQuestion"
-          class="absolute top-3 right-3 w-80 sm:w-96 max-w-[90%] z-30 transition-all duration-300 pointer-events-auto"
+          class="absolute top-2 right-2 sm:top-3 sm:right-3 w-[calc(100%-1rem)] sm:w-96 max-h-[calc(100%-1rem)] sm:max-h-[calc(100%-1.5rem)] z-30 flex flex-col transition-all duration-300 pointer-events-auto"
         >
-          <div class="rounded-2xl border border-cyan-500/40 bg-white/95 p-3.5 sm:p-4 shadow-2xl backdrop-blur-md dark:bg-slate-950/85 transition-colors">
-            <div class="flex items-center justify-between border-b border-slate-200 pb-2 mb-2 dark:border-slate-800">
-              <div class="flex items-center gap-2">
-                <span class="text-xs font-black text-amber-500">⚡ چالش دانایی قلعه:</span>
-                <span class="rounded bg-cyan-100 px-2 py-0.5 text-[11px] font-bold text-cyan-800 dark:bg-cyan-950 dark:text-cyan-300">
+          <div class="flex flex-col min-h-0 max-h-full overflow-hidden rounded-2xl border border-cyan-500/40 bg-white/95 p-2.5 sm:p-4 shadow-2xl backdrop-blur-md dark:bg-slate-950/85 transition-colors">
+            <div class="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 pb-1.5 sm:pb-2 mb-1.5 sm:mb-2 dark:border-slate-800">
+              <div class="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                <span class="text-xs font-black text-amber-500 truncate">⚡ چالش دانایی قلعه:</span>
+                <span class="shrink-0 rounded bg-cyan-100 px-2 py-0.5 text-[10px] sm:text-[11px] font-bold text-cyan-800 dark:bg-cyan-950 dark:text-cyan-300">
                   {{ findCourse(BASE_COURSES, currentQuestion.courseId)?.name || 'کتاب درسی' }}
                 </span>
               </div>
               <button
                 type="button"
-                class="text-xs text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                class="shrink-0 text-xs text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
                 @click="showHoloDeck = !showHoloDeck"
               >
                 {{ showHoloDeck ? '▼ جمع‌کردن' : '▲ بازکردن' }}
               </button>
             </div>
 
-            <div v-show="showHoloDeck">
-              <p class="text-xs sm:text-sm font-bold text-slate-800 dark:text-white leading-relaxed mb-3">
+            <div v-show="showHoloDeck" class="flex-1 min-h-0 overflow-y-auto overscroll-contain pr-0.5">
+              <p class="text-xs sm:text-sm font-bold text-slate-800 dark:text-white leading-snug sm:leading-relaxed mb-2 sm:mb-3">
                 {{ currentQuestion.text }}
               </p>
 
-              <div class="grid grid-cols-1 gap-2">
+              <div class="grid grid-cols-1 min-[480px]:grid-cols-2 gap-1.5 sm:gap-2">
                 <button
                   v-for="(option, idx) in currentQuestion.options"
                   :key="idx"

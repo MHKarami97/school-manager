@@ -206,16 +206,16 @@ function closeModal(): void {
       @click.self="closeModal"
     >
       <div
-        class="flex h-full sm:h-[92vh] sm:max-h-[880px] w-full max-w-4xl flex-col bg-white text-ink-800 shadow-2xl sm:rounded-3xl border-0 sm:border border-ink-100 dark:border-ink-800 dark:bg-ink-900 dark:text-neutral-100 overflow-hidden min-h-0"
+        class="flex h-full sm:h-[92vh] sm:max-h-[880px] w-full max-w-4xl min-w-0 flex-col bg-white text-ink-800 shadow-2xl sm:rounded-3xl border-0 sm:border border-ink-100 dark:border-ink-800 dark:bg-ink-900 dark:text-neutral-100 overflow-hidden min-h-0"
       >
         <!-- هدر مودال -->
-        <div class="flex shrink-0 items-center justify-between border-b border-ink-100 px-4 py-3 sm:px-6 sm:py-4 dark:border-ink-800">
-          <div class="flex items-center gap-2.5 sm:gap-3">
+        <div class="flex shrink-0 items-center justify-between gap-2 border-b border-ink-100 px-3.5 py-3 sm:px-6 sm:py-4 dark:border-ink-800">
+          <div class="flex items-center gap-2.5 sm:gap-3 min-w-0">
             <span class="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-2xl bg-brand-50 text-lg sm:text-xl text-brand-600 dark:bg-brand-900/40 dark:text-brand-300">
               📚
             </span>
-            <div>
-              <h2 class="text-sm sm:text-base font-bold text-ink-900 dark:text-white">
+            <div class="min-w-0">
+              <h2 class="text-sm sm:text-base font-bold text-ink-900 dark:text-white truncate">
                 بانک جامع طرح درس‌های آماده مدارس
               </h2>
               <p class="hidden sm:block mt-0.5 text-xs text-ink-500 dark:text-neutral-300">
@@ -225,7 +225,7 @@ function closeModal(): void {
           </div>
           <button
             type="button"
-            class="flex h-8 w-8 items-center justify-center rounded-full text-ink-400 hover:bg-ink-100 hover:text-ink-700 dark:hover:bg-ink-800 dark:hover:text-white"
+            class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ink-400 hover:bg-ink-100 hover:text-ink-700 dark:hover:bg-ink-800 dark:hover:text-white"
             @click="closeModal"
           >
             ✕
@@ -233,14 +233,14 @@ function closeModal(): void {
         </div>
 
         <!-- فیلترها و انتخاب مقطع / پایه / درس -->
-        <div class="shrink-0 border-b border-ink-100 bg-ink-50/50 p-3 sm:p-4 dark:border-ink-800 dark:bg-ink-950/40 space-y-2 sm:space-y-3">
+        <div class="shrink-0 border-b border-ink-100 bg-ink-50/50 p-3 sm:p-4 dark:border-ink-800 dark:bg-ink-950/40 space-y-2 sm:space-y-3 min-w-0">
           <!-- کادر جست‌وجوی کلی در متن طرح درس -->
-          <div class="relative">
+          <div class="relative min-w-0">
             <input
               v-model="searchText"
               type="text"
               placeholder="جست‌وجو در عنوان، فصل، اهداف یا روش تدریس..."
-              class="w-full rounded-xl border border-ink-200 bg-white px-3 py-1.5 sm:py-2 pl-8 text-xs text-ink-800 placeholder:text-ink-400 dark:border-ink-700 dark:bg-ink-800 dark:text-white dark:placeholder:text-neutral-400"
+              class="w-full min-w-0 rounded-xl border border-ink-200 bg-white px-3 py-1.5 sm:py-2 pl-8 text-xs text-ink-800 placeholder:text-ink-400 dark:border-ink-700 dark:bg-ink-800 dark:text-white dark:placeholder:text-neutral-400"
             />
             <button
               v-if="searchText"
@@ -255,13 +255,13 @@ function closeModal(): void {
           <!-- ۳ دراپ‌داون: در موبایل مقطع و پایه کنار هم (۲ ستون)، درس سطر بعدی؛ در دسکتاپ هر ۳ در یک ردیف -->
           <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
             <!-- دراپ‌داون ۱: مقطع تحصیلی -->
-            <div>
+            <div class="min-w-0">
               <label class="mb-1 block text-xs font-bold text-ink-800 dark:text-white">
                 ۱. مقطع
               </label>
               <select
                 v-model="selectedLevelId"
-                class="w-full rounded-xl border border-ink-200 bg-white px-2.5 py-1.5 sm:py-2 text-xs text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-white"
+                class="w-full min-w-0 max-w-full rounded-xl border border-ink-200 bg-white px-2.5 py-1.5 sm:py-2 text-xs text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-white"
               >
                 <option value="" class="bg-white text-ink-900 dark:bg-ink-900 dark:text-white">همه مقاطع</option>
                 <option v-for="l in LEVELS" :key="l.id" :value="l.id" class="bg-white text-ink-900 dark:bg-ink-900 dark:text-white">
@@ -271,13 +271,13 @@ function closeModal(): void {
             </div>
 
             <!-- دراپ‌داون ۲: پایه تحصیلی -->
-            <div>
+            <div class="min-w-0">
               <label class="mb-1 block text-xs font-bold text-ink-800 dark:text-white">
                 ۲. پایه
               </label>
               <select
                 v-model="selectedGrade"
-                class="w-full rounded-xl border border-ink-200 bg-white px-2.5 py-1.5 sm:py-2 text-xs text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-white"
+                class="w-full min-w-0 max-w-full rounded-xl border border-ink-200 bg-white px-2.5 py-1.5 sm:py-2 text-xs text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-white"
               >
                 <option value="" class="bg-white text-ink-900 dark:bg-ink-900 dark:text-white">همه پایه‌ها</option>
                 <option
@@ -292,13 +292,13 @@ function closeModal(): void {
             </div>
 
             <!-- دراپ‌داون ۳: درس مورد نظر (فقط دروس مصوب همان پایه) -->
-            <div class="col-span-2 sm:col-span-1">
-              <div class="mb-1 flex items-center justify-between text-xs font-bold text-ink-800 dark:text-white">
+            <div class="col-span-2 sm:col-span-1 min-w-0">
+              <div class="mb-1 flex items-center justify-between gap-2 text-xs font-bold text-ink-800 dark:text-white">
                 <span>۳. درس</span>
                 <button
                   v-if="selectedCourseId"
                   type="button"
-                  class="text-[10px] font-normal text-red-600 hover:underline dark:text-red-400"
+                  class="text-[10px] font-normal text-red-600 hover:underline dark:text-red-400 shrink-0"
                   @click="selectedCourseId = ''"
                 >
                   حذف فیلتر درس
@@ -306,7 +306,7 @@ function closeModal(): void {
               </div>
               <select
                 v-model="selectedCourseId"
-                class="w-full rounded-xl border border-ink-200 bg-white px-2.5 py-1.5 sm:py-2 text-xs text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-white"
+                class="w-full min-w-0 max-w-full rounded-xl border border-ink-200 bg-white px-2.5 py-1.5 sm:py-2 text-xs text-ink-800 dark:border-ink-700 dark:bg-ink-800 dark:text-white"
               >
                 <option value="" class="bg-white text-ink-900 dark:bg-ink-900 dark:text-white">
                   {{ selectedGrade ? `همه درس‌های ${gradeLabel(Number(selectedGrade))}` : 'همه درس‌ها' }}
@@ -353,7 +353,7 @@ function closeModal(): void {
         </div>
 
         <!-- لیست طرح درس‌ها (دارای min-h-0 برای فعال بودن کامل اسکرول در فلکس‌باکس روی موبایل) -->
-        <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 sm:p-6">
+        <div class="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden overscroll-contain p-3 sm:p-6">
           <div v-if="isLoading" class="py-16 text-center text-sm text-ink-400 dark:text-neutral-400">
             در حال بارگذاری بانک طرح درس‌ها...
           </div>
@@ -370,13 +370,13 @@ function closeModal(): void {
             </button>
           </div>
 
-          <div v-else class="space-y-3 sm:space-y-4">
+          <div v-else class="space-y-3 sm:space-y-4 min-w-0">
             <div
               v-for="plan in filteredPlans"
               :key="plan.id"
-              class="rounded-2xl border border-ink-100 bg-white p-3.5 sm:p-4 transition hover:border-brand-300 dark:border-ink-800 dark:bg-ink-800/40 dark:hover:border-brand-500"
+              class="w-full min-w-0 overflow-hidden rounded-2xl border border-ink-100 bg-white p-3 sm:p-4 transition hover:border-brand-300 dark:border-ink-800 dark:bg-ink-800/40 dark:hover:border-brand-500"
             >
-              <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2.5 sm:gap-3">
+              <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2.5 sm:gap-3 min-w-0">
                 <div class="flex-1 min-w-0">
                   <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
                     <span class="rounded-lg bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
@@ -385,29 +385,29 @@ function closeModal(): void {
                     <span class="rounded-lg bg-ink-100 px-2 py-0.5 text-xs text-ink-700 dark:bg-ink-700 dark:text-neutral-200">
                       {{ gradeLabel(plan.grade) }}
                     </span>
-                    <span v-if="plan.chapter" class="rounded-lg bg-amber-50 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                    <span v-if="plan.chapter" class="max-w-full break-words rounded-lg bg-amber-50 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
                       {{ plan.chapter }}
                     </span>
                     <span class="text-[11px] sm:text-xs text-ink-400 dark:text-neutral-400">
                       ⏱️ {{ totalEstimatedMinutes(plan.blocks) }} دقیقه
                     </span>
                   </div>
-                  <h3 class="mt-2 text-sm sm:text-base font-bold text-ink-900 dark:text-white">
+                  <h3 class="mt-2 break-words text-sm sm:text-base font-bold text-ink-900 dark:text-white">
                     {{ plan.title }}
                   </h3>
                 </div>
 
-                <div class="flex items-center gap-2 shrink-0">
+                <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:shrink-0">
                   <button
                     type="button"
-                    class="rounded-xl border border-ink-200 px-3 py-1.5 text-xs font-medium text-ink-600 transition hover:bg-ink-50 dark:border-ink-700 dark:text-neutral-200 dark:hover:bg-ink-800"
+                    class="flex-1 sm:flex-initial rounded-xl border border-ink-200 px-3 py-1.5 text-xs font-medium text-ink-600 transition hover:bg-ink-50 dark:border-ink-700 dark:text-neutral-200 dark:hover:bg-ink-800 text-center"
                     @click="toggleExpand(plan.id)"
                   >
                     {{ expandedPlanId === plan.id ? 'بستن پیش‌نمایش' : 'مشاهده جزئیات' }}
                   </button>
                   <button
                     type="button"
-                    class="rounded-xl bg-brand-600 px-3.5 sm:px-4 py-1.5 text-xs font-semibold text-white shadow-xs transition hover:bg-brand-700"
+                    class="flex-1 sm:flex-initial rounded-xl bg-brand-600 px-3.5 sm:px-4 py-1.5 text-xs font-semibold text-white shadow-xs transition hover:bg-brand-700 text-center"
                     @click="usePlan(plan)"
                   >
                     {{ mode === 'select' ? '✓ انتخاب و اعمال در فرم' : '📋 استفاده و ویرایش' }}
@@ -416,51 +416,51 @@ function closeModal(): void {
               </div>
 
               <!-- خلاصه اهداف و روش تدریس -->
-              <div class="mt-2.5 sm:mt-3 grid gap-1.5 sm:gap-2 text-xs sm:grid-cols-2">
-                <div class="rounded-xl bg-ink-50/70 p-2 sm:p-2.5 dark:bg-ink-800/80">
+              <div class="mt-2.5 sm:mt-3 grid grid-cols-1 gap-1.5 sm:gap-2 text-xs sm:grid-cols-2">
+                <div class="min-w-0 overflow-hidden rounded-xl bg-ink-50/70 p-2 sm:p-2.5 dark:bg-ink-800/80">
                   <span class="font-semibold text-ink-700 dark:text-neutral-200">روش تدریس: </span>
-                  <span class="text-ink-600 dark:text-neutral-300">{{ plan.teachingMethod }}</span>
+                  <span class="text-ink-600 dark:text-neutral-300 break-words">{{ plan.teachingMethod }}</span>
                 </div>
-                <div class="rounded-xl bg-ink-50/70 p-2 sm:p-2.5 dark:bg-ink-800/80">
+                <div class="min-w-0 overflow-hidden rounded-xl bg-ink-50/70 p-2 sm:p-2.5 dark:bg-ink-800/80">
                   <span class="font-semibold text-ink-700 dark:text-neutral-200">وسایل و منابع: </span>
                   <span class="text-ink-600 dark:text-neutral-300 truncate block">{{ plan.resources }}</span>
                 </div>
               </div>
 
               <!-- پنل جزئیات کامل و گام‌های جلسه هنگام باز شدن -->
-              <div v-if="expandedPlanId === plan.id" class="mt-3 sm:mt-4 space-y-2.5 sm:space-y-3 border-t border-ink-100 pt-3 text-xs dark:border-ink-800">
-                <div>
+              <div v-if="expandedPlanId === plan.id" class="mt-3 sm:mt-4 space-y-2.5 sm:space-y-3 border-t border-ink-100 pt-3 text-xs dark:border-ink-800 min-w-0">
+                <div class="min-w-0">
                   <p class="font-bold text-ink-800 dark:text-white">اهداف تفصیلی جلسه:</p>
-                  <div class="mt-1 whitespace-pre-line rounded-xl bg-ink-50/60 p-2.5 sm:p-3 text-ink-700 leading-relaxed dark:bg-ink-800/80 dark:text-neutral-200">
+                  <div class="mt-1 whitespace-pre-line break-words rounded-xl bg-ink-50/60 p-2.5 sm:p-3 text-ink-700 leading-relaxed dark:bg-ink-800/80 dark:text-neutral-200">
                     {{ plan.objectives }}
                   </div>
                 </div>
 
-                <div>
+                <div class="min-w-0">
                   <p class="font-bold text-ink-800 dark:text-white">مراحل زمان‌بندی‌شده جلسه ({{ plan.blocks.length }} گام):</p>
                   <div class="mt-1 space-y-1.5">
                     <div
                       v-for="(block, bIdx) in plan.blocks"
                       :key="block.id"
-                      class="flex items-start gap-2 sm:gap-2.5 rounded-xl border border-ink-100 bg-white p-2 sm:p-2.5 dark:border-ink-800 dark:bg-ink-800/50"
+                      class="flex items-start gap-2 sm:gap-2.5 rounded-xl border border-ink-100 bg-white p-2 sm:p-2.5 dark:border-ink-800 dark:bg-ink-800/50 min-w-0"
                     >
                       <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-50 text-[10px] font-bold text-brand-700 dark:bg-brand-900/50 dark:text-brand-300">
                         {{ bIdx + 1 }}
                       </span>
                       <div class="flex-1 min-w-0">
-                        <div class="flex items-center justify-between">
-                          <span class="font-semibold text-ink-800 dark:text-white">{{ block.title }}</span>
-                          <span class="text-[11px] font-medium text-ink-400 dark:text-neutral-400">{{ block.estimatedMinutes }} دقیقه</span>
+                        <div class="flex flex-wrap items-center justify-between gap-1">
+                          <span class="font-semibold text-ink-800 dark:text-white break-words">{{ block.title }}</span>
+                          <span class="text-[11px] font-medium text-ink-400 dark:text-neutral-400 shrink-0">{{ block.estimatedMinutes }} دقیقه</span>
                         </div>
-                        <p class="mt-0.5 text-ink-600 dark:text-neutral-300">{{ block.description }}</p>
+                        <p class="mt-0.5 text-ink-600 dark:text-neutral-300 break-words">{{ block.description }}</p>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                <div>
+                <div class="min-w-0">
                   <p class="font-bold text-ink-800 dark:text-white">ارزشیابی و تکالیف:</p>
-                  <div class="mt-1 whitespace-pre-line rounded-xl bg-ink-50/60 p-2.5 sm:p-3 text-ink-700 leading-relaxed dark:bg-ink-800/80 dark:text-neutral-200">
+                  <div class="mt-1 whitespace-pre-line break-words rounded-xl bg-ink-50/60 p-2.5 sm:p-3 text-ink-700 leading-relaxed dark:bg-ink-800/80 dark:text-neutral-200">
                     {{ plan.assessment }}
                   </div>
                 </div>

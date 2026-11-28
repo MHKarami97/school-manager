@@ -368,8 +368,11 @@ function answerQuestion(index: number): void {
     })
 
     // بستن خودکار پنل پس از پاسخ درست تا کاربر بدون مانع نشانه‌گیری کند
+    const answeredId = currentQuestion.value.id
     setTimeout(() => {
-      showHoloDeck.value = false
+      if (currentQuestion.value?.id === answeredId && hasAnsweredCurrent.value && wasAnswerCorrect.value) {
+        showHoloDeck.value = false
+      }
     }, 1300)
   } else {
     sfx.playIncorrect()
@@ -1038,9 +1041,9 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="game-root relative flex h-screen w-screen flex-col overflow-hidden bg-ink-50 text-ink-900 dark:bg-ink-950 dark:text-white select-none transition-colors">
+  <div class="game-root relative flex h-dvh w-full flex-col overflow-hidden bg-ink-50 text-ink-900 dark:bg-ink-950 dark:text-white select-none transition-colors">
     <!-- هدر بازی -->
-    <header class="flex h-12 shrink-0 items-center justify-between border-b border-ink-200 bg-white/90 px-3 sm:px-6 backdrop-blur z-20 dark:border-ink-800 dark:bg-ink-900/90 text-slate-800 dark:text-white transition-colors">
+    <header class="flex h-11 sm:h-12 shrink-0 items-center justify-between border-b border-ink-200 bg-white/90 px-3 sm:px-6 backdrop-blur z-20 dark:border-ink-800 dark:bg-ink-900/90 text-slate-800 dark:text-white transition-colors">
       <div class="flex items-center gap-2 sm:gap-3">
         <RouterLink
           to="/"
@@ -1116,7 +1119,7 @@ onBeforeUnmount(() => {
     </header>
 
     <!-- ناحیه اصلی بازی (Canvas) -->
-    <main class="relative flex-1 overflow-hidden">
+    <main class="relative flex-1 min-h-0 overflow-hidden">
       <canvas ref="canvasRef" class="absolute inset-0 h-full w-full block cursor-crosshair"></canvas>
 
       <!-- ۱. صفحه تنظیمات مأموریت قبل از شروع (Setup Screen) -->
@@ -1285,17 +1288,17 @@ onBeforeUnmount(() => {
       <!-- ۳. ترمینال هولوگرافیک سوال مأموریت (In-Game Question Holo-Deck) -->
       <div
         v-if="gameState === 'playing' && currentQuestion && showHoloDeck"
-        class="rocket-holo absolute top-3 left-1/2 -translate-x-1/2 z-20 w-[95%] max-w-xl rounded-2xl border border-brand-500/40 bg-white/95 p-4 shadow-2xl backdrop-blur-md dark:bg-ink-900/90"
+        class="rocket-holo absolute top-2 sm:top-3 left-1/2 -translate-x-1/2 z-20 flex max-h-[calc(100%-1rem)] sm:max-h-[calc(100%-1.5rem)] w-[96%] sm:w-[95%] max-w-xl flex-col overflow-hidden rounded-2xl border border-brand-500/40 bg-white/95 p-2.5 sm:p-4 shadow-2xl backdrop-blur-md dark:bg-ink-900/90"
       >
-        <div class="mb-2 flex items-center justify-between border-b border-slate-200 pb-2 dark:border-ink-800">
-          <div class="flex items-center gap-2">
-            <span class="flex h-6 w-6 items-center justify-center rounded-lg bg-brand-600/30 text-xs">
+        <div class="mb-1.5 sm:mb-2 flex shrink-0 flex-wrap items-center justify-between gap-1.5 border-b border-slate-200 pb-1.5 sm:pb-2 dark:border-ink-800">
+          <div class="flex items-center gap-1.5 sm:gap-2 min-w-0">
+            <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-brand-600/30 text-xs">
               {{ activeHero.avatar }}
             </span>
-            <span class="text-xs font-bold text-brand-300">
+            <span class="text-xs font-bold text-brand-300 truncate">
               سوال فعال‌سازی پرتابگر · {{ findCourse(BASE_COURSES, currentQuestion.courseId)?.name }}
             </span>
-            <span class="rounded bg-ink-800 px-1.5 py-0.5 text-9px text-ink-300">
+            <span class="shrink-0 rounded bg-ink-800 px-1.5 py-0.5 text-9px text-ink-300">
               سطح: {{ currentQuestion.difficulty }}
             </span>
           </div>
@@ -1303,67 +1306,70 @@ onBeforeUnmount(() => {
           <!-- وضعیت شرط پرتاب -->
           <span
             v-if="canFire"
-            class="rounded-full bg-emerald-500/20 px-2 py-0.5 text-10px font-bold text-emerald-300 border border-emerald-500/40"
+            class="shrink-0 rounded-full bg-emerald-500/20 px-2 py-0.5 text-10px font-bold text-emerald-700 dark:text-emerald-300 border border-emerald-500/40"
           >
             ✓ پاسخ صحیح (مجوز پرتاب صادر شد)
           </span>
           <span
             v-else
-            class="rounded-full bg-amber-500/20 px-2 py-0.5 text-10px font-medium text-amber-300 border border-amber-500/40"
+            class="shrink-0 rounded-full bg-amber-500/20 px-2 py-0.5 text-10px font-medium text-amber-800 dark:text-amber-300 border border-amber-500/40"
           >
             🔒 پرتاب موشک قفل است
           </span>
         </div>
 
-        <!-- متن سوال -->
-        <p class="text-xs font-semibold leading-relaxed text-slate-800 dark:text-white sm:text-sm">
-          {{ currentQuestion.text }}
-        </p>
+        <!-- بخش اسکرول‌پذیر متن سوال و گزینه‌ها -->
+        <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain pr-0.5">
+          <!-- متن سوال -->
+          <p class="text-xs font-semibold leading-snug sm:leading-relaxed text-slate-800 dark:text-white sm:text-sm">
+            {{ currentQuestion.text }}
+          </p>
 
-        <!-- گزینه‌های چهارگانه -->
-        <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <button
-            v-for="(option, idx) in currentQuestion.options"
-            :key="idx"
-            type="button"
-            class="flex items-center justify-between rounded-xl border p-2.5 text-right text-xs font-medium transition-all"
-            :class="[
-              selectedOptionIndex === idx
-                ? wasAnswerCorrect
-                  ? 'border-emerald-500 bg-emerald-500/30 text-white ring-2 ring-emerald-500'
-                  : 'border-rose-500 bg-rose-500/30 text-white ring-2 ring-rose-500'
-                : hasAnsweredCurrent && String(idx) === String(currentQuestion.correctAnswer)
-                  ? 'border-emerald-500 bg-emerald-500/25 text-emerald-200'
-                  : 'border-ink-700 bg-ink-800/80 text-ink-200 hover:border-brand-500 hover:bg-ink-800',
-            ]"
-            :disabled="hasAnsweredCurrent"
-            @click="answerQuestion(idx)"
-          >
-            <span>{{ option }}</span>
-            <span
-              class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-10px font-bold"
-              :class="selectedOptionIndex === idx && wasAnswerCorrect ? 'bg-emerald-500 text-black' : 'bg-ink-700 text-ink-300'"
+          <!-- گزینه‌های چهارگانه -->
+          <div class="mt-2 sm:mt-3 grid grid-cols-1 min-[480px]:grid-cols-2 gap-1.5 sm:gap-2">
+            <button
+              v-for="(option, idx) in currentQuestion.options"
+              :key="idx"
+              type="button"
+              class="flex items-center justify-between gap-2 rounded-xl border p-2 sm:p-2.5 text-right text-xs font-medium transition-all"
+              :class="[
+                selectedOptionIndex === idx
+                  ? wasAnswerCorrect
+                    ? 'border-emerald-500 bg-emerald-100 text-emerald-950 ring-2 ring-emerald-500 dark:bg-emerald-500/30 dark:text-white'
+                    : 'border-rose-500 bg-rose-100 text-rose-950 ring-2 ring-rose-500 dark:bg-rose-500/30 dark:text-white'
+                  : hasAnsweredCurrent && String(idx) === String(currentQuestion.correctAnswer)
+                    ? 'border-emerald-500 bg-emerald-50 text-emerald-900 dark:bg-emerald-500/25 dark:text-emerald-200'
+                    : 'border-ink-700 bg-ink-800/80 text-ink-200 hover:border-brand-500 hover:bg-ink-800',
+              ]"
+              :disabled="hasAnsweredCurrent"
+              @click="answerQuestion(idx)"
             >
-              {{ idx + 1 }}
-            </span>
-          </button>
+              <span class="min-w-0 break-words">{{ option }}</span>
+              <span
+                class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-10px font-bold"
+                :class="selectedOptionIndex === idx && wasAnswerCorrect ? 'bg-emerald-500 text-black' : 'bg-ink-700 text-ink-300'"
+              >
+                {{ idx + 1 }}
+              </span>
+            </button>
+          </div>
         </div>
 
-        <!-- بازخورد در صورت پاسخ صحیح -->
+        <!-- بازخورد در صورت پاسخ صحیح (همیشه نمایان در پایین باکس) -->
         <div
           v-if="hasAnsweredCurrent && wasAnswerCorrect"
-          class="mt-3 flex items-center justify-between rounded-xl border border-emerald-500/40 bg-emerald-950/40 p-2.5 text-xs text-emerald-200"
+          class="mt-2 sm:mt-3 flex shrink-0 flex-wrap sm:flex-nowrap items-center justify-between gap-2 rounded-xl border border-emerald-500/40 bg-emerald-50 p-2 sm:p-2.5 text-xs text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"
         >
-          <div class="flex items-center gap-2">
-            <span class="text-lg">🎯</span>
-            <div>
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="text-base sm:text-lg shrink-0">🎯</span>
+            <div class="min-w-0">
               <span class="font-bold">آفرین! پاسخ صحیح است.</span>
-              <p class="text-10px text-emerald-300">قفل پرتابگر باز شد؛ زاویه و قدرت را تنظیم کرده و موشک را شلیک کنید.</p>
+              <p class="hidden sm:block text-10px text-emerald-700 dark:text-emerald-300">قفل پرتابگر باز شد؛ زاویه و قدرت را تنظیم کرده و موشک را شلیک کنید.</p>
             </div>
           </div>
           <button
             type="button"
-            class="rounded-lg bg-emerald-600 px-3 py-1 text-xs font-bold text-white hover:bg-emerald-500"
+            class="shrink-0 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-500 cursor-pointer"
             @click="showHoloDeck = false"
           >
             رفتن به پرتاب 🚀
@@ -1373,20 +1379,22 @@ onBeforeUnmount(() => {
         <!-- بازخورد و نمایش پاسخ درست در صورت اشتباه و دکمه تلاش مجدد -->
         <div
           v-if="hasAnsweredCurrent && !wasAnswerCorrect"
-          class="mt-3 rounded-xl border border-rose-500/40 bg-rose-950/50 p-3 text-11px text-rose-200"
+          class="mt-2 sm:mt-3 shrink-0 rounded-xl border border-rose-500/40 bg-rose-50 p-2 sm:p-3 text-11px text-rose-900 dark:bg-rose-950/50 dark:text-rose-200"
         >
-          <div class="flex items-center gap-1.5 font-bold text-rose-300 mb-1">
-            <span>❌ پاسخ نادرست بود!</span>
-            <span>پاسخ صحیح: گزینه {{ Number(currentQuestion.correctAnswer) + 1 }} یعنی «{{ currentQuestion.options[Number(currentQuestion.correctAnswer)] }}» است.</span>
+          <div class="max-h-20 sm:max-h-none overflow-y-auto">
+            <div class="flex flex-wrap items-center gap-1.5 font-bold text-rose-700 dark:text-rose-300 mb-1">
+              <span>❌ پاسخ نادرست بود!</span>
+              <span>پاسخ صحیح: گزینه {{ Number(currentQuestion.correctAnswer) + 1 }} یعنی «{{ currentQuestion.options[Number(currentQuestion.correctAnswer)] }}» است.</span>
+            </div>
+            <p class="mt-1 leading-relaxed text-slate-700 dark:text-ink-200">
+              💡 <span class="font-semibold text-amber-700 dark:text-amber-300">نکته آموزشی:</span> {{ currentQuestion.explanation }}
+            </p>
           </div>
-          <p class="mt-1 leading-relaxed text-ink-200">
-            💡 <span class="font-semibold text-amber-300">نکته آموزشی:</span> {{ currentQuestion.explanation }}
-          </p>
-          <div class="mt-2.5 flex items-center justify-between border-t border-rose-900/60 pt-2">
-            <span class="text-10px text-rose-300">برای باز شدن قفل پرتاب، باید به سوال پاسخ درست دهید.</span>
+          <div class="mt-1.5 sm:mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-rose-200 dark:border-rose-900/60 pt-1.5 sm:pt-2">
+            <span class="text-10px text-rose-700 dark:text-rose-300">برای باز شدن قفل پرتاب، باید به سوال پاسخ درست دهید.</span>
             <button
               type="button"
-              class="flex items-center gap-1 rounded-lg bg-gradient-to-r from-amber-600 to-rose-600 px-3 py-1.5 text-xs font-bold text-white shadow hover:scale-102"
+              class="shrink-0 flex items-center gap-1 rounded-lg bg-gradient-to-r from-amber-600 to-rose-600 px-3 py-1.5 text-xs font-bold text-white shadow hover:scale-102 cursor-pointer"
               @click="retryWithNewQuestion"
             >
               <span>🔄 سوال بعدی / تلاش مجدد</span>
@@ -1620,9 +1628,9 @@ onBeforeUnmount(() => {
     <!-- پنل کنترل شلیک و زاویه و قدرت در پایین صفحه -->
     <footer
       v-if="gameState === 'playing'"
-      class="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-ink-800 bg-ink-900/95 px-3 py-2.5 sm:px-6 backdrop-blur z-20"
+      class="flex shrink-0 flex-wrap items-center justify-between gap-2 sm:gap-3 border-t border-ink-800 bg-ink-900/95 px-3 py-1.5 sm:py-2.5 sm:px-6 backdrop-blur z-20"
     >
-      <div class="flex flex-1 items-center gap-4 min-w-[280px]">
+      <div class="flex flex-1 items-center gap-3 sm:gap-4 min-w-[180px]">
         <!-- تنظیم زاویه -->
         <div class="flex flex-1 items-center gap-2">
           <span class="text-xs font-bold text-ink-300 shrink-0">زاویه: {{ angle }}°</span>
@@ -1651,7 +1659,7 @@ onBeforeUnmount(() => {
       <!-- دکمه پرتاب موشک مشروط به پاسخ صحیح -->
       <button
         type="button"
-        class="flex items-center gap-2 rounded-xl px-6 py-2.5 text-xs font-black transition-all"
+        class="flex shrink-0 items-center gap-2 rounded-xl px-3.5 sm:px-6 py-1.5 sm:py-2.5 text-xs font-black transition-all"
         :class="[
           canFire
             ? 'bg-gradient-to-r from-emerald-600 to-teal-500 text-white shadow-lg shadow-emerald-500/30 hover:scale-105 active:scale-95 animate-pulse'
